@@ -1,2 +1,2 @@
 # Hyperion
-A process management framework
+A process management application
