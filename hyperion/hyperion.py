@@ -64,8 +64,17 @@ class ControlCenter:
                     #)
 
             # Remove duplicate hosts
-            self.hostlist = list(set(self.hostlist))
+            self.host_list = list(set(self.host_list))
 
+    def start_remote_components(self):
+        # invoke Hyperion in slave mode on each remote host
+        # TODO: in the init loop, form a list of components to start for each host to be iterated in this step
+        for host in self.host_list:
+            if not host == 'localhost':
+                #TODO: For each component
+                self.logger.debug('Opening connection to remote host %s' % host)
+                self.logger.error("Open SSH NYI")
+                # TODO: Connect to remote host and start hyperion --config [...] slave
 
     def start_gui(self):
         self.logger.warn("GUI startup NYI")
