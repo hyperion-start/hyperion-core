@@ -1,0 +1,5 @@
+name: Group
+
+components:
+  - !include ../top.yaml
+  - !include ../xeyes.yaml

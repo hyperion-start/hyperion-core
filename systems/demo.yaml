@@ -1,0 +1,7 @@
+name: Hyperion DEMO
+
+groups:
+  - !include ../components/groups/group.yaml
+  - !include ../components/groups/group2.yaml
+
+autostart: true

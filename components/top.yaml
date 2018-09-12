@@ -1,0 +1,12 @@
+name: top
+
+cmd:
+  - start: top
+  - check: ps -aux | grep top
+  - stop: echo "shutdown"
+
+provides: top
+
+depends: xeyes
+
+host: localhost

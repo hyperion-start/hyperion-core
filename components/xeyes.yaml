@@ -1,0 +1,10 @@
+name: xeyes
+
+cmd:
+  - start: xeyes
+  - check: ps -aux | grep xeyes
+  - stop: echo "shutdown"
+
+provides: xeyes
+
+host: raspberrypi
