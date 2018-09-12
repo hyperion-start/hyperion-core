@@ -54,17 +54,28 @@ class ControlCenter:
         else:
             for group in self.config['groups']:
                 for comp in group['components']:
-                    self.host_list.append(comp['host'])
-                    self.logger.debug('Copying component %s to remote host %s' % (comp['name'], comp['host']))
-                    #TODO: Complete SCP command - Component name needs to be substracted!
-                    #proc = subprocess.Popen(
-                    #    ("scp %s %s:/tmp/Hyperion/slave/components/%s" % (self.configfile, comp['host'], comp['name'])),
-                    #    stdout=subprocess.PIPE,
-                    #    stderr=subprocess.PIPE,
-                    #)
+                    self.logger.debug("\n\tChecking component '%s' in group '%s'" % (comp['name'], group['name']))
+
+                    if comp['host'] != "localhost":
+                        self.copy_component_to_remote(comp, comp['name'], comp['host'])
 
             # Remove duplicate hosts
             self.host_list = list(set(self.host_list))
+
+    def copy_component_to_remote(self, infile, comp, host):
+        self.host_list.append(host)
+
+        self.logger.debug("\n\tSaving component to tmp")
+        tmp_comp_path = ('/tmp/Hyperion/components/%s.yaml' % comp)
+        ensure_dir(tmp_comp_path)
+        with open(tmp_comp_path, 'w') as outfile:
+            dump(infile, outfile, default_flow_style=False)
+
+        self.logger.debug('Copying component "%s" to remote host "%s"' % (comp, host))
+        cmd = ("ssh %s 'mkdir -p /tmp/Hyperion/slave/components' & scp %s %s:/tmp/Hyperion/slave/components/%s.yaml" % (
+        comp, tmp_comp_path, host, comp))
+        self.logger.debug(cmd)
+        self.session.cmd("send-keys", cmd, "Enter")
 
     def start_remote_components(self):
         # invoke Hyperion in slave mode on each remote host
