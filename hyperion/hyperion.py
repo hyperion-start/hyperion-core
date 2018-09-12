@@ -25,7 +25,7 @@ class ControlCenter:
             # Debug write resulting yaml file
             with open('debug-result.yml', 'w') as outfile:
                 dump(self.config, outfile, default_flow_style=False)
-            self.logger.debug("Loading config was successful")
+            self.logger.debug("\n\tLoading config was successful")
 
             self.server = Server()
 
@@ -100,7 +100,7 @@ class SlaveLauncher:
         self.config = None
         self.session = None
         if kill_mode:
-            self.logger.info("started slave with kill mode")
+            self.logger.info("\n\tstarted slave with kill mode")
 
         self.server = Server()
 
@@ -117,7 +117,7 @@ class SlaveLauncher:
             )
 
         else:
-            self.logger.info("No slave session found on server. Aborting kill")
+            self.logger.info("\n\tNo slave session found on server. Aborting kill")
 
         if configfile:
             self.load_config(configfile)
@@ -146,17 +146,17 @@ class SlaveLauncher:
             if window:
                 self.logger.debug('window %s found running' % self.window_name)
                 if self.kill_mode:
-                    self.logger.info("Shutting down window...")
+                    self.logger.info("\n\tShutting down window...")
                     window.cmd("send-keys", "", "C-c")
                     window.kill_window()
-                    self.logger.info("... done!")
+                    self.logger.info("\n\t... done!")
             elif not self.kill_mode:
                 self.logger.info('creating window %s' % self.window_name)
                 window = self.session.new_window(self.window_name)
                 setupLog(window, self.log_file, self.window_name)
 
             else:
-                self.logger.info("There is no component running by the name %s. Exiting kill mode" % self.window_name)
+                self.logger.info("\n\tThere is no component running by the name %s. Exiting kill mode" % self.window_name)
 
 def setupLog(window, file, comp_name):
     # Reroute stderr to log file
@@ -201,19 +201,19 @@ def main():
     logger.debug(args)
 
     if args.cmd == 'edit':
-        logger.debug("Launching editor mode")
+        logger.debug("\n\tLaunching editor mode")
 
     elif args.cmd == 'run':
-        logger.debug("Launching runner mode")
+        logger.debug("\n\tLaunching runner mode")
 
         cc = ControlCenter("demo", args.config)
         cc.init()
         cc.start_gui()
 
     elif args.cmd == 'validate':
-        logger.debug("Launching validation mode")
+        logger.debug("\n\tLaunching validation mode")
 
     elif args.cmd == 'slave':
-        logger.debug("Launching slave mode")
+        logger.debug("\n\tLaunching slave mode")
         sl = SlaveLauncher(args.config, args.kill)
         sl.init()
