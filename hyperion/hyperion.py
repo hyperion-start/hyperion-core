@@ -3,6 +3,7 @@ from libtmux import Server
 from yaml import load, dump
 from setupParser import Loader
 import logging
+import os
 import argparse
 
 logging.basicConfig(level=logging.WARNING)
@@ -37,8 +38,21 @@ class ControlCenter:
         if not self.config:
             self.logger.error(" Config not loaded yet!")
 
-        #else:
-            #TODO: Do stuff
+        else:
+            for group in self.config['groups']:
+                for comp in group['components']:
+                    self.hostlist.append(comp['host'])
+                    self.logger.debug('Copying component %s to remote host %s' % (comp['name'], comp['host']))
+                    #TODO: Complete SCP command - Component name needs to be substracted!
+                    #proc = subprocess.Popen(
+                    #    ("scp %s %s:/tmp/Hyperion/slave/components/%s" % (self.configfile, comp['host'], comp['name'])),
+                    #    stdout=subprocess.PIPE,
+                    #    stderr=subprocess.PIPE,
+                    #)
+
+            # Remove duplicate hosts
+            self.hostlist = list(set(self.hostlist))
+
 
     def start_gui(self):
         self.logger.warn("GUI startup NYI")
