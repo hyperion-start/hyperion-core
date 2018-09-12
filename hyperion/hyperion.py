@@ -16,7 +16,7 @@ class ControlCenter:
         self.logger.setLevel(logging.DEBUG)
         self.configfile = configfile
         self.server = []
-        self.hostlist = []
+        self.host_list = []
 
         if configfile:
             self.load_config(configfile)
@@ -41,7 +41,7 @@ class ControlCenter:
         else:
             for group in self.config['groups']:
                 for comp in group['components']:
-                    self.hostlist.append(comp['host'])
+                    self.host_list.append(comp['host'])
                     self.logger.debug('Copying component %s to remote host %s' % (comp['name'], comp['host']))
                     #TODO: Complete SCP command - Component name needs to be substracted!
                     #proc = subprocess.Popen(
@@ -76,6 +76,13 @@ def main():
     subparser_run = subparsers.add_parser('run', help="Launches the setup specified by the --config argument")
     # Create parser for validator
     subparser_val = subparsers.add_parser('validate', help="Validate the setup specified by the --config argument")
+
+    subparser_remote = subparsers.add_parser('slave', help="Run a component locally without controlling it. The "
+                                                                  "control is taken care of the remote master invoking "
+                                                                  "this command.\nIf run with the --kill flag, the "
+                                                           "passed component will be killed")
+
+    subparser_remote.add_argument("--kill", help="switch to kill mode", action="store_true")
 
     args = parser.parse_args()
     logger.debug(args)
