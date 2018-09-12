@@ -80,6 +80,86 @@ class ControlCenter:
         self.logger.warn("GUI startup NYI")
 
 
+class SlaveLauncher:
+
+    def __init__(self, configfile=None, kill_mode=False):
+        self.kill_mode = kill_mode
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+        self.config = None
+        self.session = None
+        if kill_mode:
+            self.logger.info("started slave with kill mode")
+
+        self.server = Server()
+
+        if self.server.has_session("slave-session"):
+            self.session = self.server.find_where({
+                "session_name": "slave-session"
+            })
+
+            self.logger.info('found running slave session on server')
+        elif not kill_mode:
+            self.logger.info('starting new slave session on server')
+            self.session = self.server.new_session(
+                session_name="slave-session"
+            )
+
+        else:
+            self.logger.info("No slave session found on server. Aborting kill")
+
+        if configfile:
+            self.load_config(configfile)
+            self.window_name = self.config['name']
+            self.flag_path = ("/tmp/Hyperion/slaves/%s" % self.window_name)
+            self.log_file = ("/tmp/Hyperion/log/%s" % self.window_name)
+            ensure_dir(self.log_file)
+        else:
+            self.logger.error("No slave component config provided")
+
+    def load_config(self, filename="default.yaml"):
+        with open(filename) as data_file:
+            self.config = load(data_file, Loader)
+
+    def init(self):
+        if not self.config:
+            self.logger.error(" Config not loaded yet!")
+
+        elif not self.session:
+            self.logger.error(" Init aborted. No session was found!")
+        else:
+            window = self.session.find_where({
+                "window_name": self.window_name
+            })
+
+            if window:
+                self.logger.debug('window %s found running' % self.window_name)
+                if self.kill_mode:
+                    self.logger.info("Shutting down window...")
+                    window.cmd("send-keys", "", "C-c")
+                    window.kill_window()
+                    self.logger.info("... done!")
+            elif not self.kill_mode:
+                self.logger.info('creating window %s' % self.window_name)
+                window = self.session.new_window(self.window_name)
+                setupLog(window, self.log_file, self.window_name)
+
+            else:
+                self.logger.info("There is no component running by the name %s. Exiting kill mode" % self.window_name)
+
+def setupLog(window, file, comp_name):
+    # Reroute stderr to log file
+    window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % file, "Enter")
+    # Reroute stdin to log file
+    window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % file, "Enter")
+    window.cmd("send-keys", ('echo "#Hyperion component start: %s\n$(date)"' % comp_name), "Enter")
+
+def ensure_dir(file_path):
+    directory = os.path.dirname(file_path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+
 def main():
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
@@ -121,3 +201,8 @@ def main():
 
     elif args.cmd == 'validate':
         logger.debug("Launching validation mode")
+
+    elif args.cmd == 'slave':
+        logger.debug("Launching slave mode")
+        sl = SlaveLauncher(args.config, args.kill)
+        sl.init()
