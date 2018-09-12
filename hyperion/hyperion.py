@@ -27,6 +27,19 @@ class ControlCenter:
                 dump(self.config, outfile, default_flow_style=False)
             self.logger.debug("Loading config was successful")
 
+            self.server = Server()
+
+            if self.server.has_session(self.session_name):
+                self.session = self.server.find_where({
+                    "session_name": self.session_name
+                })
+
+                self.logger.info('found running session by name "%s" on server' % self.session_name)
+            else:
+                self.logger.info('starting new session by name "%s" on server' % self.session_name)
+                self.session = self.server.new_session(
+                    session_name=self.session_name
+                )
         else:
             self.config = None
 
