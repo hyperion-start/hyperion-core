@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.WARNING)
 
 class ControlCenter:
 
-    def __init__(self, session_name="session-name", configfile=None):
+    def __init__(self, configfile=None):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.configfile = configfile
@@ -206,7 +206,7 @@ def main():
     elif args.cmd == 'run':
         logger.debug("\n\tLaunching runner mode")
 
-        cc = ControlCenter("demo", args.config)
+        cc = ControlCenter(args.config)
         cc.init()
         cc.start_gui()
 
