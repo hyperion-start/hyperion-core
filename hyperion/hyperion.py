@@ -7,6 +7,9 @@ import os
 import argparse
 
 logging.basicConfig(level=logging.WARNING)
+TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
+TMP_COMP_DIR = "/tmp/Hyperion/components"
+TMP_LOG_PATH = "/tmp/Hyperion/log"
 
 
 class ControlCenter:
@@ -66,14 +69,14 @@ class ControlCenter:
         self.host_list.append(host)
 
         self.logger.debug("\n\tSaving component to tmp")
-        tmp_comp_path = ('/tmp/Hyperion/components/%s.yaml' % comp)
+        tmp_comp_path = ('%s/%s.yaml' % (TMP_COMP_DIR, comp))
         ensure_dir(tmp_comp_path)
         with open(tmp_comp_path, 'w') as outfile:
             dump(infile, outfile, default_flow_style=False)
 
         self.logger.debug('Copying component "%s" to remote host "%s"' % (comp, host))
-        cmd = ("ssh %s 'mkdir -p /tmp/Hyperion/slave/components' & scp %s %s:/tmp/Hyperion/slave/components/%s.yaml" % (
-        comp, tmp_comp_path, host, comp))
+        cmd = ("ssh %s 'mkdir -p %s' & scp %s %s:%s/%s.yaml" %
+               (host, TMP_SLAVE_DIR, tmp_comp_path, host, TMP_SLAVE_DIR, comp))
         self.logger.debug(cmd)
         self.session.cmd("send-keys", cmd, "Enter")
 
@@ -191,8 +194,8 @@ def main():
     subparser_val = subparsers.add_parser('validate', help="Validate the setup specified by the --config argument")
 
     subparser_remote = subparsers.add_parser('slave', help="Run a component locally without controlling it. The "
-                                                                  "control is taken care of the remote master invoking "
-                                                                  "this command.\nIf run with the --kill flag, the "
+                                                           "control is taken care of the remote master invoking "
+                                                           "this command.\nIf run with the --kill flag, the "
                                                            "passed component will be killed")
 
     subparser_remote.add_argument("--kill", help="switch to kill mode", action="store_true")
