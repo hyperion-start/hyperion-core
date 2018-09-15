@@ -161,8 +161,7 @@ class SlaveLauncher:
                 self.logger.debug('window %s found running' % self.window_name)
                 if self.kill_mode:
                     self.logger.info("\n\tShutting down window...")
-                    window.cmd("send-keys", "", "C-c")
-                    window.kill_window()
+                    kill_window(window)
                     self.logger.info("\n\t... done!")
             elif not self.kill_mode:
                 self.logger.info('creating window %s' % self.window_name)
@@ -184,6 +183,11 @@ def find_window(session, window_name):
 def start_window(window, cmd, log_file, comp_name):
     setup_log(window, log_file, comp_name)
     window.cmd("send-keys", cmd, "Enter")
+
+
+def kill_window(window):
+    window.cmd("send-keys", "", "C-c")
+    window.kill_window()
 
 
 def setup_log(window, file, comp_name):
