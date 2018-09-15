@@ -82,6 +82,7 @@ class ControlCenter:
 
     def start_component(self, comp):
         if comp['host'] != 'localhost':
+            self.logger.debug("Starting remote component %s on host %s" % (comp['name'], comp['host']))
             self.start_remote_component(comp['name'], comp['host'])
         else:
             log_file = ("%s/%s" % (TMP_LOG_PATH, comp['name']))
@@ -92,15 +93,14 @@ class ControlCenter:
             else:
                 self.logger.info('creating window %s' % comp['name'])
                 window = self.session.new_window(comp['name'])
-                setupLog(window, log_file, comp['name'])
+                start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
+
             self.logger.debug("starting local component NIY")
 
     def start_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
         cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave'" % (host, TMP_SLAVE_DIR, comp_name))
-        self.logger.debug('Opening connection to remote host %s' % host)
-        self.logger.error("Open SSH NYI")
-        self.logger.debug("Would run cmd:\n%s" % cmd)
+        self.logger.debug("Run cmd:\n%s" % cmd)
         self.session.cmd("send-keys", cmd, "Enter")
 
     def start_gui(self):
@@ -167,7 +167,7 @@ class SlaveLauncher:
             elif not self.kill_mode:
                 self.logger.info('creating window %s' % self.window_name)
                 window = self.session.new_window(self.window_name)
-                setupLog(window, self.log_file, self.window_name)
+                start_window(window, self.config['cmd'][0]['start'], self.log_file, self.window_name)
 
             else:
                 self.logger.info("\n\tThere is no component running by the name %s. Exiting kill mode" %
@@ -181,7 +181,12 @@ def find_window(session, window_name):
             return window
 
 
-def setupLog(window, file, comp_name):
+def start_window(window, cmd, log_file, comp_name):
+    setup_log(window, log_file, comp_name)
+    window.cmd("send-keys", cmd, "Enter")
+
+
+def setup_log(window, file, comp_name):
     clear_log(file)
     # Reroute stderr to log file
     window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % file, "Enter")
