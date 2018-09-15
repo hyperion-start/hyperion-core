@@ -12,7 +12,7 @@ setup(
 		    ],
 		},
     version=VERSION,
-    install_requires=['webnsock', 'libtmux', 'psutil'],
+    install_requires=['webnsock', 'libtmux', 'pyyaml', 'psutil'],
     description='The Hyperion Launch Engine',
     author='David Leins',
     author_email='dleins@techfak.uni-bielefeld.de',
