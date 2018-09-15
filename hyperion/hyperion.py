@@ -80,15 +80,28 @@ class ControlCenter:
         self.logger.debug(cmd)
         self.session.cmd("send-keys", cmd, "Enter")
 
-    def start_remote_components(self):
+    def start_component(self, comp):
+        if comp['host'] != 'localhost':
+            self.start_remote_component(comp['name'], comp['host'])
+        else:
+            log_file = ("%s/%s" % (TMP_LOG_PATH, comp['name']))
+            window = find_window(self.session, comp['name'])
+
+            if window:
+                self.logger.debug('window %s found running' % comp['name'])
+            else:
+                self.logger.info('creating window %s' % comp['name'])
+                window = self.session.new_window(comp['name'])
+                setupLog(window, log_file, comp['name'])
+            self.logger.debug("starting local component NIY")
+
+    def start_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
-        # TODO: in the init loop, form a list of components to start for each host to be iterated in this step
-        for host in self.host_list:
-            if not host == 'localhost':
-                #TODO: For each component
-                self.logger.debug('Opening connection to remote host %s' % host)
-                self.logger.error("Open SSH NYI")
-                # TODO: Connect to remote host and start hyperion --config [...] slave
+        cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave'" % (host, TMP_SLAVE_DIR, comp_name))
+        self.logger.debug('Opening connection to remote host %s' % host)
+        self.logger.error("Open SSH NYI")
+        self.logger.debug("Would run cmd:\n%s" % cmd)
+        self.session.cmd("send-keys", cmd, "Enter")
 
     def start_gui(self):
         self.logger.warn("GUI startup NYI")
@@ -142,9 +155,7 @@ class SlaveLauncher:
         elif not self.session:
             self.logger.error(" Init aborted. No session was found!")
         else:
-            window = self.session.find_where({
-                "window_name": self.window_name
-            })
+            window = find_window(self.session, self.window_name)
 
             if window:
                 self.logger.debug('window %s found running' % self.window_name)
@@ -159,14 +170,30 @@ class SlaveLauncher:
                 setupLog(window, self.log_file, self.window_name)
 
             else:
-                self.logger.info("\n\tThere is no component running by the name %s. Exiting kill mode" % self.window_name)
+                self.logger.info("\n\tThere is no component running by the name %s. Exiting kill mode" %
+                                 self.window_name)
+
+
+def find_window(session, window_name):
+            window = session.find_where({
+                "window_name": window_name
+            })
+            return window
+
 
 def setupLog(window, file, comp_name):
+    clear_log(file)
     # Reroute stderr to log file
     window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % file, "Enter")
     # Reroute stdin to log file
     window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % file, "Enter")
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\n$(date)"' % comp_name), "Enter")
+
+
+def clear_log(file):
+    if os.path.isfile(file):
+        os.remove(file)
+
 
 def ensure_dir(file_path):
     directory = os.path.dirname(file_path)
