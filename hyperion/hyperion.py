@@ -6,6 +6,10 @@ import logging
 import os
 import argparse
 
+import sys
+from PyQt4 import QtGui
+import hyperGUI
+
 logging.basicConfig(level=logging.WARNING)
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
 TMP_COMP_DIR = "/tmp/Hyperion/components"
@@ -103,9 +107,6 @@ class ControlCenter:
         self.logger.debug("Run cmd:\n%s" % cmd)
         self.session.cmd("send-keys", cmd, "Enter")
 
-    def start_gui(self):
-        self.logger.warn("GUI startup NYI")
-
 
 class SlaveLauncher:
 
@@ -172,6 +173,14 @@ class SlaveLauncher:
                 self.logger.info("\n\tThere is no component running by the name %s. Exiting kill mode" %
                                  self.window_name)
 
+
+def start_gui(control_center):
+    app = QtGui.QApplication(sys.argv)
+    main_window = QtGui.QMainWindow()
+    ui = hyperGUI.UiMainWindow()
+    ui.ui_init(main_window, control_center)
+    main_window.show()
+    sys.exit(app.exec_())
 
 def find_window(session, window_name):
             window = session.find_where({
@@ -247,7 +256,7 @@ def main():
 
         cc = ControlCenter(args.config)
         cc.init()
-        cc.start_gui()
+        start_gui(cc)
 
     elif args.cmd == 'validate':
         logger.debug("\n\tLaunching validation mode")
