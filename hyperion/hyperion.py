@@ -199,9 +199,9 @@ def setup_log(window, file, comp_name):
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\n$(date)"' % comp_name), "Enter")
 
 
-def clear_log(file):
-    if os.path.isfile(file):
-        os.remove(file)
+def clear_log(file_path):
+    if os.path.isfile(file_path):
+        os.remove(file_path)
 
 
 def ensure_dir(file_path):
