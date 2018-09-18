@@ -1,0 +1,8 @@
+name: xclock
+
+cmd:
+  - start: xclock
+  - check: ps -aux | grep xclock
+  - stop: echo "shutdown"
+
+host: localhost

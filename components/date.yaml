@@ -1,0 +1,8 @@
+name: date
+
+cmd:
+  - start: date
+  - check: echo "none yet"
+  - stop: echo "shutdown"
+
+host: localhost

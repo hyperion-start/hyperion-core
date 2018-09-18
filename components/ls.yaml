@@ -1,0 +1,8 @@
+name: ls
+
+cmd:
+  - start: ls
+  - check: echo "none yet"
+  - stop: echo "shutdown"
+
+host: localhost

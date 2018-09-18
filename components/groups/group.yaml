@@ -1,5 +1,5 @@
-name: Group
+name: GUI Apps
 
 components:
-  - !include ../top.yaml
+  - !include ../xclock.yaml
   - !include ../xeyes.yaml

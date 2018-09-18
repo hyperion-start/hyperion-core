@@ -1,5 +1,6 @@
-name: Group2
+name: Server
 
 components:
+  - !include ../ls.yaml
+  - !include ../date.yaml
   - !include ../top.yaml
-  - !include ../xeyes.yaml
