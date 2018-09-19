@@ -84,6 +84,19 @@ class ControlCenter:
         self.logger.debug(cmd)
         self.session.cmd("send-keys", cmd, "Enter")
 
+    def stop_component(self, comp):
+        if comp['host'] != 'localhost':
+            self.logger.debug("Stopping remote component %s on host %s" % (comp['name'], comp['host']))
+            self.stop_remote_component(comp['name'], comp['host'])
+        else:
+            window = find_window(self.session, comp['name'])
+
+            if window:
+                self.logger.debug('window %s found running' % comp['name'])
+                self.logger.info("\n\tShutting down window...")
+                kill_window(window)
+                self.logger.info("\n\t... done!")
+
     def start_component(self, comp):
         if comp['host'] != 'localhost':
             self.logger.debug("Starting remote component %s on host %s" % (comp['name'], comp['host']))
@@ -99,7 +112,11 @@ class ControlCenter:
                 window = self.session.new_window(comp['name'])
                 start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
 
-            self.logger.debug("starting local component NIY")
+    def stop_remote_component(self, comp_name, host):
+        # invoke Hyperion in slave mode on each remote host
+        cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave --kill'" % (host, TMP_SLAVE_DIR, comp_name))
+        self.logger.debug("Run cmd:\n%s" % cmd)
+        self.session.cmd("send-keys", cmd, "Enter")
 
     def start_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
@@ -181,6 +198,7 @@ def start_gui(control_center):
     ui.ui_init(main_window, control_center)
     main_window.show()
     sys.exit(app.exec_())
+
 
 def find_window(session, window_name):
             window = session.find_where({

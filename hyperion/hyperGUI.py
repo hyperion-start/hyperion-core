@@ -59,48 +59,69 @@ class UiMainWindow(object):
             verticalLayout_compList = QtGui.QVBoxLayout(scrollAreaWidgetContents)
             verticalLayout_compList.setObjectName(_fromUtf8("verticalLayout_compList"))
             for component in group['components']:
-                verticalLayout_compList.addLayout(create_component(component, scrollAreaWidgetContents))
+                verticalLayout_compList.addLayout(self.create_component(component, scrollAreaWidgetContents))
 
             scrollArea.setWidget(scrollAreaWidgetContents)
             horizontalLayout.addWidget(scrollArea)
             self.tabWidget.addTab(groupTab, group['name'])
 
+    def create_component(self, comp, scrollAreaWidgetContents):
+        horizontalLayout_components = QtGui.QHBoxLayout()
+        horizontalLayout_components.setObjectName(_fromUtf8("horizontalLayout_%s" % comp['name']))
 
-def create_component(comp, scrollAreaWidgetContents):
-    horizontalLayout_components = QtGui.QHBoxLayout()
-    horizontalLayout_components.setObjectName(_fromUtf8("horizontalLayout_%s" % comp['name']))
+        comp_label = QtGui.QLabel(scrollAreaWidgetContents)
+        comp_label.setObjectName(_fromUtf8("comp_label"))
 
-    comp_label = QtGui.QLabel(scrollAreaWidgetContents)
-    comp_label.setObjectName(_fromUtf8("comp_label"))
-    horizontalLayout_components.addWidget(comp_label)
-    spacerItem = QtGui.QSpacerItem(200, 44, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
-    horizontalLayout_components.addItem(spacerItem)
-    start_button = QtGui.QPushButton(scrollAreaWidgetContents)
-    start_button.setObjectName(_fromUtf8("start_button"))
-    horizontalLayout_components.addWidget(start_button)
-    stop_button = QtGui.QPushButton(scrollAreaWidgetContents)
-    stop_button.setObjectName(_fromUtf8("stop_button"))
-    horizontalLayout_components.addWidget(stop_button)
-    check_button = QtGui.QPushButton(scrollAreaWidgetContents)
-    check_button.setObjectName(_fromUtf8("check_button"))
-    horizontalLayout_components.addWidget(check_button)
-    term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
-    term_toggle.setObjectName(_fromUtf8("term_toggle"))
-    horizontalLayout_components.addWidget(term_toggle)
-    log_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
-    log_toggle.setObjectName(_fromUtf8("log_toggle"))
-    horizontalLayout_components.addWidget(log_toggle)
-    log_button = QtGui.QPushButton(scrollAreaWidgetContents)
-    log_button.setObjectName(_fromUtf8("log_button"))
-    horizontalLayout_components.addWidget(log_button)
-    comp_label.raise_()
+        spacerItem = QtGui.QSpacerItem(200, 44, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
 
-    comp_label.setText(("%s@%s" % (comp['name'], comp['host'])))
-    start_button.setText("start")
-    stop_button.setText("stop")
-    check_button.setText("check")
-    term_toggle.setText("Show Term")
-    log_toggle.setText("logging")
-    log_button.setText("view log")
+        start_button = QtGui.QPushButton('test', scrollAreaWidgetContents)
+        start_button.setObjectName(_fromUtf8("start_button"))
+        start_button.setText("start")
+        start_button.clicked.connect(lambda: self.handleStartButton(comp))
 
-    return horizontalLayout_components
+        stop_button = QtGui.QPushButton(scrollAreaWidgetContents)
+        stop_button.setObjectName(_fromUtf8("stop_button"))
+        stop_button.setText("stop")
+        stop_button.clicked.connect(lambda: self.handleStopButton(comp))
+
+        check_button = QtGui.QPushButton(scrollAreaWidgetContents)
+        check_button.setObjectName(_fromUtf8("check_button"))
+        check_button.setText("check")
+        check_button.clicked.connect(lambda: self.handleCheckButton(comp))
+
+        term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
+        term_toggle.setObjectName(_fromUtf8("term_toggle"))
+        term_toggle.setText("Show Term")
+
+        log_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
+        log_toggle.setObjectName(_fromUtf8("log_toggle"))
+        log_toggle.setText("logging")
+
+        log_button = QtGui.QPushButton(scrollAreaWidgetContents)
+        log_button.setObjectName(_fromUtf8("log_button"))
+        log_button.setText("view log")
+
+        comp_label.raise_()
+        comp_label.setText(("%s@%s" % (comp['name'], comp['host'])))
+
+        horizontalLayout_components.addWidget(comp_label)
+        horizontalLayout_components.addItem(spacerItem)
+        horizontalLayout_components.addWidget(start_button)
+        horizontalLayout_components.addWidget(stop_button)
+        horizontalLayout_components.addWidget(check_button)
+        horizontalLayout_components.addWidget(term_toggle)
+        horizontalLayout_components.addWidget(log_toggle)
+        horizontalLayout_components.addWidget(log_button)
+
+        return horizontalLayout_components
+
+    def handleStartButton(self, comp):
+        self.logger.debug("%s start button pressed" % comp['name'])
+        self.control_center.start_component(comp)
+
+    def handleStopButton(self, comp):
+        self.logger.debug("%s stop button pressed" % comp['name'])
+        self.control_center.stop_component(comp)
+
+    def handleCheckButton(self, comp):
+        self.logger.debug("%s check button pressed. NYI!" % comp['name'])
