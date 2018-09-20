@@ -1,6 +1,12 @@
 #from hyperion import ControlCenter
 from PyQt4 import QtCore, QtGui
+import os
+import subprocess
 import logging
+
+BASE_DIR = os.path.dirname(__file__)
+SCRIPT_CLONE_PATH = ("%s/scripts/start_named_clone_session.sh" % BASE_DIR)
+SCRIPT_SHOW_TERM_PATH = ("%s/scripts/show_term.sh" % BASE_DIR)
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -92,6 +98,7 @@ class UiMainWindow(object):
         term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
         term_toggle.setObjectName(_fromUtf8("term_toggle"))
         term_toggle.setText("Show Term")
+        term_toggle.stateChanged.connect(lambda: self.handleTermToggleStateChanged(comp, term_toggle.isChecked()))
 
         log_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
         log_toggle.setObjectName(_fromUtf8("log_toggle"))
@@ -122,6 +129,23 @@ class UiMainWindow(object):
     def handleStopButton(self, comp):
         self.logger.debug("%s stop button pressed" % comp['name'])
         self.control_center.stop_component(comp)
+        #TODO: Close terminal
 
     def handleCheckButton(self, comp):
         self.logger.debug("%s check button pressed. NYI!" % comp['name'])
+
+    def handleTermToggleStateChanged(self, comp, isChecked):
+        self.logger.debug("%s show term set to: %d" % (comp['name'], isChecked))
+        if isChecked:
+            p = subprocess.Popen([("%s" % SCRIPT_CLONE_PATH), ("%s" % self.title), ("%s" % comp['name'])], stdout=subprocess.PIPE)
+            out, err = p.communicate()
+            self.logger.debug(out)
+
+            self.logger.debug("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, self.title, comp['name']))
+
+            term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH), ("'%s-clone-session'" % comp['name'])], stdout=subprocess.PIPE)
+            # Open xterm window with logs from that file
+
+        else:
+            self.logger.debug("Closing xterm")
+            #TODO: Close terminal
