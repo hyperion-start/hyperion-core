@@ -7,10 +7,16 @@ setup(
     name='hyperion',
     packages=find_packages(),
     entry_points={
-    'console_scripts': [
+        'console_scripts': [
         'hyperion=hyperion:main',
-		    ],
-		},
+        ],
+    },
+
+    package_data={
+        # Include any files found in the 'scripts' subdirectory
+        '': ['scripts/*'],
+    },
+
     version=VERSION,
     install_requires=['libtmux', 'pyyaml', 'psutil', 'python-qt'],
     description='The Hyperion Launch Engine',
