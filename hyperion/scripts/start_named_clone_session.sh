@@ -20,14 +20,23 @@ if [ ! -z $exists ]
   exit 1
 fi
 
+# Check if target window exists
+winExists=`tmux list-windows -t "$session_name" | grep -oE "^([0-9][0-9]*: $comp_name)(\*|-)"`
+if [ -z "$winExists" ]
+  then
+  tmux list-windows -t "$session_name"
+  echo "No window was found"
+  exit 2
+fi
+
+echo "found target window in main session"
+
 # Set regex to find master session
 regex=$session_name":.*group [0-9]*"
 
 function find_master_group {
     echo "checking group for component $comp_name in session $session_name"
     tmux list-sessions
-    echo "$regex"
-    echo ""
     tmux list-sessions | grep -oE "$regex"
     group=`tmux list-sessions | grep -oE "$regex" | grep -oE "[0-9]*$"`
 
@@ -53,24 +62,14 @@ if [ -z $found ]
     echo "Group still not found. Exiting"
     exit 1
   else
-    echo "Found group"
+    echo "Found master group"
   fi
 else
-  echo "Found group"
+  echo "Found master group"
   # Master session exists and clone session not found and master session has the correct window
   # thus it's safe to create a new clone session
   tmux new-session -d -t "$session_name"
 fi
-
-# Check if target window exists
-winExists=`tmux list-windows -t "$session_name" | grep -oE "^([0-9][0-9]*: $comp_name)(\*|-)"`
-if [ -z "$winExists" ]
-  then
-  echo "No window was found"
-  exit 2
-fi
-
-echo "found window"
 
 # Get clone session name within same group which is a number
 ses_name=`tmux list-sessions | grep "group $group" | grep -oE "^([0-9][0-9]*:)"`
