@@ -45,7 +45,8 @@ class ControlCenter:
             else:
                 self.logger.info('starting new session by name "%s" on server' % self.session_name)
                 self.session = self.server.new_session(
-                    session_name=self.session_name
+                    session_name=self.session_name,
+                    window_name="Main"
                 )
         else:
             self.config = None
@@ -82,7 +83,7 @@ class ControlCenter:
         cmd = ("ssh %s 'mkdir -p %s' & scp %s %s:%s/%s.yaml" %
                (host, TMP_SLAVE_DIR, tmp_comp_path, host, TMP_SLAVE_DIR, comp))
         self.logger.debug(cmd)
-        self.session.cmd("send-keys", cmd, "Enter")
+        send_main_session_command(self.session, cmd)
 
     def stop_component(self, comp):
         if comp['host'] != 'localhost':
@@ -116,13 +117,13 @@ class ControlCenter:
         # invoke Hyperion in slave mode on each remote host
         cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave --kill'" % (host, TMP_SLAVE_DIR, comp_name))
         self.logger.debug("Run cmd:\n%s" % cmd)
-        self.session.cmd("send-keys", cmd, "Enter")
+        send_main_session_command(self.session, cmd)
 
     def start_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
         cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave'" % (host, TMP_SLAVE_DIR, comp_name))
         self.logger.debug("Run cmd:\n%s" % cmd)
-        self.session.cmd("send-keys", cmd, "Enter")
+        send_main_session_command(self.session, cmd)
 
 
 class SlaveLauncher:
@@ -198,6 +199,11 @@ def start_gui(control_center):
     ui.ui_init(main_window, control_center)
     main_window.show()
     sys.exit(app.exec_())
+
+
+def send_main_session_command(session, cmd):
+    window = find_window(session, "Main")
+    window.cmd("send-keys", cmd, "Enter")
 
 
 def find_window(session, window_name):
