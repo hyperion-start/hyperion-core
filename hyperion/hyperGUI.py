@@ -1,4 +1,4 @@
-#from hyperion import ControlCenter
+import hyperion
 from PyQt4 import QtCore, QtGui
 import os
 import subprocess
@@ -30,8 +30,9 @@ class UiMainWindow(object):
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
+        self.terms = {}
 
-        self.control_center = control_center #type: ControlCenter
+        self.control_center = control_center #type: hyperion.ControlCenter
         self.title = control_center.session_name
 
         self.logger.debug("title: %s" % self.title)
@@ -129,7 +130,13 @@ class UiMainWindow(object):
     def handleStopButton(self, comp):
         self.logger.debug("%s stop button pressed" % comp['name'])
         self.control_center.stop_component(comp)
-        #TODO: Close terminal
+
+        term = self.terms[comp['name']]
+        if term.poll() is None:
+            self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
+            hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
+
+        #TODO: maybe add term checkbox as arg to unset on stop?
 
     def handleCheckButton(self, comp):
         self.logger.debug("%s check button pressed. NYI!" % comp['name'])
@@ -144,8 +151,13 @@ class UiMainWindow(object):
             self.logger.debug("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, self.title, comp['name']))
 
             term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH), ("'%s-clone-session'" % comp['name'])], stdout=subprocess.PIPE)
-            # Open xterm window with logs from that file
+            self.terms[comp['name']] = term
 
         else:
             self.logger.debug("Closing xterm")
-            #TODO: Close terminal
+            term = self.terms[comp['name']]
+            if term.poll() is None:
+                self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
+                hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
+            else:
+                self.logger.debug("Term already closed! Command must have crashed. Open log!")

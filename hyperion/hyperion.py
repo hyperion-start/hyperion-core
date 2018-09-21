@@ -201,6 +201,13 @@ def start_gui(control_center):
     sys.exit(app.exec_())
 
 
+def kill_session_by_name(server, name):
+    session = server.find_where({
+        "session_name": name
+    })
+    session.kill_session()
+
+
 def send_main_session_command(session, cmd):
     window = find_window(session, "Main")
     window.cmd("send-keys", cmd, "Enter")
