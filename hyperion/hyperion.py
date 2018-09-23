@@ -11,7 +11,9 @@ import sys
 from PyQt4 import QtGui
 import hyperGUI
 
-logging.basicConfig(level=logging.WARNING)
+FORMAT = "%(asctime)s: %(name)s [%(levelname)s]:\t%(message)s"
+
+logging.basicConfig(level=logging.WARNING, format=FORMAT, datefmt='%I:%M:%S')
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
 TMP_COMP_DIR = "/tmp/Hyperion/components"
 TMP_LOG_PATH = "/tmp/Hyperion/log"
@@ -33,7 +35,7 @@ class ControlCenter:
             # Debug write resulting yaml file
             with open('debug-result.yml', 'w') as outfile:
                 dump(self.config, outfile, default_flow_style=False)
-            self.logger.debug("\n\tLoading config was successful")
+            self.logger.debug("Loading config was successful")
 
             self.server = Server()
 
@@ -63,7 +65,8 @@ class ControlCenter:
         else:
             for group in self.config['groups']:
                 for comp in group['components']:
-                    self.logger.debug("\n\tChecking component '%s' in group '%s'" % (comp['name'], group['name']))
+                    self.logger.debug("Checking component '%s' in group '%s' on host %s" %
+                                      (comp['name'], group['name'], comp['host']))
 
                     if comp['host'] != "localhost" and self.is_not_localhost(comp['host']):
                         self.copy_component_to_remote(comp, comp['name'], comp['host'])
@@ -74,7 +77,7 @@ class ControlCenter:
     def copy_component_to_remote(self, infile, comp, host):
         self.host_list.append(host)
 
-        self.logger.debug("\n\tSaving component to tmp")
+        self.logger.debug("Saving component to tmp")
         tmp_comp_path = ('%s/%s.yaml' % (TMP_COMP_DIR, comp))
         ensure_dir(tmp_comp_path)
         with open(tmp_comp_path, 'w') as outfile:
@@ -95,9 +98,9 @@ class ControlCenter:
 
             if window:
                 self.logger.debug('window %s found running' % comp['name'])
-                self.logger.info("\n\tShutting down window...")
+                self.logger.info("Shutting down window...")
                 kill_window(window)
-                self.logger.info("\n\t... done!")
+                self.logger.info("... done!")
 
     def start_component(self, comp):
         if comp['host'] != 'localhost':
@@ -145,7 +148,7 @@ class SlaveLauncher:
         self.config = None
         self.session = None
         if kill_mode:
-            self.logger.info("\n\tstarted slave with kill mode")
+            self.logger.info("started slave with kill mode")
 
         self.server = Server()
 
@@ -162,7 +165,7 @@ class SlaveLauncher:
             )
 
         else:
-            self.logger.info("\n\tNo slave session found on server. Aborting kill")
+            self.logger.info("No slave session found on server. Aborting kill")
 
         if configfile:
             self.load_config(configfile)
@@ -180,27 +183,26 @@ class SlaveLauncher:
     def init(self):
         if not self.config:
             self.logger.error(" Config not loaded yet!")
-
         elif not self.session:
             self.logger.error(" Init aborted. No session was found!")
         else:
+            self.logger.debug(self.config)
             window = find_window(self.session, self.window_name)
 
             if window:
                 self.logger.debug('window %s found running' % self.window_name)
                 if self.kill_mode:
-                    self.logger.info("\n\tShutting down window...")
+                    self.logger.info("Shutting down window...")
                     kill_window(window)
-                    self.logger.info("\n\t... done!")
+                    self.logger.info("... done!")
             elif not self.kill_mode:
                 self.logger.info('creating window %s' % self.window_name)
                 window = self.session.new_window(self.window_name)
                 start_window(window, self.config['cmd'][0]['start'], self.log_file, self.window_name)
 
             else:
-                self.logger.info("\n\tThere is no component running by the name %s. Exiting kill mode" %
+                self.logger.info("There is no component running by the name %s. Exiting kill mode" %
                                  self.window_name)
-
 
 def start_gui(control_center):
     app = QtGui.QApplication(sys.argv)
@@ -290,19 +292,19 @@ def main():
     logger.debug(args)
 
     if args.cmd == 'edit':
-        logger.debug("\n\tLaunching editor mode")
+        logger.debug("Launching editor mode")
 
     elif args.cmd == 'run':
-        logger.debug("\n\tLaunching runner mode")
+        logger.debug("Launching runner mode")
 
         cc = ControlCenter(args.config)
         cc.init()
         start_gui(cc)
 
     elif args.cmd == 'validate':
-        logger.debug("\n\tLaunching validation mode")
+        logger.debug("Launching validation mode")
 
     elif args.cmd == 'slave':
-        logger.debug("\n\tLaunching slave mode")
+        logger.debug("Launching slave mode")
         sl = SlaveLauncher(args.config, args.kill)
         sl.init()
