@@ -65,7 +65,7 @@ class ControlCenter:
         else:
             for group in self.config['groups']:
                 for comp in group['components']:
-                    self.logger.debug("Checking component '%s' in group '%s' on host %s" %
+                    self.logger.debug("Checking component '%s' in group '%s' on host '%s'" %
                                       (comp['name'], group['name'], comp['host']))
 
                     if comp['host'] != "localhost" and self.is_not_localhost(comp['host']):
@@ -91,29 +91,29 @@ class ControlCenter:
 
     def stop_component(self, comp):
         if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
-            self.logger.debug("Stopping remote component %s on host %s" % (comp['name'], comp['host']))
+            self.logger.debug("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
             self.stop_remote_component(comp['name'], comp['host'])
         else:
             window = find_window(self.session, comp['name'])
 
             if window:
-                self.logger.debug('window %s found running' % comp['name'])
+                self.logger.debug("window '%s' found running" % comp['name'])
                 self.logger.info("Shutting down window...")
                 kill_window(window)
                 self.logger.info("... done!")
 
     def start_component(self, comp):
         if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
-            self.logger.debug("Starting remote component %s on host %s" % (comp['name'], comp['host']))
+            self.logger.debug("Starting remote component '%s' on host '%s'" % (comp['name'], comp['host']))
             self.start_remote_component(comp['name'], comp['host'])
         else:
             log_file = ("%s/%s" % (TMP_LOG_PATH, comp['name']))
             window = find_window(self.session, comp['name'])
 
             if window:
-                self.logger.debug('window %s found running' % comp['name'])
+                self.logger.debug("window '%s' found running" % comp['name'])
             else:
-                self.logger.info('creating window %s' % comp['name'])
+                self.logger.info("creating window '%s'" % comp['name'])
                 window = self.session.new_window(comp['name'])
                 start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
 
@@ -130,13 +130,16 @@ class ControlCenter:
         send_main_session_command(self.session, cmd)
 
     def is_not_localhost(self, hostname):
-        hn_out = socket.gethostbyname(hostname)
-        if hn_out == '127.0.0.1' or hn_out == '::1' or hn_out == hn_out:
-            self.logger.debug("Host %s is localhost" % hostname)
-            return False
-        else:
-            self.logger.debug("Host %s is not localhost" % hostname)
-            return True
+        try:
+            hn_out = socket.gethostbyname(hostname)
+            if hn_out == '127.0.0.1' or hn_out == '::1' or hn_out == hn_out:
+                self.logger.debug("Host '%s' is localhost" % hostname)
+                return False
+            else:
+                self.logger.debug("Host '%s' is not localhost" % hostname)
+                return True
+        except socket.gaierror:
+            sys.exit("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
 
 
 class SlaveLauncher:
@@ -190,19 +193,20 @@ class SlaveLauncher:
             window = find_window(self.session, self.window_name)
 
             if window:
-                self.logger.debug('window %s found running' % self.window_name)
+                self.logger.debug("window '%s' found running" % self.window_name)
                 if self.kill_mode:
                     self.logger.info("Shutting down window...")
                     kill_window(window)
                     self.logger.info("... done!")
             elif not self.kill_mode:
-                self.logger.info('creating window %s' % self.window_name)
+                self.logger.info("creating window '%s'" % self.window_name)
                 window = self.session.new_window(self.window_name)
                 start_window(window, self.config['cmd'][0]['start'], self.log_file, self.window_name)
 
             else:
-                self.logger.info("There is no component running by the name %s. Exiting kill mode" %
+                self.logger.info("There is no component running by the name '%s'. Exiting kill mode" %
                                  self.window_name)
+
 
 def start_gui(control_center):
     app = QtGui.QApplication(sys.argv)
