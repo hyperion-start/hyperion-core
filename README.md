@@ -3,7 +3,7 @@
 ## What is Hyperion
 
 Hyperion is an engine designed to launch and monitor user defined components using YAML configuration files.  
-Inspired by [vdemo](https://code.cor-lab.org/projects/vdemo) and [TMuLE](https://github.com/marc-hanheide/TMuLE) (see [vdemo and TMuLE assessment](/DavidPL1/Hyperion/wiki/vdemo-and-TMuLE-assessment))
+Inspired by [vdemo](https://code.cor-lab.org/projects/vdemo) and [TMuLE](https://github.com/marc-hanheide/TMuLE) (see [vdemo and TMuLE assessment](https://github.com/DavidPL1/Hyperion/wiki/vdemo-and-TMuLE-assessment))
 
 ## How does it work
 Hyperion (like TMuLE) is written in Python and utilizes the [tmux library for python](https://github.com/tmux-python/libtmux) to start components in detached sessions. For each host defined in the components a master session is created, in which each component will be started in a window.
