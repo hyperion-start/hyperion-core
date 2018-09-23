@@ -4,6 +4,7 @@ from yaml import load, dump
 from setupParser import Loader
 import logging
 import os
+import socket
 import argparse
 
 import sys
@@ -64,7 +65,7 @@ class ControlCenter:
                 for comp in group['components']:
                     self.logger.debug("\n\tChecking component '%s' in group '%s'" % (comp['name'], group['name']))
 
-                    if comp['host'] != "localhost":
+                    if comp['host'] != "localhost" and self.is_not_localhost(comp['host']):
                         self.copy_component_to_remote(comp, comp['name'], comp['host'])
 
             # Remove duplicate hosts
@@ -124,6 +125,15 @@ class ControlCenter:
         cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave'" % (host, TMP_SLAVE_DIR, comp_name))
         self.logger.debug("Run cmd:\n%s" % cmd)
         send_main_session_command(self.session, cmd)
+
+    def is_not_localhost(self, hostname):
+        hn_out = socket.gethostbyname(hostname)
+        if hn_out == '127.0.0.1' or hn_out == '::1' or hn_out == hn_out:
+            self.logger.debug("Host %s is localhost" % hostname)
+            return False
+        else:
+            self.logger.debug("Host %s is not localhost" % hostname)
+            return True
 
 
 class SlaveLauncher:
