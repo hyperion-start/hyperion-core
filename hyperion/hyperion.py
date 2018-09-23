@@ -90,7 +90,7 @@ class ControlCenter:
         send_main_session_command(self.session, cmd)
 
     def stop_component(self, comp):
-        if comp['host'] != 'localhost':
+        if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
             self.logger.debug("Stopping remote component %s on host %s" % (comp['name'], comp['host']))
             self.stop_remote_component(comp['name'], comp['host'])
         else:
@@ -103,7 +103,7 @@ class ControlCenter:
                 self.logger.info("... done!")
 
     def start_component(self, comp):
-        if comp['host'] != 'localhost':
+        if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
             self.logger.debug("Starting remote component %s on host %s" % (comp['name'], comp['host']))
             self.start_remote_component(comp['name'], comp['host'])
         else:
