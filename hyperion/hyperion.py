@@ -176,7 +176,7 @@ class ControlCenter:
                 kill_window(window)
                 self.logger.info("... done!")
 
-    def start_component(self, comp):
+    def start_component_without_deps(self, comp):
         if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
             self.logger.debug("Starting remote component '%s' on host '%s'" % (comp['name'], comp['host']))
             self.start_remote_component(comp['name'], comp['host'])
@@ -190,6 +190,23 @@ class ControlCenter:
                 self.logger.info("creating window '%s'" % comp['name'])
                 window = self.session.new_window(comp['name'])
                 start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
+
+    def start_component(self, comp):
+
+        node = self.nodes.get(comp['name'])
+        res = []
+        unres = []
+        dep_resolve(node, res, unres)
+        for node in res:
+            if node.comp_name is not comp['name']:
+                # TODO: Run component check, if true skip start
+                self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_name, comp['name']))
+                self.start_component_without_deps(node.component)
+                self.logger.debug("TODO: run component check!")
+                # TODO: Run component check when true continue
+            else:
+                self.logger.debug("All dependencies satisfied, starting '%s'" % (comp['name']))
+                self.start_component_without_deps(comp)
 
     def stop_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
