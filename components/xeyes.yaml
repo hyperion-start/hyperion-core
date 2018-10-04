@@ -6,6 +6,6 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - xclock
+  - none
 
 host: raspberrypi
