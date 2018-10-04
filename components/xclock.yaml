@@ -5,4 +5,7 @@ cmd:
   - check: ps -aux | grep xclock
   - stop: echo "shutdown"
 
+depends:
+  - xeyes
+
 host: localhost

@@ -5,8 +5,7 @@ cmd:
   - check: ps -aux | grep top
   - stop: echo "shutdown"
 
-provides: top
-
-depends: xeyes
+depends:
+  - xeyes
 
 host: cor-dell

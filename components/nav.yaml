@@ -1,0 +1,12 @@
+name: nav
+
+cmd:
+  - start: echo "nav"
+  - check: ps -aux | grep rviz
+  - stop: echo "shutdown"
+
+depends:
+  - roscore
+  - sim
+
+host: cor-dell

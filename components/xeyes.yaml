@@ -5,6 +5,7 @@ cmd:
   - check: ps -aux | grep xeyes
   - stop: echo "shutdown"
 
-provides: xeyes
+depends:
+  - xclock
 
 host: raspberrypi

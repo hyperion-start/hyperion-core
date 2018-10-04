@@ -3,3 +3,7 @@ name: GUI Apps
 components:
   - !include ../xclock.yaml
   - !include ../xeyes.yaml
+  - !include ../nav.yaml
+  - !include ../roscore.yaml
+  - !include ../rviz.yaml
+  - !include ../sim.yaml

@@ -1,0 +1,11 @@
+name: sim
+
+cmd:
+  - start: echo "started sim"
+  - check: none yet
+  - stop: echo "shutdown"
+
+depends:
+  - roscore
+
+host: cor-dell
