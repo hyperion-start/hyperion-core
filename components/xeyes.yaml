@@ -5,7 +5,4 @@ cmd:
   - check: ps -aux | grep xeyes
   - stop: echo "shutdown"
 
-depends:
-  - none
-
 host: raspberrypi
