@@ -7,6 +7,7 @@ import logging
 import os
 import socket
 import argparse
+from graphviz import Digraph
 
 import sys
 from PyQt4 import QtGui
@@ -118,6 +119,34 @@ class ControlCenter:
             self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
             if exit_on_fail:
                 exit(1)
+
+    def draw_graph(self):
+        deps = Digraph("Deps", strict=True)
+        deps.graph_attr.update(rankdir="BT")
+        try:
+            node = self.nodes.get('master_node')
+
+            for current in node.depends_on:
+                deps.node(current.comp_name)
+
+                res = []
+                unres = []
+                dep_resolve(current, res, unres)
+                for node in res:
+                    if "depends" in node.component:
+                        for dep in node.component['depends']:
+                            if dep not in self.nodes:
+                                deps.node(dep, color="red")
+                                deps.edge(node.comp_name, dep, "missing", color="red")
+                            elif node.comp_name is not "master_node":
+                                deps.edge(node.comp_name, dep)
+
+        except CircularReferenceException as ex:
+            self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
+            deps.edge(ex.node1, ex.node2, "circular error", color="red")
+            deps.edge(ex.node2, ex.node1, color="red")
+
+        deps.view()
 
     def copy_component_to_remote(self, infile, comp, host):
         self.host_list.append(host)
@@ -335,6 +364,7 @@ def main():
                                                            "this command.\nIf run with the --kill flag, the "
                                                            "passed component will be killed")
 
+    subparser_val.add_argument("--visual", help="Generate and show a graph image", action="store_true")
     subparser_remote.add_argument("--kill", help="switch to kill mode", action="store_true")
 
     args = parser.parse_args()
@@ -352,6 +382,12 @@ def main():
 
     elif args.cmd == 'validate':
         logger.debug("Launching validation mode")
+        cc = ControlCenter(args.config)
+        if args.visual:
+            cc.set_dependencies(False)
+            cc.draw_graph()
+        else:
+            cc.set_dependencies(True)
 
     elif args.cmd == 'slave':
         logger.debug("Launching slave mode")
