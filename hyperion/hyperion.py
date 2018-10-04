@@ -2,6 +2,7 @@
 from libtmux import Server
 from yaml import load, dump
 from setupParser import Loader
+from DepTree import Node, dep_resolve, CircularReferenceException
 import logging
 import os
 import socket
@@ -25,6 +26,7 @@ class ControlCenter:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.configfile = configfile
+        self.nodes = {}
         self.server = []
         self.host_list = []
 
@@ -73,6 +75,49 @@ class ControlCenter:
 
             # Remove duplicate hosts
             self.host_list = list(set(self.host_list))
+
+            self.set_dependencies(True)
+
+    def set_dependencies(self, exit_on_fail):
+        for group in self.config['groups']:
+            for comp in group['components']:
+                self.nodes[comp['name']] = Node(comp)
+
+        # Add a pseudo node that depends on all other nodes, to get a starting point to be able to iterate through all
+        # nodes with simple algorithms
+        master_node = Node({'name': 'master_node'})
+        for name in self.nodes:
+            node = self.nodes.get(name)
+
+            # Add edges from each node to pseudo node
+            master_node.addEdge(node)
+
+            # Add edges based on dependencies specified in the configuration
+            if "depends" in node.component:
+                for dep in node.component['depends']:
+                    if dep in self.nodes:
+                        node.addEdge(self.nodes[dep])
+                    else:
+                        self.logger.error("Unmet dependency: '%s' for component '%s'!" % (dep, node.comp_name))
+                        if exit_on_fail:
+                            exit(1)
+        self.nodes['master_node'] = master_node
+
+        # Test if starting all components is possible
+        try:
+            node = self.nodes.get('master_node')
+            res = []
+            unres = []
+            dep_resolve(node, res, unres)
+            dep_string = ""
+            for node in res:
+                if node is not master_node:
+                    dep_string = "%s -> %s" % (dep_string, node.comp_name)
+            self.logger.debug("Dependency tree for start all: %s" % dep_string)
+        except CircularReferenceException as ex:
+            self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
+            if exit_on_fail:
+                exit(1)
 
     def copy_component_to_remote(self, infile, comp, host):
         self.host_list.append(host)
