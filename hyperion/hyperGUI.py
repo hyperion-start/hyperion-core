@@ -3,6 +3,7 @@ from PyQt4 import QtCore, QtGui
 import os
 import subprocess
 import logging
+from functools import partial
 
 BASE_DIR = os.path.dirname(__file__)
 SCRIPT_CLONE_PATH = ("%s/scripts/start_named_clone_session.sh" % BASE_DIR)
@@ -31,6 +32,7 @@ class UiMainWindow(object):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.terms = {}
+        self.threads = []
 
         self.control_center = control_center #type: hyperion.ControlCenter
         self.title = control_center.session_name
@@ -92,7 +94,7 @@ class UiMainWindow(object):
         stop_button.clicked.connect(lambda: self.handleStopButton(comp))
 
         check_button = QtGui.QPushButton(scrollAreaWidgetContents)
-        check_button.setObjectName(_fromUtf8("check_button"))
+        check_button.setObjectName("check_button_%s" % comp['name'])
         check_button.setText("check")
         check_button.clicked.connect(lambda: self.handleCheckButton(comp))
 
@@ -121,6 +123,13 @@ class UiMainWindow(object):
         horizontalLayout_components.addWidget(log_toggle)
         horizontalLayout_components.addWidget(log_button)
 
+        start_button.setFocusPolicy(QtCore.Qt.NoFocus)
+        stop_button.setFocusPolicy(QtCore.Qt.NoFocus)
+        term_toggle.setFocusPolicy(QtCore.Qt.NoFocus)
+        log_toggle.setFocusPolicy(QtCore.Qt.NoFocus)
+        log_button.setFocusPolicy(QtCore.Qt.NoFocus)
+        check_button.setFocusPolicy(QtCore.Qt.NoFocus)
+
         return horizontalLayout_components
 
     def handleStartButton(self, comp):
@@ -136,11 +145,22 @@ class UiMainWindow(object):
             self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
             hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
 
+        self.handleCheckButton(comp)
         #TODO: maybe add term checkbox as arg to unset on stop?
 
     def handleCheckButton(self, comp):
         self.logger.debug("%s check button pressed" % comp['name'])
-        self.control_center.check_component(comp)
+
+        check_worker = CheckWorkerThread()
+        thread = QtCore.QThread()
+        check_worker.check_signal.connect(self.check_button_callback)
+
+        check_worker.moveToThread(thread)
+        check_worker.done.connect(thread.quit)
+
+        thread.started.connect(partial(check_worker.run_check, self.control_center, comp))
+        thread.start()
+        self.threads.append(thread)
 
     def handleTermToggleStateChanged(self, comp, isChecked):
         self.logger.debug("%s show term set to: %d" % (comp['name'], isChecked))
@@ -162,3 +182,28 @@ class UiMainWindow(object):
                 hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
             else:
                 self.logger.debug("Term already closed! Command must have crashed. Open log!")
+
+    @QtCore.pyqtSlot(int, str)
+    def check_button_callback(self, check_state, comp_name):
+        check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp_name)
+        if check_state is hyperion.CheckState.STOPPED.value:
+            check_button.setStyleSheet("background-color: red")
+        if check_state is hyperion.CheckState.RUNNING.value:
+            check_button.setStyleSheet("background-color: green")
+        if check_state is hyperion.CheckState.STARTED_BY_HAND.value:
+            check_button.setStyleSheet("background-color: yellow")
+        if check_state is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL.value:
+            check_button.setStyleSheet("background-color: orange")
+
+
+class CheckWorkerThread(QtCore.QObject):
+    done = QtCore.pyqtSignal()
+    check_signal = QtCore.pyqtSignal(int, str)
+
+    def __init__(self, parent=None):
+        super(self.__class__, self).__init__(parent)
+
+    @QtCore.pyqtSlot()
+    def run_check(self, control_center, comp):
+        self.check_signal.emit((control_center.check_component(comp)).value, comp['name'])
+        self.done.emit()
