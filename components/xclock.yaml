@@ -2,7 +2,7 @@ name: xclock
 
 cmd:
   - start: xclock
-  - check: ps -aux | grep xclock
+  - check: pgrep xclock > /dev/null
   - stop: echo "shutdown"
 
 depends:

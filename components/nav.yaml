@@ -2,7 +2,7 @@ name: nav
 
 cmd:
   - start: echo "nav"
-  - check: ps -aux | grep rviz
+  - check: pgrep rviz
   - stop: echo "shutdown"
 
 depends:

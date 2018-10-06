@@ -2,7 +2,7 @@ name: roscore
 
 cmd:
   - start: roscore
-  - check: ps -aux | grep roscore
+  - check: pgrep roscore
   - stop: echo "shutdown"
 
 host: localhost

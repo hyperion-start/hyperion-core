@@ -2,7 +2,7 @@ name: xeyes
 
 cmd:
   - start: xeyes
-  - check: ps -aux | grep xeyes
+  - check: pgrep xeyes
   - stop: echo "shutdown"
 
 host: raspberrypi
