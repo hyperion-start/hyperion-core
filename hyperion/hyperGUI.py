@@ -139,7 +139,8 @@ class UiMainWindow(object):
         #TODO: maybe add term checkbox as arg to unset on stop?
 
     def handleCheckButton(self, comp):
-        self.logger.debug("%s check button pressed. NYI!" % comp['name'])
+        self.logger.debug("%s check button pressed" % comp['name'])
+        self.control_center.check_component(comp)
 
     def handleTermToggleStateChanged(self, comp, isChecked):
         self.logger.debug("%s show term set to: %d" % (comp['name'], isChecked))
