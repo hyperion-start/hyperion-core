@@ -140,10 +140,11 @@ class UiMainWindow(object):
         self.logger.debug("%s stop button pressed" % comp['name'])
         self.control_center.stop_component(comp)
 
-        term = self.terms[comp['name']]
-        if term.poll() is None:
-            self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
-            hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
+        if comp['name'] in self.terms:
+            term = self.terms[comp['name']]
+            if term.poll() is None:
+                self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
+                hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
 
         self.handleCheckButton(comp)
         #TODO: maybe add term checkbox as arg to unset on stop?
@@ -191,9 +192,9 @@ class UiMainWindow(object):
         if check_state is hyperion.CheckState.RUNNING.value:
             check_button.setStyleSheet("background-color: green")
         if check_state is hyperion.CheckState.STARTED_BY_HAND.value:
-            check_button.setStyleSheet("background-color: yellow")
+            check_button.setStyleSheet("background-color: lightsalmon")
         if check_state is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL.value:
-            check_button.setStyleSheet("background-color: orange")
+            check_button.setStyleSheet("background-color: darkcyan")
 
 
 class CheckWorkerThread(QtCore.QObject):
