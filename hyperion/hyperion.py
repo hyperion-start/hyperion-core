@@ -7,7 +7,10 @@ import logging
 import os
 import socket
 import argparse
+from psutil import Process
+from subprocess import call
 from graphviz import Digraph
+from enum import Enum
 
 import sys
 from PyQt4 import QtGui
@@ -19,6 +22,13 @@ logging.basicConfig(level=logging.WARNING, format=FORMAT, datefmt='%I:%M:%S')
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
 TMP_COMP_DIR = "/tmp/Hyperion/components"
 TMP_LOG_PATH = "/tmp/Hyperion/log"
+
+
+class CheckState(Enum):
+    RUNNING = 0
+    STOPPED = 1
+    STOPPED_BUT_SUCCESSFUL = 2
+    STARTED_BY_HAND = 3
 
 
 class ControlCenter:
@@ -232,6 +242,45 @@ class ControlCenter:
         except socket.gaierror:
             sys.exit("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
 
+    def check_component(self, comp):
+        check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
+        window = find_window(self.session, comp['name'])
+        if window:
+            pid = get_window_pid(window)
+            self.logger.debug("Found window pid: %s" % pid)
+
+            # May return more child pids if logging is done via tee (which then was started twice in the window too)
+            procs = []
+            for entry in pid:
+                procs.extend(Process(entry).children(recursive=True))
+            pids = [p.pid for p in procs]
+            self.logger.debug("Window is running %s child processes" % len(pids))
+
+            # Two processes are tee logging
+            # TODO: Change this when more logging options are introduced
+            if len(pids) < 3:
+                self.logger.debug("Main window process has finished. Running custom check if available")
+                if check_available and run_component_check(comp):
+                    self.logger.debug("Process terminated but check was successful")
+                    return CheckState.STOPPED_BUT_SUCCESSFUL
+                else:
+                    self.logger.debug("Check failed or no check available: returning false")
+                    return CheckState.STOPPED
+            elif check_available and run_component_check(comp):
+                self.logger.debug("Check succeeded")
+                return CheckState.RUNNING
+            elif not check_available:
+                self.logger.debug("No custom check specified and got sufficient pid amount: returning true")
+                return CheckState.RUNNING
+        else:
+            self.logger.debug("%s window is not running. Running custom check" % comp['name'])
+            if  check_available and run_component_check(comp):
+                self.logger.debug("Component was not started by Hyperion, but the check succeeded")
+                return CheckState.STARTED_BY_HAND
+            else:
+                self.logger.debug("Window not running and no check command is available or it failed: returning false")
+                return CheckState.STOPPED
+
 
 class SlaveLauncher:
 
@@ -297,6 +346,19 @@ class SlaveLauncher:
             else:
                 self.logger.info("There is no component running by the name '%s'. Exiting kill mode" %
                                  self.window_name)
+
+
+def run_component_check(comp):
+    if call(comp['cmd'][1]['check'], shell=True) == 0:
+        return True
+    else:
+        return False
+
+
+def get_window_pid(window):
+    r = window.cmd('list-panes',
+                   "-F #{pane_pid}")
+    return [int(p) for p in r.stdout]
 
 
 def start_gui(control_center):
