@@ -67,6 +67,9 @@ class ControlCenter:
         else:
             self.config = None
 
+    ###################
+    # Setup
+    ###################
     def load_config(self, filename="default.yaml"):
         with open(filename) as data_file:
             self.config = load(data_file, Loader)
@@ -130,34 +133,6 @@ class ControlCenter:
             if exit_on_fail:
                 exit(1)
 
-    def draw_graph(self):
-        deps = Digraph("Deps", strict=True)
-        deps.graph_attr.update(rankdir="BT")
-        try:
-            node = self.nodes.get('master_node')
-
-            for current in node.depends_on:
-                deps.node(current.comp_name)
-
-                res = []
-                unres = []
-                dep_resolve(current, res, unres)
-                for node in res:
-                    if "depends" in node.component:
-                        for dep in node.component['depends']:
-                            if dep not in self.nodes:
-                                deps.node(dep, color="red")
-                                deps.edge(node.comp_name, dep, "missing", color="red")
-                            elif node.comp_name is not "master_node":
-                                deps.edge(node.comp_name, dep)
-
-        except CircularReferenceException as ex:
-            self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
-            deps.edge(ex.node1, ex.node2, "circular error", color="red")
-            deps.edge(ex.node2, ex.node1, color="red")
-
-        deps.view()
-
     def copy_component_to_remote(self, infile, comp, host):
         self.host_list.append(host)
 
@@ -173,6 +148,9 @@ class ControlCenter:
         self.logger.debug(cmd)
         send_main_session_command(self.session, cmd)
 
+    ###################
+    # Stop
+    ###################
     def stop_component(self, comp):
         if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
             self.logger.debug("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
@@ -186,21 +164,15 @@ class ControlCenter:
                 kill_window(window)
                 self.logger.info("... done!")
 
-    def start_component_without_deps(self, comp):
-        if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
-            self.logger.debug("Starting remote component '%s' on host '%s'" % (comp['name'], comp['host']))
-            self.start_remote_component(comp['name'], comp['host'])
-        else:
-            log_file = ("%s/%s" % (TMP_LOG_PATH, comp['name']))
-            window = find_window(self.session, comp['name'])
+    def stop_remote_component(self, comp_name, host):
+        # invoke Hyperion in slave mode on each remote host
+        cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave --kill'" % (host, TMP_SLAVE_DIR, comp_name))
+        self.logger.debug("Run cmd:\n%s" % cmd)
+        send_main_session_command(self.session, cmd)
 
-            if window:
-                self.logger.debug("window '%s' found running" % comp['name'])
-            else:
-                self.logger.info("creating window '%s'" % comp['name'])
-                window = self.session.new_window(comp['name'])
-                start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
-
+    ###################
+    # Start
+    ###################
     def start_component(self, comp):
 
         node = self.nodes.get(comp['name'])
@@ -218,11 +190,20 @@ class ControlCenter:
                 self.logger.debug("All dependencies satisfied, starting '%s'" % (comp['name']))
                 self.start_component_without_deps(comp)
 
-    def stop_remote_component(self, comp_name, host):
-        # invoke Hyperion in slave mode on each remote host
-        cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave --kill'" % (host, TMP_SLAVE_DIR, comp_name))
-        self.logger.debug("Run cmd:\n%s" % cmd)
-        send_main_session_command(self.session, cmd)
+    def start_component_without_deps(self, comp):
+        if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
+            self.logger.debug("Starting remote component '%s' on host '%s'" % (comp['name'], comp['host']))
+            self.start_remote_component(comp['name'], comp['host'])
+        else:
+            log_file = ("%s/%s" % (TMP_LOG_PATH, comp['name']))
+            window = find_window(self.session, comp['name'])
+
+            if window:
+                self.logger.debug("window '%s' found running" % comp['name'])
+            else:
+                self.logger.info("creating window '%s'" % comp['name'])
+                window = self.session.new_window(comp['name'])
+                start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
 
     def start_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
@@ -230,18 +211,9 @@ class ControlCenter:
         self.logger.debug("Run cmd:\n%s" % cmd)
         send_main_session_command(self.session, cmd)
 
-    def is_not_localhost(self, hostname):
-        try:
-            hn_out = socket.gethostbyname(hostname)
-            if hn_out == '127.0.0.1' or hn_out == '::1' or hn_out == hn_out:
-                self.logger.debug("Host '%s' is localhost" % hostname)
-                return False
-            else:
-                self.logger.debug("Host '%s' is not localhost" % hostname)
-                return True
-        except socket.gaierror:
-            sys.exit("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
-
+    ###################
+    # Check
+    ###################
     def check_component(self, comp):
         check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
         window = find_window(self.session, comp['name'])
@@ -280,6 +252,52 @@ class ControlCenter:
             else:
                 self.logger.debug("Window not running and no check command is available or it failed: returning false")
                 return CheckState.STOPPED
+
+    ###################
+    # Host related checks
+    ###################
+    def is_not_localhost(self, hostname):
+        try:
+            hn_out = socket.gethostbyname(hostname)
+            if hn_out == '127.0.0.1' or hn_out == '::1' or hn_out == hn_out:
+                self.logger.debug("Host '%s' is localhost" % hostname)
+                return False
+            else:
+                self.logger.debug("Host '%s' is not localhost" % hostname)
+                return True
+        except socket.gaierror:
+            sys.exit("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
+
+    ###################
+    # Visualisation
+    ###################
+    def draw_graph(self):
+        deps = Digraph("Deps", strict=True)
+        deps.graph_attr.update(rankdir="BT")
+        try:
+            node = self.nodes.get('master_node')
+
+            for current in node.depends_on:
+                deps.node(current.comp_name)
+
+                res = []
+                unres = []
+                dep_resolve(current, res, unres)
+                for node in res:
+                    if "depends" in node.component:
+                        for dep in node.component['depends']:
+                            if dep not in self.nodes:
+                                deps.node(dep, color="red")
+                                deps.edge(node.comp_name, dep, "missing", color="red")
+                            elif node.comp_name is not "master_node":
+                                deps.edge(node.comp_name, dep)
+
+        except CircularReferenceException as ex:
+            self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
+            deps.edge(ex.node1, ex.node2, "circular error", color="red")
+            deps.edge(ex.node2, ex.node1, color="red")
+
+        deps.view()
 
 
 class SlaveLauncher:
