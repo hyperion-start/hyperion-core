@@ -33,6 +33,7 @@ class UiMainWindow(object):
         self.logger.setLevel(logging.DEBUG)
         self.terms = {}
         self.threads = []
+        self.animations = []
 
         self.control_center = control_center #type: hyperion.ControlCenter
         self.title = control_center.session_name
@@ -79,36 +80,36 @@ class UiMainWindow(object):
         horizontalLayout_components.setObjectName(_fromUtf8("horizontalLayout_%s" % comp['name']))
 
         comp_label = QtGui.QLabel(scrollAreaWidgetContents)
-        comp_label.setObjectName(_fromUtf8("comp_label"))
+        comp_label.setObjectName("comp_label_%s" % comp['name'])
 
         spacerItem = QtGui.QSpacerItem(200, 44, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
 
         start_button = QtGui.QPushButton('test', scrollAreaWidgetContents)
-        start_button.setObjectName(_fromUtf8("start_button"))
+        start_button.setObjectName("start_button_%s" % comp['name'])
         start_button.setText("start")
         start_button.clicked.connect(lambda: self.handleStartButton(comp))
 
         stop_button = QtGui.QPushButton(scrollAreaWidgetContents)
-        stop_button.setObjectName(_fromUtf8("stop_button"))
+        stop_button.setObjectName("stop_button_%s" % comp['name'])
         stop_button.setText("stop")
         stop_button.clicked.connect(lambda: self.handleStopButton(comp))
 
-        check_button = QtGui.QPushButton(scrollAreaWidgetContents)
+        check_button = BlinkButton(scrollAreaWidgetContents)
         check_button.setObjectName("check_button_%s" % comp['name'])
         check_button.setText("check")
         check_button.clicked.connect(lambda: self.handleCheckButton(comp))
 
         term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
-        term_toggle.setObjectName(_fromUtf8("term_toggle"))
+        term_toggle.setObjectName("term_toggle_%s" % comp['name'])
         term_toggle.setText("Show Term")
         term_toggle.stateChanged.connect(lambda: self.handleTermToggleStateChanged(comp, term_toggle.isChecked()))
 
         log_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
-        log_toggle.setObjectName(_fromUtf8("log_toggle"))
+        log_toggle.setObjectName("log_toggle_%s" % comp['name'])
         log_toggle.setText("logging")
 
         log_button = QtGui.QPushButton(scrollAreaWidgetContents)
-        log_button.setObjectName(_fromUtf8("log_button"))
+        log_button.setObjectName("log_button_%s" % comp['name'])
         log_button.setText("view log")
 
         comp_label.raise_()
@@ -158,9 +159,29 @@ class UiMainWindow(object):
 
         check_worker.moveToThread(thread)
         check_worker.done.connect(thread.quit)
-
         thread.started.connect(partial(check_worker.run_check, self.control_center, comp))
+
+        check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp['name'])#type: QtGui.QPushButton
+        anim = QtCore.QPropertyAnimation(
+            check_button,
+            "color",
+        )
+
+        check_button.setStyleSheet("")
+
+        anim.setDuration(1000)
+        anim.setLoopCount(100)
+        anim.setStartValue(QtGui.QColor(255, 255, 255))
+        anim.setEndValue(QtGui.QColor(0, 0, 0))
+        anim.start()
+
+        check_worker.check_signal.connect(anim.stop)
+        check_worker.check_signal.connect(lambda: (self.animations.remove(anim), self.threads.remove(thread)))
+        self.animations.append(anim)
+
         thread.start()
+
+        # Need to keep a surviving reference to the thread to save it from garbage collection
         self.threads.append(thread)
 
     def handleTermToggleStateChanged(self, comp, isChecked):
@@ -196,7 +217,6 @@ class UiMainWindow(object):
         if check_state is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL.value:
             check_button.setStyleSheet("background-color: darkcyan")
 
-
 class CheckWorkerThread(QtCore.QObject):
     done = QtCore.pyqtSignal()
     check_signal = QtCore.pyqtSignal(int, str)
@@ -208,3 +228,25 @@ class CheckWorkerThread(QtCore.QObject):
     def run_check(self, control_center, comp):
         self.check_signal.emit((control_center.check_component(comp)).value, comp['name'])
         self.done.emit()
+
+
+class BlinkButton(QtGui.QPushButton):
+    def __init__(self, *args, **kwargs):
+        QtGui.QPushButton.__init__(self, *args, **kwargs)
+        self.default_color = self.getColor()
+
+    def getColor(self):
+        return self.palette().color(QtGui.QPalette.Button)
+
+    def setColor(self, value):
+        if value == self.getColor():
+            return
+        palette = self.palette()
+        palette.setColor(self.foregroundRole(), value)
+        self.setAutoFillBackground(True)
+        self.setPalette(palette)
+
+    def reset_color(self):
+        self.setColor(self.default_color)
+
+    color = QtCore.pyqtProperty(QtGui.QColor, getColor, setColor)
