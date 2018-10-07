@@ -4,6 +4,8 @@ import os
 import subprocess
 import logging
 from functools import partial
+from time import sleep
+from DepTree import Node
 
 BASE_DIR = os.path.dirname(__file__)
 SCRIPT_CLONE_PATH = ("%s/scripts/start_named_clone_session.sh" % BASE_DIR)
@@ -33,7 +35,7 @@ class UiMainWindow(object):
         self.logger.setLevel(logging.DEBUG)
         self.terms = {}
         self.threads = []
-        self.animations = []
+        self.animations = {}
 
         self.control_center = control_center #type: hyperion.ControlCenter
         self.title = control_center.session_name
@@ -84,7 +86,7 @@ class UiMainWindow(object):
 
         spacerItem = QtGui.QSpacerItem(200, 44, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
 
-        start_button = QtGui.QPushButton('test', scrollAreaWidgetContents)
+        start_button = BlinkButton('test', scrollAreaWidgetContents)
         start_button.setObjectName("start_button_%s" % comp['name'])
         start_button.setText("start")
         start_button.clicked.connect(lambda: self.handleStartButton(comp))
@@ -135,7 +137,57 @@ class UiMainWindow(object):
 
     def handleStartButton(self, comp):
         self.logger.debug("%s start button pressed" % comp['name'])
-        self.control_center.start_component(comp)
+
+        start_worker = StartWorker()
+        thread = QtCore.QThread()
+        start_worker.done.connect(self.start_button_callback)
+        start_worker.intermediate.connect(self.check_button_callback)
+
+        start_worker.moveToThread(thread)
+        start_worker.done.connect(thread.quit)
+        thread.started.connect(partial(start_worker.run_start, self.control_center, comp))
+
+        deps = self.control_center.get_dep_list(comp)
+        for dep in deps:
+            start_button = self.centralwidget.findChild(QtGui.QPushButton,
+                                                        "start_button_%s" % dep.comp_name)  # type: QtGui.QPushButton
+            anim = QtCore.QPropertyAnimation(
+                start_button,
+                "color",
+            )
+
+            start_button.setStyleSheet("")
+
+            anim.setDuration(1000)
+            anim.setLoopCount(-1)
+            anim.setStartValue(QtGui.QColor(255, 255, 255))
+            anim.setEndValue(QtGui.QColor(0, 0, 0))
+            anim.start()
+
+            self.animations[("start_%s" % dep.comp_name)] = anim
+
+        start_button = self.centralwidget.findChild(QtGui.QPushButton,
+                                                    "start_button_%s" % comp['name'])  # type: QtGui.QPushButton
+        anim = QtCore.QPropertyAnimation(
+            start_button,
+            "color",
+        )
+
+        start_button.setStyleSheet("")
+
+        anim.setDuration(1000)
+        anim.setLoopCount(100)
+        anim.setStartValue(QtGui.QColor(255, 255, 255))
+        anim.setEndValue(QtGui.QColor(0, 0, 0))
+        anim.start()
+
+        start_worker.done.connect(lambda: self.threads.remove(thread))
+        self.animations[("start_%s" % comp['name'])] = anim
+
+        thread.start()
+
+        # Need to keep a surviving reference to the thread to save it from garbage collection
+        self.threads.append(thread)
 
     def handleStopButton(self, comp):
         self.logger.debug("%s stop button pressed" % comp['name'])
@@ -173,15 +225,14 @@ class UiMainWindow(object):
         check_button.setStyleSheet("")
 
         anim.setDuration(1000)
-        anim.setLoopCount(100)
+        anim.setLoopCount(-1)
         anim.setStartValue(QtGui.QColor(255, 255, 255))
         anim.setEndValue(QtGui.QColor(0, 0, 0))
         anim.start()
 
-        check_worker.check_signal.connect(anim.stop)
-        check_worker.check_signal.connect(lambda: (self.animations.remove(anim), self.threads.remove(thread)))
-        self.animations.append(anim)
+        self.animations[("check_%s" % comp['name'])] = anim
 
+        check_worker.check_signal.connect(lambda: self.threads.remove(thread))
         thread.start()
 
         # Need to keep a surviving reference to the thread to save it from garbage collection
@@ -211,14 +262,37 @@ class UiMainWindow(object):
     @QtCore.pyqtSlot(int, str)
     def check_button_callback(self, check_state, comp_name):
         check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp_name)
+
         if check_state is hyperion.CheckState.STOPPED.value:
             check_button.setStyleSheet("background-color: red")
-        if check_state is hyperion.CheckState.RUNNING.value:
+        elif check_state is hyperion.CheckState.RUNNING.value:
             check_button.setStyleSheet("background-color: green")
-        if check_state is hyperion.CheckState.STARTED_BY_HAND.value:
+        elif check_state is hyperion.CheckState.STARTED_BY_HAND.value:
             check_button.setStyleSheet("background-color: lightsalmon")
-        if check_state is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL.value:
+        elif check_state is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL.value:
             check_button.setStyleSheet("background-color: darkcyan")
+        elif check_state is hyperion.CheckState.DEP_FAILED.value:
+            check_button.setStyleSheet("background-color: darkred")
+
+        if self.animations.has_key("start_%s" % comp_name):
+            self.animations.pop("start_%s" % comp_name).stop()
+            start_button = self.centralwidget.findChild(QtGui.QPushButton, "start_button_%s" % comp_name)
+            start_button.setColor(QtGui.QColor(255,255,255))
+
+        if self.animations.has_key("check_%s" % comp_name):
+            self.animations.pop("check_%s" % comp_name).stop()
+            check_button.setColor(QtGui.QColor(255,255,255))
+
+    @QtCore.pyqtSlot(bool)
+    def start_button_callback(self, check_state):
+        # TODO
+        if check_state is hyperion.CheckState.DEP_FAILED:
+            print("Warining, start process was interrupted")
+        else:
+            print("All good")
+
+        print("Threads %s" % len(self.threads))
+
 
 class CheckWorkerThread(QtCore.QObject):
     done = QtCore.pyqtSignal()
@@ -231,6 +305,57 @@ class CheckWorkerThread(QtCore.QObject):
     def run_check(self, control_center, comp):
         self.check_signal.emit((control_center.check_component(comp)).value, comp['name'])
         self.done.emit()
+
+
+class StartWorker(QtCore.QObject):
+    done = QtCore.pyqtSignal(int, str)
+    intermediate = QtCore.pyqtSignal(int, str)
+
+    def __init__(self, parent=None):
+        super(self.__class__, self).__init__(parent)
+
+    @QtCore.pyqtSlot()
+    def run_start(self, control_center, comp):
+        logger = logging.getLogger(__name__)
+        comps = control_center.get_dep_list(comp)
+        control_center = control_center
+        failed = False
+
+        print("Checking deps")
+        for dep in comps:
+            if not failed:
+                logger.debug("Checking dep %s" % dep.comp_name)
+                ret = control_center.check_component(dep.component)
+                if ret is not hyperion.CheckState.STOPPED:
+                    logger.debug("Dep %s already running" % dep.comp_name)
+                    self.intermediate.emit(ret.value, dep.comp_name)
+                else:
+                    tries = 0
+                    logger.debug("Starting dep %s" % dep.comp_name)
+                    control_center.start_component_without_deps(dep.component)
+                    while True:
+                        sleep(.5)
+                        ret = control_center.check_component(dep.component)
+                        if (ret is hyperion.CheckState.RUNNING or
+                                ret is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL):
+                            break
+                        if tries > 10:
+                            failed = True
+                            ret = hyperion.CheckState.STOPPED
+                            break
+                        tries = tries + 1
+                    self.intermediate.emit(ret.value, dep.comp_name)
+            else:
+                self.intermediate.emit(hyperion.CheckState.DEP_FAILED.value, dep.comp_name)
+
+        ret = hyperion.CheckState.DEP_FAILED
+        if not failed:
+            logger.debug("Done starting")
+            control_center.start_component_without_deps(comp)
+            ret = control_center.check_component(comp)
+
+        self.intermediate.emit(ret.value, comp['name'])
+        self.done.emit(ret.value, comp['name'])
 
 
 class BlinkButton(QtGui.QPushButton):
