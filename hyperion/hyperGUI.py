@@ -166,6 +166,8 @@ class UiMainWindow(object):
 
             self.animations[("start_%s" % dep.comp_name)] = anim
 
+            start_button.setEnabled(False)
+
         start_button = self.centralwidget.findChild(QtGui.QPushButton,
                                                     "start_button_%s" % comp['name'])  # type: QtGui.QPushButton
         anim = QtCore.QPropertyAnimation(
@@ -174,6 +176,7 @@ class UiMainWindow(object):
         )
 
         start_button.setStyleSheet("")
+        start_button.setEnabled(False)
 
         anim.setDuration(1000)
         anim.setLoopCount(100)
@@ -223,6 +226,7 @@ class UiMainWindow(object):
         )
 
         check_button.setStyleSheet("")
+        check_button.setEnabled(False)
 
         anim.setDuration(1000)
         anim.setLoopCount(-1)
@@ -274,10 +278,13 @@ class UiMainWindow(object):
         elif check_state is hyperion.CheckState.DEP_FAILED.value:
             check_button.setStyleSheet("background-color: darkred")
 
+        check_button.setEnabled(True)
+
         if self.animations.has_key("start_%s" % comp_name):
             self.animations.pop("start_%s" % comp_name).stop()
             start_button = self.centralwidget.findChild(QtGui.QPushButton, "start_button_%s" % comp_name)
             start_button.setColor(QtGui.QColor(255,255,255))
+            start_button.setEnabled(True)
 
         if self.animations.has_key("check_%s" % comp_name):
             self.animations.pop("check_%s" % comp_name).stop()
@@ -346,7 +353,11 @@ class StartWorker(QtCore.QObject):
                         tries = tries + 1
                     self.intermediate.emit(ret.value, dep.comp_name)
             else:
-                self.intermediate.emit(hyperion.CheckState.DEP_FAILED.value, dep.comp_name)
+                ret = control_center.check_component(dep.component)
+                if ret is not hyperion.CheckState.STOPPED:
+                    self.intermediate.emit(ret.value, dep.comp_name)
+                else:
+                    self.intermediate.emit(hyperion.CheckState.DEP_FAILED.value, dep.comp_name)
 
         ret = hyperion.CheckState.DEP_FAILED
         if not failed:
