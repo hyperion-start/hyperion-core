@@ -11,6 +11,7 @@ from psutil import Process
 from subprocess import call
 from graphviz import Digraph
 from enum import Enum
+from time import sleep
 
 import sys
 from PyQt4 import QtGui
@@ -29,6 +30,7 @@ class CheckState(Enum):
     STOPPED = 1
     STOPPED_BUT_SUCCESSFUL = 2
     STARTED_BY_HAND = 3
+    DEP_FAILED = 4
 
 
 class ControlCenter:
@@ -180,15 +182,38 @@ class ControlCenter:
         unres = []
         dep_resolve(node, res, unres)
         for node in res:
-            if node.comp_name is not comp['name']:
-                # TODO: Run component check, if true skip start
-                self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_name, comp['name']))
-                self.start_component_without_deps(node.component)
-                self.logger.debug("TODO: run component check!")
-                # TODO: Run component check when true continue
-            else:
-                self.logger.debug("All dependencies satisfied, starting '%s'" % (comp['name']))
-                self.start_component_without_deps(comp)
+            self.logger.debug("node name '%s' vs. comp name '%s'" % (node.comp_name, comp['name']))
+            if node.comp_name != comp['name']:
+                self.logger.debug("Checking and starting %s" % node.comp_name)
+                state = self.check_component(node.component)
+                if (state is CheckState.STOPPED_BUT_SUCCESSFUL or
+                        state is CheckState.STARTED_BY_HAND or
+                        state is CheckState.RUNNING):
+                    self.logger.debug("Component %s is already running, skipping to next in line" % comp['name'])
+                else:
+                    self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_name, comp['name']))
+                    self.start_component_without_deps(node.component)
+
+                    tries = 0
+                    while True:
+                        self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_name, state))
+                        state = self.check_component(node.component)
+                        if (state is not CheckState.RUNNING or
+                           state is not CheckState.STOPPED_BUT_SUCCESSFUL):
+                            break
+                        if tries > 100:
+                            return False
+                        tries = tries + 1
+                        sleep(.5)
+
+        self.logger.debug("All dependencies satisfied, starting '%s'" % (comp['name']))
+        state = self.check_component(node.component)
+        if (state is CheckState.STARTED_BY_HAND or
+                state is CheckState.RUNNING):
+            self.logger.debug("Component %s is already running. Skipping start" % comp['name'])
+        else:
+            self.start_component_without_deps(comp)
+        return True
 
     def start_component_without_deps(self, comp):
         if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
@@ -199,7 +224,8 @@ class ControlCenter:
             window = find_window(self.session, comp['name'])
 
             if window:
-                self.logger.debug("window '%s' found running" % comp['name'])
+                self.logger.debug("Restarting '%s' in old window" % comp['name'])
+                start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
             else:
                 self.logger.info("creating window '%s'" % comp['name'])
                 window = self.session.new_window(comp['name'])
@@ -215,6 +241,7 @@ class ControlCenter:
     # Check
     ###################
     def check_component(self, comp):
+        self.logger.debug("Running component check for %s" % comp['name'])
         check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
         window = find_window(self.session, comp['name'])
         if window:
@@ -244,6 +271,9 @@ class ControlCenter:
             elif not check_available:
                 self.logger.debug("No custom check specified and got sufficient pid amount: returning true")
                 return CheckState.RUNNING
+            else:
+                self.logger.debug("Check failed: returning false")
+                return CheckState.STOPPED
         else:
             self.logger.debug("%s window is not running. Running custom check" % comp['name'])
             if  check_available and run_component_check(comp):
@@ -252,6 +282,18 @@ class ControlCenter:
             else:
                 self.logger.debug("Window not running and no check command is available or it failed: returning false")
                 return CheckState.STOPPED
+
+    ###################
+    # Dependency management
+    ###################
+    def get_dep_list(self, comp):
+        node = self.nodes.get(comp['name'])
+        res = []
+        unres = []
+        dep_resolve(node, res, unres)
+        res.remove(node)
+
+        return res
 
     ###################
     # Host related checks
@@ -401,10 +443,10 @@ def send_main_session_command(session, cmd):
 
 
 def find_window(session, window_name):
-            window = session.find_where({
-                "window_name": window_name
-            })
-            return window
+    window = session.find_where({
+        "window_name": window_name
+    })
+    return window
 
 
 def start_window(window, cmd, log_file, comp_name):
