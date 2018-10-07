@@ -148,7 +148,10 @@ class UiMainWindow(object):
                 hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
 
         self.handleCheckButton(comp)
-        #TODO: maybe add term checkbox as arg to unset on stop?
+
+        term_toggle = self.centralwidget.findChild(QtGui.QCheckBox, "term_toggle_%s" % comp['name'])
+        if term_toggle.isChecked():
+            term_toggle.setChecked(False)
 
     def handleCheckButton(self, comp):
         self.logger.debug("%s check button pressed" % comp['name'])
