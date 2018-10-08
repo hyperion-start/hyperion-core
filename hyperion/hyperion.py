@@ -86,7 +86,7 @@ class ControlCenter:
                     self.logger.debug("Checking component '%s' in group '%s' on host '%s'" %
                                       (comp['name'], group['name'], comp['host']))
 
-                    if comp['host'] != "localhost" and self.is_not_localhost(comp['host']):
+                    if comp['host'] != "localhost" and not self.run_on_localhost(comp):
                         self.copy_component_to_remote(comp, comp['name'], comp['host'])
 
             # Remove duplicate hosts
@@ -154,7 +154,7 @@ class ControlCenter:
     # Stop
     ###################
     def stop_component(self, comp):
-        if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
+        if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
             self.logger.debug("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
             self.stop_remote_component(comp['name'], comp['host'])
         else:
@@ -216,7 +216,7 @@ class ControlCenter:
         return True
 
     def start_component_without_deps(self, comp):
-        if comp['host'] != 'localhost' and self.is_not_localhost(comp['host']):
+        if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
             self.logger.debug("Starting remote component '%s' on host '%s'" % (comp['name'], comp['host']))
             self.start_remote_component(comp['name'], comp['host'])
         else:
@@ -298,17 +298,20 @@ class ControlCenter:
     ###################
     # Host related checks
     ###################
-    def is_not_localhost(self, hostname):
+    def is_localhost(self, hostname):
         try:
             hn_out = socket.gethostbyname(hostname)
             if hn_out == '127.0.0.1' or hn_out == '::1' or hn_out == hn_out:
                 self.logger.debug("Host '%s' is localhost" % hostname)
-                return False
+                return True
             else:
                 self.logger.debug("Host '%s' is not localhost" % hostname)
-                return True
+                return False
         except socket.gaierror:
             sys.exit("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
+
+    def run_on_localhost(self, comp):
+        return self.is_localhost(comp['host'])
 
     ###################
     # Visualisation
