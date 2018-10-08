@@ -410,7 +410,9 @@ class SlaveLauncher:
                 self.logger.info("There is no component running by the name '%s'. Exiting kill mode" %
                                  self.window_name)
 
-
+###################
+# Component Management
+###################
 def run_component_check(comp):
     if call(comp['cmd'][1]['check'], shell=True) == 0:
         return True
@@ -423,16 +425,9 @@ def get_window_pid(window):
                    "-F #{pane_pid}")
     return [int(p) for p in r.stdout]
 
-
-def start_gui(control_center):
-    app = QtGui.QApplication(sys.argv)
-    main_window = QtGui.QMainWindow()
-    ui = hyperGUI.UiMainWindow()
-    ui.ui_init(main_window, control_center)
-    main_window.show()
-    sys.exit(app.exec_())
-
-
+###################
+# TMUX
+###################
 def kill_session_by_name(server, name):
     session = server.find_where({
         "session_name": name
@@ -440,8 +435,13 @@ def kill_session_by_name(server, name):
     session.kill_session()
 
 
-def send_main_session_command(session, cmd):
-    window = find_window(session, "Main")
+def kill_window(window):
+    window.cmd("send-keys", "", "C-c")
+    window.kill_window()
+
+
+def start_window(window, cmd, log_file, comp_name):
+    setup_log(window, log_file, comp_name)
     window.cmd("send-keys", cmd, "Enter")
 
 
@@ -452,16 +452,14 @@ def find_window(session, window_name):
     return window
 
 
-def start_window(window, cmd, log_file, comp_name):
-    setup_log(window, log_file, comp_name)
+def send_main_session_command(session, cmd):
+    window = find_window(session, "Main")
     window.cmd("send-keys", cmd, "Enter")
 
 
-def kill_window(window):
-    window.cmd("send-keys", "", "C-c")
-    window.kill_window()
-
-
+###################
+# Logging
+###################
 def setup_log(window, file, comp_name):
     clear_log(file)
     # Reroute stderr to log file
@@ -481,7 +479,9 @@ def ensure_dir(file_path):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-
+###################
+# Startup
+###################
 def main():
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
@@ -535,3 +535,15 @@ def main():
         logger.debug("Launching slave mode")
         sl = SlaveLauncher(args.config, args.kill)
         sl.init()
+
+
+###################
+# GUI
+###################
+def start_gui(control_center):
+    app = QtGui.QApplication(sys.argv)
+    main_window = QtGui.QMainWindow()
+    ui = hyperGUI.UiMainWindow()
+    ui.ui_init(main_window, control_center)
+    main_window.show()
+    sys.exit(app.exec_())
