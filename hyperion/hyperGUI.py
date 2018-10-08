@@ -383,6 +383,8 @@ class StartWorker(QtCore.QObject):
                     tries = 0
                     logger.debug("Starting dep %s" % dep.comp_name)
                     control_center.start_component_without_deps(dep.component)
+                    # Wait a second for startup
+                    sleep(1)
                     while True:
                         sleep(.5)
                         ret = control_center.check_component(dep.component)
@@ -407,6 +409,18 @@ class StartWorker(QtCore.QObject):
         if not failed:
             logger.debug("Done starting")
             control_center.start_component_without_deps(comp)
+
+            # Wait a sec for startup
+            sleep(1)
+
+            tries = 0
+            while True:
+                sleep(.5)
+                ret = control_center.check_component(comp)
+                if (ret is hyperion.CheckState.RUNNING or
+                        ret is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL) or tries > 10:
+                    break
+                tries = tries + 1
             ret = control_center.check_component(comp)
 
         self.intermediate.emit(ret.value, comp['name'])
