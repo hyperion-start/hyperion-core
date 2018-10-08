@@ -301,7 +301,8 @@ class ControlCenter:
     def is_localhost(self, hostname):
         try:
             hn_out = socket.gethostbyname(hostname)
-            if hn_out == '127.0.0.1' or hn_out == '::1' or hn_out == hn_out:
+            print(hn_out)
+            if hn_out == '127.0.0.1' or hn_out == '::1':
                 self.logger.debug("Host '%s' is localhost" % hostname)
                 return True
             else:
