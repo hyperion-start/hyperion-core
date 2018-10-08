@@ -290,15 +290,35 @@ class UiMainWindow(object):
             self.animations.pop("check_%s" % comp_name).stop()
             check_button.setColor(QtGui.QColor(255,255,255))
 
-    @QtCore.pyqtSlot(bool)
-    def start_button_callback(self, check_state):
-        # TODO
-        if check_state is hyperion.CheckState.DEP_FAILED:
-            print("Warining, start process was interrupted")
-        else:
-            print("All good")
+    @QtCore.pyqtSlot(int, dict, str)
+    def start_button_callback(self, check_state, comp, failed_name):
 
-        print("Threads %s" % len(self.threads))
+        msg = QtGui.QMessageBox()
+        if check_state is hyperion.CheckState.DEP_FAILED.value:
+            msg.setIcon(QtGui.QMessageBox.Warning)
+            msg.setText("Start process of '%s' was interrupted" % comp['name'])
+            msg.setInformativeText("Dependency '%s' failed!" % failed_name)
+            msg.setWindowTitle("Warning")
+            msg.setStandardButtons(QtGui.QMessageBox.Retry | QtGui.QMessageBox.Cancel)
+            self.logger.debug("Warning, start process of '%s' was interrupted. Dependency '%s' failed!" %
+                              (comp['name'], failed_name))
+            retval = msg.exec_()
+
+            if retval == QtGui.QMessageBox.Retry:
+                self.handleStartButton(comp)
+
+        elif check_state is hyperion.CheckState.STOPPED.value:
+            msg.setIcon(QtGui.QMessageBox.Warning)
+            msg.setText("Failed starting '%s'" % comp['name'])
+            msg.setWindowTitle("Warning")
+            msg.setStandardButtons(QtGui.QMessageBox.Retry | QtGui.QMessageBox.Cancel)
+            retval = msg.exec_()
+
+            if retval == QtGui.QMessageBox.Retry:
+                self.handleStartButton(comp)
+        else:
+            self.logger.debug("Starting '%s' succeeded without interference")
+            return
 
 
 class CheckWorkerThread(QtCore.QObject):
@@ -315,7 +335,7 @@ class CheckWorkerThread(QtCore.QObject):
 
 
 class StartWorker(QtCore.QObject):
-    done = QtCore.pyqtSignal(int, str)
+    done = QtCore.pyqtSignal(int, dict, str)
     intermediate = QtCore.pyqtSignal(int, str)
 
     def __init__(self, parent=None):
@@ -327,6 +347,7 @@ class StartWorker(QtCore.QObject):
         comps = control_center.get_dep_list(comp)
         control_center = control_center
         failed = False
+        failed_comp = ""
 
         print("Checking deps")
         for dep in comps:
@@ -348,6 +369,7 @@ class StartWorker(QtCore.QObject):
                             break
                         if tries > 10:
                             failed = True
+                            failed_comp = dep.comp_name
                             ret = hyperion.CheckState.STOPPED
                             break
                         tries = tries + 1
@@ -366,7 +388,7 @@ class StartWorker(QtCore.QObject):
             ret = control_center.check_component(comp)
 
         self.intermediate.emit(ret.value, comp['name'])
-        self.done.emit(ret.value, comp['name'])
+        self.done.emit(ret.value, comp, failed_comp)
 
 
 class BlinkButton(QtGui.QPushButton):
