@@ -244,22 +244,44 @@ class UiMainWindow(object):
 
     def handleTermToggleStateChanged(self, comp, isChecked):
         self.logger.debug("%s show term set to: %d" % (comp['name'], isChecked))
+
         if isChecked:
-            p = subprocess.Popen([("%s" % SCRIPT_CLONE_PATH), ("%s" % self.title), ("%s" % comp['name'])], stdout=subprocess.PIPE)
-            out, err = p.communicate()
-            self.logger.debug(out)
 
-            self.logger.debug("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, self.title, comp['name']))
+            if self.control_center.run_on_localhost(comp):
+                self.logger.debug("Starting local clone session")
+                self.control_center.start_clone_session(comp['name'], self.title)
 
-            term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH), ("'%s-clone-session'" % comp['name'])], stdout=subprocess.PIPE)
-            self.terms[comp['name']] = term
+                # Safety wait to ensure clone session is running
+                sleep(.5)
+                term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH),
+                                         ("%s-clone-session" % comp['name'])], stdout=subprocess.PIPE)
+                
+                self.terms[comp['name']] = term
+            else:
+                self.logger.debug("Starting remote clone session")
+                self.control_center.start_remote_clone_session(comp['name'], 'slave-session', comp['host'])
+
+                # Safety wait to ensure clone session is running
+                sleep(.5)
+                self.logger.debug("Open xterm with ssh")
+                term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH),
+                                         ("%s-clone-session" % comp['name']),
+                                         ("%s" % comp['host'])],
+                                        stdout=subprocess.PIPE)
+                self.terms[comp['name']] = term
 
         else:
             self.logger.debug("Closing xterm")
             term = self.terms[comp['name']]
             if term.poll() is None:
                 self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
-                hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
+
+                if self.control_center.run_on_localhost(comp):
+                    self.logger.debug("Session '%s' is running locally" % comp['name'])
+                    hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
+                else:
+                    self.logger.debug("Session '%s' is running on remote host %s" % (comp['name'], comp['host']))
+                    self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['name'], comp['host'])
             else:
                 self.logger.debug("Term already closed! Command must have crashed. Open log!")
 
