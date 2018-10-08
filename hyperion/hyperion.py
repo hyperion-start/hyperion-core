@@ -24,6 +24,9 @@ TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
 TMP_COMP_DIR = "/tmp/Hyperion/components"
 TMP_LOG_PATH = "/tmp/Hyperion/log"
 
+BASE_DIR = os.path.dirname(__file__)
+SCRIPT_CLONE_PATH = ("%s/scripts/start_named_clone_session.sh" % BASE_DIR)
+
 
 class CheckState(Enum):
     RUNNING = 0
@@ -313,6 +316,22 @@ class ControlCenter:
 
     def run_on_localhost(self, comp):
         return self.is_localhost(comp['host'])
+
+    ###################
+    # TMUX
+    ###################
+    def kill_remote_session_by_name(self, name, host):
+        cmd = "ssh -t %s 'tmux kill-session -t %s'" % (host, name)
+        send_main_session_command(self.session, cmd)
+
+    def start_clone_session(self, comp_name, session_name):
+        cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name)
+        send_main_session_command(self.session, cmd)
+
+    def start_remote_clone_session(self, comp_name, session_name, hostname):
+        remote_cmd = ("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name))
+        cmd = "ssh %s 'bash -s' < %s" % (hostname, remote_cmd)
+        send_main_session_command(self.session, cmd)
 
     ###################
     # Visualisation
