@@ -244,7 +244,13 @@ class ControlCenter:
     # Check
     ###################
     def check_component(self, comp):
-        return check_component(comp, self.session, self.logger)
+        if self.run_on_localhost(comp):
+            return check_component(comp, self.session, self.logger)
+        else:
+            self.logger.debug("Starting remote check")
+            cmd = "ssh %s 'hyperion --config %s/%s.yaml slave -c'" % (comp['host'], TMP_SLAVE_DIR, comp['name'])
+            ret = call(cmd, shell=True)
+            return CheckState(ret)
 
     ###################
     # Dependency management
@@ -428,9 +434,9 @@ def check_component(comp, session, logger):
         pids = [p.pid for p in procs]
         logger.debug("Window is running %s child processes" % len(pids))
 
-        # Two processes are tee logging
+        # TODO: Investigate minimum process number on hosts
         # TODO: Change this when more logging options are introduced
-        if len(pids) < 3:
+        if len(pids) < 2:
             logger.debug("Main window process has finished. Running custom check if available")
             if check_available and run_component_check(comp):
                 logger.debug("Process terminated but check was successful")
@@ -492,7 +498,6 @@ def find_window(session, window_name):
 def send_main_session_command(session, cmd):
     window = find_window(session, "Main")
     window.cmd("send-keys", cmd, "Enter")
-
 
 ###################
 # Logging
