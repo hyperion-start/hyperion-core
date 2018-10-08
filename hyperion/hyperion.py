@@ -244,47 +244,7 @@ class ControlCenter:
     # Check
     ###################
     def check_component(self, comp):
-        self.logger.debug("Running component check for %s" % comp['name'])
-        check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
-        window = find_window(self.session, comp['name'])
-        if window:
-            pid = get_window_pid(window)
-            self.logger.debug("Found window pid: %s" % pid)
-
-            # May return more child pids if logging is done via tee (which then was started twice in the window too)
-            procs = []
-            for entry in pid:
-                procs.extend(Process(entry).children(recursive=True))
-            pids = [p.pid for p in procs]
-            self.logger.debug("Window is running %s child processes" % len(pids))
-
-            # Two processes are tee logging
-            # TODO: Change this when more logging options are introduced
-            if len(pids) < 3:
-                self.logger.debug("Main window process has finished. Running custom check if available")
-                if check_available and run_component_check(comp):
-                    self.logger.debug("Process terminated but check was successful")
-                    return CheckState.STOPPED_BUT_SUCCESSFUL
-                else:
-                    self.logger.debug("Check failed or no check available: returning false")
-                    return CheckState.STOPPED
-            elif check_available and run_component_check(comp):
-                self.logger.debug("Check succeeded")
-                return CheckState.RUNNING
-            elif not check_available:
-                self.logger.debug("No custom check specified and got sufficient pid amount: returning true")
-                return CheckState.RUNNING
-            else:
-                self.logger.debug("Check failed: returning false")
-                return CheckState.STOPPED
-        else:
-            self.logger.debug("%s window is not running. Running custom check" % comp['name'])
-            if  check_available and run_component_check(comp):
-                self.logger.debug("Component was not started by Hyperion, but the check succeeded")
-                return CheckState.STARTED_BY_HAND
-            else:
-                self.logger.debug("Window not running and no check command is available or it failed: returning false")
-                return CheckState.STOPPED
+        return check_component(comp, self.session, self.logger)
 
     ###################
     # Dependency management
@@ -366,15 +326,17 @@ class ControlCenter:
 
 class SlaveLauncher:
 
-    def __init__(self, configfile=None, kill_mode=False):
+    def __init__(self, configfile=None, kill_mode=False, check_mode=False):
         self.kill_mode = kill_mode
+        self.check_mode = check_mode
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.config = None
         self.session = None
         if kill_mode:
             self.logger.info("started slave with kill mode")
-
+        if check_mode:
+            self.logger.info("started slave with check mode")
         self.server = Server()
 
         if self.server.has_session("slave-session"):
@@ -383,14 +345,15 @@ class SlaveLauncher:
             })
 
             self.logger.info('found running slave session on server')
-        elif not kill_mode:
+        elif not kill_mode and not check_mode:
             self.logger.info('starting new slave session on server')
             self.session = self.server.new_session(
                 session_name="slave-session"
             )
 
         else:
-            self.logger.info("No slave session found on server. Aborting kill")
+            self.logger.info("No slave session found on server. Aborting")
+            exit(CheckState.STOPPED)
 
         if configfile:
             self.load_config(configfile)
@@ -429,6 +392,17 @@ class SlaveLauncher:
                 self.logger.info("There is no component running by the name '%s'. Exiting kill mode" %
                                  self.window_name)
 
+    def run_check(self):
+        if not self.config:
+            self.logger.error(" Config not loaded yet!")
+            exit(CheckState.STOPPED.value)
+        elif not self.session:
+            self.logger.error(" Init aborted. No session was found!")
+            exit(CheckState.STOPPED.value)
+
+        check_state = check_component(self.config, self.session, self.logger)
+        exit(check_state.value)
+
 ###################
 # Component Management
 ###################
@@ -437,6 +411,50 @@ def run_component_check(comp):
         return True
     else:
         return False
+
+
+def check_component(comp, session, logger):
+    logger.debug("Running component check for %s" % comp['name'])
+    check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
+    window = find_window(session, comp['name'])
+    if window:
+        pid = get_window_pid(window)
+        logger.debug("Found window pid: %s" % pid)
+
+        # May return more child pids if logging is done via tee (which then was started twice in the window too)
+        procs = []
+        for entry in pid:
+            procs.extend(Process(entry).children(recursive=True))
+        pids = [p.pid for p in procs]
+        logger.debug("Window is running %s child processes" % len(pids))
+
+        # Two processes are tee logging
+        # TODO: Change this when more logging options are introduced
+        if len(pids) < 3:
+            logger.debug("Main window process has finished. Running custom check if available")
+            if check_available and run_component_check(comp):
+                logger.debug("Process terminated but check was successful")
+                return CheckState.STOPPED_BUT_SUCCESSFUL
+            else:
+                logger.debug("Check failed or no check available: returning false")
+                return CheckState.STOPPED
+        elif check_available and run_component_check(comp):
+            logger.debug("Check succeeded")
+            return CheckState.RUNNING
+        elif not check_available:
+            logger.debug("No custom check specified and got sufficient pid amount: returning true")
+            return CheckState.RUNNING
+        else:
+            logger.debug("Check failed: returning false")
+            return CheckState.STOPPED
+    else:
+        logger.debug("%s window is not running. Running custom check" % comp['name'])
+        if check_available and run_component_check(comp):
+            logger.debug("Component was not started by Hyperion, but the check succeeded")
+            return CheckState.STARTED_BY_HAND
+        else:
+            logger.debug("Window not running and no check command is available or it failed: returning false")
+            return CheckState.STOPPED
 
 
 def get_window_pid(window):
@@ -526,7 +544,11 @@ def main():
                                                            "passed component will be killed")
 
     subparser_val.add_argument("--visual", help="Generate and show a graph image", action="store_true")
-    subparser_remote.add_argument("--kill", help="switch to kill mode", action="store_true")
+
+    remote_mutex = subparser_remote.add_mutually_exclusive_group(required=False)
+
+    remote_mutex.add_argument('-k', '--kill', help="switch to kill mode", action="store_true")
+    remote_mutex.add_argument('-c', '--check', help="Run a component check", action="store_true")
 
     args = parser.parse_args()
     logger.debug(args)
@@ -552,8 +574,12 @@ def main():
 
     elif args.cmd == 'slave':
         logger.debug("Launching slave mode")
-        sl = SlaveLauncher(args.config, args.kill)
-        sl.init()
+        sl = SlaveLauncher(args.config, args.kill, args.check)
+
+        if args.check:
+            sl.run_check()
+        else:
+            sl.init()
 
 
 ###################
