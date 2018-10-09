@@ -18,6 +18,7 @@ from PyQt4 import QtGui
 import hyperGUI
 
 FORMAT = "%(asctime)s: %(name)s [%(levelname)s]:\t%(message)s"
+DEFAULT_WAIT_TIME = 5.0
 
 logging.basicConfig(level=logging.WARNING, format=FORMAT, datefmt='%I:%M:%S')
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
@@ -197,6 +198,9 @@ class ControlCenter:
                     self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_name, comp['name']))
                     self.start_component_without_deps(node.component)
 
+                    # Wait component time for startup
+                    sleep(get_component_wait(comp))
+
                     tries = 0
                     while True:
                         self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_name, state))
@@ -204,7 +208,7 @@ class ControlCenter:
                         if (state is not CheckState.RUNNING or
                            state is not CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
-                        if tries > 100:
+                        if tries > 10:
                             return False
                         tries = tries + 1
                         sleep(.5)
@@ -467,6 +471,13 @@ def get_window_pid(window):
     r = window.cmd('list-panes',
                    "-F #{pane_pid}")
     return [int(p) for p in r.stdout]
+
+
+def get_component_wait(comp):
+    if 'wait' in comp:
+        return float(comp['wait'])
+    else:
+        return DEFAULT_WAIT_TIME
 
 ###################
 # TMUX

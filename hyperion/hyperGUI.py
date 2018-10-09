@@ -202,6 +202,8 @@ class UiMainWindow(object):
                 self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
                 hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
 
+        # Component wait time before check
+        sleep(hyperion.get_component_wait(comp))
         self.handleCheckButton(comp)
 
         term_toggle = self.centralwidget.findChild(QtGui.QCheckBox, "term_toggle_%s" % comp['name'])
@@ -383,8 +385,8 @@ class StartWorker(QtCore.QObject):
                     tries = 0
                     logger.debug("Starting dep %s" % dep.comp_name)
                     control_center.start_component_without_deps(dep.component)
-                    # Wait a second for startup
-                    sleep(1)
+                    # Component wait time for startup
+                    sleep(hyperion.get_component_wait(dep.component))
                     while True:
                         sleep(.5)
                         ret = control_center.check_component(dep.component)
@@ -410,8 +412,8 @@ class StartWorker(QtCore.QObject):
             logger.debug("Done starting")
             control_center.start_component_without_deps(comp)
 
-            # Wait a sec for startup
-            sleep(1)
+            # Component wait time for startup
+            sleep(hyperion.get_component_wait(comp))
 
             tries = 0
             while True:
