@@ -9,13 +9,32 @@ import socket
 import argparse
 from psutil import Process
 from subprocess import call
-from graphviz import Digraph
 from enum import Enum
 from time import sleep
 
 import sys
-from PyQt4 import QtGui
-import hyperGUI
+###########################
+# Optional feature imports
+###########################
+try:
+    from PyQt4 import QtGui
+except ImportError:
+    gui_enabled = False
+else:
+    print("Found python-qt. GUI is available")
+    print(QtGui)
+    import hyperGUI
+    gui_enabled = True
+
+try:
+    from graphviz import Digraph
+except ImportError:
+    graph_enabled = False
+else:
+    print("Found graphviz. Generating dep graph pdf is available")
+    print(Digraph)
+    graph_enabled = True
+
 
 FORMAT = "%(asctime)s: %(name)s [%(levelname)s]:\t%(message)s"
 DEFAULT_WAIT_TIME = 5.0
@@ -577,14 +596,19 @@ def main():
 
         cc = ControlCenter(args.config)
         cc.init()
-        start_gui(cc)
+        if gui_enabled:
+            start_gui(cc)
 
     elif args.cmd == 'validate':
         logger.debug("Launching validation mode")
         cc = ControlCenter(args.config)
         if args.visual:
             cc.set_dependencies(False)
-            cc.draw_graph()
+            if graph_enabled:
+                cc.draw_graph()
+            else:
+                logger.error("This feature requires graphviz. To use it install hyperion with the GRAPH option "
+                             "(pip install -e .['GRAPH'])")
         else:
             cc.set_dependencies(True)
 

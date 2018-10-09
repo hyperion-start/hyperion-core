@@ -8,6 +8,16 @@ Inspired by [vdemo](https://code.cor-lab.org/projects/vdemo) and [TMuLE](https:/
 ## How does it work
 Hyperion (like TMuLE) is written in Python and utilizes the [tmux library for python](https://github.com/tmux-python/libtmux) to start components in detached sessions. For each host defined in the components a master session is created, in which each component will be started in a window.
 
+## Installation
+
+To prevent this package from triggering a cascade of dependency requirements, the GUI (using PyQt4) and the visual validation mode (using graphviz) are optional. This comes in handy when installing on minimalistic systems which for instance do not provide an X server.
+
+The minimal Hyperion package can be installed via setuptools ```python setup.py install``` or via pip ```pip install .```
+
+To enable dependency graph visualisation, you need to install via pip with ```pip install -e .[GRAPH]``` (if you are running zsh, you need to escape the brackets: ```pip install -e .\[GRAPH\]```)
+
+Given the fact, that PyQt4 can not be handled by pip, it has to be installed via a package manager ```apt install python-qt4``` (on debian based distributions). Hyperion is able to detect if PyQt4 is installed at runtime and if so enable the GUI features.
+
 ## Usage
 
 Hyperion is planned to support various modes, but currently the main developing focus is set on the 'run' and the 'slave' mode:

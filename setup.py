@@ -18,7 +18,11 @@ setup(
     },
 
     version=VERSION,
-    install_requires=['libtmux', 'pyyaml', 'psutil', 'python-qt', 'graphviz'],
+    install_requires=['libtmux', 'pyyaml', 'psutil'],
+    extras_require={
+        'GRAPH': ['graphviz']
+    },
+
     description='The Hyperion Launch Engine',
     author='David Leins',
     author_email='dleins@techfak.uni-bielefeld.de',
