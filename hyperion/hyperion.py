@@ -22,7 +22,6 @@ except ImportError:
     gui_enabled = False
 else:
     print("Found python-qt. GUI is available")
-    print(QtGui)
     import hyperGUI
     gui_enabled = True
 
@@ -32,7 +31,6 @@ except ImportError:
     graph_enabled = False
 else:
     print("Found graphviz. Generating dep graph pdf is available")
-    print(Digraph)
     graph_enabled = True
 
 
