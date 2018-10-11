@@ -54,6 +54,12 @@ class CheckState(Enum):
     DEP_FAILED = 4
 
 
+class StartState(Enum):
+    STARTED = 0
+    ALREADY_RUNNING = 1
+    FAILED = 2
+
+
 class ControlCenter:
 
     def __init__(self, configfile=None):
@@ -226,7 +232,7 @@ class ControlCenter:
                            state is not CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
                         if tries > 10:
-                            return False
+                            return StartState.FAILED
                         tries = tries + 1
                         sleep(.5)
 
@@ -235,9 +241,10 @@ class ControlCenter:
         if (state is CheckState.STARTED_BY_HAND or
                 state is CheckState.RUNNING):
             self.logger.debug("Component %s is already running. Skipping start" % comp['name'])
+            return StartState.ALREADY_RUNNING
         else:
             self.start_component_without_deps(comp)
-        return True
+        return StartState.STARTED
 
     def start_component_without_deps(self, comp):
         if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
@@ -280,10 +287,36 @@ class ControlCenter:
         return [self.nodes.get(node).comp_name for node in self.nodes]
 
     def start_by_cli(self, comp_name):
-        self.logger.debug("NYI")
+        logger = logging.getLogger('CLI-RESPONSE')
+
+        comp = get_component_by_name(comp_name, self.config)
+        if comp == 1:
+            logger.info("No component named '%s' was found!" % comp_name)
+            return
+
+        logger.info("Starting component '%s' ..." % comp_name)
+        ret = self.start_component(comp)
+        if ret is StartState.STARTED:
+            logger.info("Started component '%s'" % comp_name)
+            sleep(get_component_wait(comp))
+            ret = check_component(comp, self.session, self.logger)
+            logger.info("Check returned status: %s" % ret.name)
+        elif ret is StartState.FAILED:
+            logger.info("Starting '%s' failed!" % comp_name)
+        elif ret is StartState.ALREADY_RUNNING:
+            logger.info("Aborted '%s' start: Component is already running!" % comp_name)
 
     def stop_by_cli(self, comp_name):
-        self.logger.debug("NYI")
+        logger = logging.getLogger('CLI-RESPONSE')
+        comp = get_component_by_name(comp_name, self.config)
+        if comp == 1:
+            logger.info("No component named '%s' was found!" % comp_name)
+            return
+        logger.info("Stopping component '%s' ...")
+        self.stop_component(comp)
+        sleep(2)
+        ret = check_component(comp, self.session, self.logger)
+        logger.info("Check returned status: %s" % ret.name)
 
     def check_by_cli(self, comp_name):
         logger = logging.getLogger('CLI-RESPONSE')
@@ -665,9 +698,11 @@ def main():
             if args.comp_start:
                 logger.debug("Chose start %s" % args.component)
                 for comp in comps:
-                    cc.start_component(get_component_by_name(comp, cc.config))
+                    cc.start_by_cli(comp)
             if args.comp_stop:
                 logger.debug("Chose stop %s" % args.component)
+                for comp in comps:
+                    cc.stop_by_cli(comp)
             if args.comp_check:
                 logger.debug("Chose check %s" % args.component)
                 for comp in comps:
