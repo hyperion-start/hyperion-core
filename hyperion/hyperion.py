@@ -274,6 +274,35 @@ class ControlCenter:
             return CheckState(ret)
 
     ###################
+    # CLI Functions
+    ###################
+    def list_components(self):
+        return [self.nodes.get(node).comp_name for node in self.nodes]
+
+    def start_by_cli(self, comp_name):
+        self.logger.debug("NYI")
+
+    def stop_by_cli(self, comp_name):
+        self.logger.debug("NYI")
+
+    def check_by_cli(self, comp_name):
+        logger = logging.getLogger('CLI-RESPONSE')
+        logger.info("Checking component %s ..." % comp_name)
+        comp = get_component_by_name(comp_name, self.config)
+
+        if comp == 1:
+            logger.info("No component named '%s' was found!" % comp_name)
+            return
+        ret = check_component(comp, self.session, self.logger)
+        logger.info("Check returned status: %s" % ret.name)
+
+    def start_clone_session_and_attach(self, comp_name):
+        self.logger.debug("NYI")
+
+    def show_comp_log(self, comp_name):
+        self.logger.debug("NYI")
+
+    ###################
     # Dependency management
     ###################
     def get_dep_list(self, comp):
@@ -430,6 +459,7 @@ class SlaveLauncher:
         check_state = check_component(self.config, self.session, self.logger)
         exit(check_state.value)
 
+
 ###################
 # Component Management
 ###################
@@ -495,6 +525,14 @@ def get_component_wait(comp):
         return float(comp['wait'])
     else:
         return DEFAULT_WAIT_TIME
+
+
+def get_component_by_name(comp_name, config):
+    for group in config['groups']:
+        for comp in group['components']:
+            if comp['name'] == comp_name:
+                return comp
+    return 1;
 
 ###################
 # TMUX
@@ -567,7 +605,22 @@ def main():
     subparser_editor = subparsers.add_parser('edit', help="Launches the editor to edit or create new systems and "
                                                           "components")
     # Create parser for the run command
-    subparser_run = subparsers.add_parser('run', help="Launches the setup specified by the --config argument")
+    subparser_cli = subparsers.add_parser('cli', help="Launches the setup specified by the --config argument and "
+                                                      "executes the given submode")
+
+    subparser_cli.add_argument('-C', '--component', metavar='COMP', help="single component or list for a component "
+                                                                         "specific action", default='all', nargs='+')
+
+    comp_mutex = subparser_cli.add_mutually_exclusive_group(required=True)
+
+    comp_mutex.add_argument('-l', '--list', help="List all available components", action="store_true")
+    comp_mutex.add_argument('-s', '--start', help="start the component", dest='comp_start', action="store_true")
+    comp_mutex.add_argument('-k', '--stop', help="Stop the component", dest='comp_stop', action="store_true")
+    comp_mutex.add_argument('-c', '--check', help="Check the component", dest='comp_check', action="store_true")
+
+    subparser_gui = subparsers.add_parser('gui', help="Launches the setup specified by the --config argument and "
+                                                      "start the GUI")
+
     # Create parser for validator
     subparser_val = subparsers.add_parser('validate', help="Validate the setup specified by the --config argument")
 
@@ -589,13 +642,47 @@ def main():
     if args.cmd == 'edit':
         logger.debug("Launching editor mode")
 
-    elif args.cmd == 'run':
-        logger.debug("Launching runner mode")
+    if args.cmd == 'cli':
+        clilogger = logging.getLogger('CLI-RESPONSE')
+        clilogger.setLevel(logging.DEBUG)
+        logger.debug("Launching cli mode")
 
         cc = ControlCenter(args.config)
         cc.init()
+
+        if args.list:
+            logger.debug("Chose --list option")
+            if args.component != 'all':
+                logger.warning("Specifying a component with the -C option is useless in combination with the "
+                               "--list option!")
+            clilogger.info("List of all components included in the current configuration:\t%s" % cc.list_components())
+        else:
+            logger.debug("Chose comp specific operation:")
+            comps = args.component
+            if comps == 'all':
+                comps = cc.list_components()
+
+            if args.comp_start:
+                logger.debug("Chose start %s" % args.component)
+                for comp in comps:
+                    cc.start_component(get_component_by_name(comp, cc.config))
+            if args.comp_stop:
+                logger.debug("Chose stop %s" % args.component)
+            if args.comp_check:
+                logger.debug("Chose check %s" % args.component)
+                for comp in comps:
+                    cc.check_by_cli(comp)
+
+    elif args.cmd == 'gui':
         if gui_enabled:
+            logger.debug("Launching GUI runner mode")
+
+            cc = ControlCenter(args.config)
+            cc.init()
             start_gui(cc)
+        else:
+            logger.error("To use this feature you need PyQt4! Check the README.md for install instructions")
+            sys.exit(1)
 
     elif args.cmd == 'validate':
         logger.debug("Launching validation mode")
