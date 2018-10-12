@@ -5,6 +5,7 @@ from setupParser import Loader
 from DepTree import Node, dep_resolve, CircularReferenceException
 import logging
 import os
+import signal
 import socket
 import argparse
 from psutil import Process
@@ -619,9 +620,17 @@ def kill_window(window):
 
 
 def start_window(window, cmd, log_file, comp_name):
+    pid = get_window_pid(window)
+    procs = []
+    for entry in pid:
+        procs.extend(Process(entry).children(recursive=True))
+
+    for proc in procs:
+        print("Killing %s" % proc.name())
+        os.kill(proc.pid, signal.SIGTERM)
+
     setup_log(window, log_file, comp_name)
     window.cmd("send-keys", cmd, "Enter")
-
 
 def find_window(session, window_name):
     window = session.find_where({
@@ -639,6 +648,7 @@ def send_main_session_command(session, cmd):
 ###################
 def setup_log(window, file, comp_name):
     clear_log(file)
+    ensure_dir(file)
     # Reroute stderr to log file
     window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % file, "Enter")
     # Reroute stdin to log file
