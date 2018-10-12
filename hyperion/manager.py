@@ -40,6 +40,7 @@ class StartState(Enum):
     ALREADY_RUNNING = 1
     FAILED = 2
 
+
 ###################
 # Logging
 ###################
@@ -280,13 +281,13 @@ class ControlCenter(AbstractController):
             node = self.nodes.get(name)
 
             # Add edges from each node to pseudo node
-            master_node.addEdge(node)
+            master_node.add_edge(node)
 
             # Add edges based on dependencies specified in the configuration
             if "depends" in node.component:
                 for dep in node.component['depends']:
                     if dep in self.nodes:
-                        node.addEdge(self.nodes[dep])
+                        node.add_edge(self.nodes[dep])
                     else:
                         self.logger.error("Unmet dependency: '%s' for component '%s'!" % (dep, node.comp_name))
                         if exit_on_fail:
@@ -555,37 +556,6 @@ class ControlCenter(AbstractController):
         remote_cmd = ("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name))
         cmd = "ssh %s 'bash -s' < %s" % (hostname, remote_cmd)
         self.send_main_session_command(cmd)
-
-    ###################
-    # Visualisation
-    ###################
-    def draw_graph(self):
-        deps = Digraph("Deps", strict=True)
-        deps.graph_attr.update(rankdir="BT")
-        try:
-            node = self.nodes.get('master_node')
-
-            for current in node.depends_on:
-                deps.node(current.comp_name)
-
-                res = []
-                unres = []
-                dep_resolve(current, res, unres)
-                for node in res:
-                    if "depends" in node.component:
-                        for dep in node.component['depends']:
-                            if dep not in self.nodes:
-                                deps.node(dep, color="red")
-                                deps.edge(node.comp_name, dep, "missing", color="red")
-                            elif node.comp_name is not "master_node":
-                                deps.edge(node.comp_name, dep)
-
-        except CircularReferenceException as ex:
-            self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
-            deps.edge(ex.node1, ex.node2, "circular error", color="red")
-            deps.edge(ex.node2, ex.node1, color="red")
-
-        deps.view()
 
 
 class SlaveLauncher(AbstractController):

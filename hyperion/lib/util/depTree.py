@@ -1,9 +1,11 @@
 import sys
 
+
 class CircularReferenceException(Exception):
     def __init__(self, node1, node2):
         self.node1 = node1
         self.node2 = node2
+
 
 class Node(object):
     pass
@@ -13,7 +15,7 @@ class Node(object):
         self.depends_on = []
         self.comp_name = comp['name']
 
-    def addEdge(self, node):
+    def add_edge(self, node):
         self.depends_on.append(node)
 
 

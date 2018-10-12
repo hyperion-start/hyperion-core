@@ -2,6 +2,7 @@ import logging
 import argparse
 import sys
 from manager import ControlCenter, SlaveLauncher
+from lib.util.depTree import CircularReferenceException, dep_resolve
 
 ###########################
 # Optional feature imports
@@ -21,6 +22,14 @@ except ImportError:
 else:
     graph_enabled = True
 
+try:
+    import user_interfaces.interactiveCLI as interactiveCLI
+except ImportError:
+    interactive_enabled = False
+else:
+    print("Found urwid. Interactive CLI mode is available")
+    interactive_enabled = True
+
 
 ###################
 # GUI
@@ -32,6 +41,38 @@ def start_gui(control_center):
     ui.ui_init(main_window, control_center)
     main_window.show()
     sys.exit(app.exec_())
+
+
+###################
+# Visualisation
+###################
+def draw_graph(control_center):
+    deps = Digraph("Deps", strict=True)
+    deps.graph_attr.update(rankdir="BT")
+    try:
+        node = control_center.nodes.get('master_node')
+
+        for current in node.depends_on:
+            deps.node(current.comp_name)
+
+            res = []
+            unres = []
+            dep_resolve(current, res, unres)
+            for node in res:
+                if "depends" in node.component:
+                    for dep in node.component['depends']:
+                        if dep not in control_center.nodes:
+                            deps.node(dep, color="red")
+                            deps.edge(node.comp_name, dep, "missing", color="red")
+                        elif node.comp_name is not "master_node":
+                            deps.edge(node.comp_name, dep)
+
+    except CircularReferenceException as ex:
+        control_center.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
+        deps.edge(ex.node1, ex.node2, "circular error", color="red")
+        deps.edge(ex.node2, ex.node1, color="red")
+
+    deps.view()
 
 
 def main():
@@ -57,6 +98,7 @@ def main():
 
     comp_mutex = subparser_cli.add_mutually_exclusive_group(required=True)
 
+    comp_mutex.add_argument('-I', '--interactive', help="Start interactive cli mode", action="store_true")
     comp_mutex.add_argument('-l', '--list', help="List all available components", action="store_true")
     comp_mutex.add_argument('-s', '--start', help="start the component", dest='comp_start', action="store_true")
     comp_mutex.add_argument('-k', '--stop', help="Stop the component", dest='comp_stop', action="store_true")
@@ -94,7 +136,13 @@ def main():
         cc = ControlCenter(args.config)
         cc.init()
 
-        if args.list:
+        if args.interactive:
+            logger.debug("Chose interactive mode")
+            if interactive_enabled:
+                interactiveCLI.main(cc)
+            else:
+                clilogger.error("To use this feature you need urwid! Check the README.md for install instructions")
+        elif args.list:
             logger.debug("Chose --list option")
             if args.component != 'all':
                 logger.warning("Specifying a component with the -C option is useless in combination with the "
@@ -136,7 +184,7 @@ def main():
         if args.visual:
             cc.set_dependencies(False)
             if graph_enabled:
-                cc.draw_graph()
+                draw_graph(cc)
             else:
                 logger.error("This feature requires graphviz. To use it install hyperion with the GRAPH option "
                              "(pip install -e .['GRAPH'])")
