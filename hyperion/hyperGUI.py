@@ -8,8 +8,8 @@ from time import sleep
 from DepTree import Node
 
 BASE_DIR = os.path.dirname(__file__)
-SCRIPT_CLONE_PATH = ("%s/scripts/start_named_clone_session.sh" % BASE_DIR)
 SCRIPT_SHOW_TERM_PATH = ("%s/scripts/show_term.sh" % BASE_DIR)
+
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -113,6 +113,7 @@ class UiMainWindow(object):
         log_button = QtGui.QPushButton(scrollAreaWidgetContents)
         log_button.setObjectName("log_button_%s" % comp['name'])
         log_button.setText("view log")
+        log_button.clicked.connect(lambda: self.handleLogButton(comp))
 
         comp_label.raise_()
         comp_label.setText(("%s@%s" % (comp['name'], comp['host'])))
@@ -134,6 +135,20 @@ class UiMainWindow(object):
         check_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
         return horizontalLayout_components
+
+    def handleLogButton(self, comp):
+        self.logger.debug("%s show log button pressed" % comp['name'])
+
+        cmd = "tail -n +1 -f %s/%s/latest.log" % (hyperion.TMP_LOG_PATH, comp['name'])
+
+        if self.control_center.run_on_localhost(comp):
+            term = subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
+
+        else:
+            term = subprocess.Popen(['xterm', '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
+                                    stdout=subprocess.PIPE)
+
+
 
     def handleStartButton(self, comp):
         self.logger.debug("%s start button pressed" % comp['name'])
