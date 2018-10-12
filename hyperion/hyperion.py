@@ -184,7 +184,7 @@ class ControlCenter:
         is_up  = True if os.system("ping -c 1 -w 2 " + hostname) is 0 else False
         if is_up:
             self.logger.debug("Host %s is reachable via ping" % hostname)
-            ssh_success = True if os.system("ssh %s -o BatchMode=yes -o ConnectTimeout=5" % hostname) is 0 else False
+            ssh_success = True if os.system("ssh %s -n -o BatchMode=yes -o ConnectTimeout=5" % hostname) is 0 else False
             if ssh_success:
                 self.logger.debug("ssh connection to %s succeeded" % hostname)
                 return True
