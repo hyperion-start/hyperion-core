@@ -654,8 +654,8 @@ def setup_log(window, file, comp_name):
     window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % file, "Enter")
     # Reroute stdout to log file
     window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % file, "Enter")
-    # Reroute stdin to log file
-    window.cmd("send-keys", "exec 0> >(exec tee -i -a '%s')" % file, "Enter")
+    # Reroute stdin to log file <== causes remote host to logout, disabled for now
+    #window.cmd("send-keys", "exec 0> >(exec tee -i -a '%s')" % file, "Enter")
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\n$(date)"' % comp_name), "Enter")
 
 
