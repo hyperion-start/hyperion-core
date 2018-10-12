@@ -23,7 +23,6 @@ try:
 except ImportError:
     gui_enabled = False
 else:
-    print("Found python-qt. GUI is available")
     import hyperGUI
     gui_enabled = True
 
