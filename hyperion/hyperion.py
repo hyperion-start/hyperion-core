@@ -647,10 +647,15 @@ def send_main_session_command(session, cmd):
 def setup_log(window, file, comp_name):
     clear_log(file)
     ensure_dir(file)
+
+    window.cmd("send-keys", "exec > /dev/tty", "Enter")
+
     # Reroute stderr to log file
     window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % file, "Enter")
-    # Reroute stdin to log file
+    # Reroute stdout to log file
     window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % file, "Enter")
+    # Reroute stdin to log file
+    window.cmd("send-keys", "exec 0> >(exec tee -i -a '%s')" % file, "Enter")
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\n$(date)"' % comp_name), "Enter")
 
 
@@ -664,6 +669,7 @@ def ensure_dir(file_path):
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
         os.makedirs(directory)
+        
 
 ###################
 # Startup
