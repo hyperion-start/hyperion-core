@@ -8,6 +8,7 @@ import os
 import signal
 import socket
 import argparse
+import uuid
 from psutil import Process
 from subprocess import call
 from enum import Enum
@@ -166,8 +167,6 @@ class ControlCenter:
                 exit(1)
 
     def copy_component_to_remote(self, infile, comp, host):
-        self.host_list.append(host)
-
         self.logger.debug("Saving component to tmp")
         tmp_comp_path = ('%s/%s.yaml' % (TMP_COMP_DIR, comp))
         ensure_dir(tmp_comp_path)
@@ -277,7 +276,7 @@ class ControlCenter:
             self.logger.debug("Starting remote component '%s' on host '%s'" % (comp['name'], comp['host']))
             self.start_remote_component(comp['name'], comp['host'])
         else:
-            log_file = ("%s/%s" % (TMP_LOG_PATH, comp['name']))
+            log_file = ("%s/%s/latest.log" % (TMP_LOG_PATH, comp['name']))
             window = find_window(self.session, comp['name'])
 
             if window:
@@ -484,8 +483,7 @@ class SlaveLauncher:
         if configfile:
             self.load_config(configfile)
             self.window_name = self.config['name']
-            self.flag_path = ("/tmp/Hyperion/slaves/%s" % self.window_name)
-            self.log_file = ("/tmp/Hyperion/log/%s" % self.window_name)
+            self.log_file = ("%s/%s/latest.log" % (TMP_LOG_PATH, self.window_name))
             ensure_dir(self.log_file)
         else:
             self.logger.error("No slave component config provided")
@@ -602,7 +600,7 @@ def get_component_by_name(comp_name, config):
         for comp in group['components']:
             if comp['name'] == comp_name:
                 return comp
-    return 1;
+    return 1
 
 ###################
 # TMUX
@@ -658,7 +656,8 @@ def setup_log(window, file, comp_name):
 
 def clear_log(file_path):
     if os.path.isfile(file_path):
-        os.remove(file_path)
+        directory = os.path.dirname(file_path)
+        os.rename(file_path, "%s/%s.log" % (directory, uuid.uuid4().hex))
 
 
 def ensure_dir(file_path):
