@@ -68,7 +68,7 @@ class ControlCenter:
         self.configfile = configfile
         self.nodes = {}
         self.server = []
-        self.host_list = []
+        self.host_list = {}
 
         if configfile:
             self.load_config(configfile)
@@ -114,10 +114,12 @@ class ControlCenter:
                                       (comp['name'], group['name'], comp['host']))
 
                     if comp['host'] != "localhost" and not self.run_on_localhost(comp):
-                        self.copy_component_to_remote(comp, comp['name'], comp['host'])
-
-            # Remove duplicate hosts
-            self.host_list = list(set(self.host_list))
+                        if comp['host'] not in self.host_list:
+                            if self.host_reachable(comp['host']):
+                                self.copy_component_to_remote(comp, comp['name'], comp['host'])
+                                self.host_list[comp['host']] = True
+                            else:
+                                self.host_list[comp['host']] = False
 
             self.set_dependencies(True)
 
@@ -177,6 +179,24 @@ class ControlCenter:
         self.logger.debug(cmd)
         send_main_session_command(self.session, cmd)
 
+    def host_reachable(self, hostname):
+        # https://stackoverflow.com/questions/2535055/check-if-remote-host-is-up-in-python
+        is_up  = True if os.system("ping -c 1 -w 2 " + hostname) is 0 else False
+        if is_up:
+            self.logger.debug("Host %s is reachable via ping" % hostname)
+            ssh_success = True if os.system("ssh %s -o BatchMode=yes -o ConnectTimeout=5" % hostname) is 0 else False
+            if ssh_success:
+                self.logger.debug("ssh connection to %s succeeded" % hostname)
+                return True
+            else:
+                self.logger.error("ssh connection to %s failed! Check if an ssh connection is allowed or if the "
+                                  "certificate has to be renewed" % hostname)
+                return False
+        else:
+            self.logger.error("Host %s not reachable" % hostname)
+            return False
+
+
     ###################
     # Stop
     ###################
@@ -195,6 +215,11 @@ class ControlCenter:
 
     def stop_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
+
+        if not self.host_list[host]:
+            self.logger.error("Host %s is unreachable. Can not stop component %s" % (host, comp_name))
+            return
+
         cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave --kill'" % (host, TMP_SLAVE_DIR, comp_name))
         self.logger.debug("Run cmd:\n%s" % cmd)
         send_main_session_command(self.session, cmd)
@@ -264,6 +289,11 @@ class ControlCenter:
 
     def start_remote_component(self, comp_name, host):
         # invoke Hyperion in slave mode on each remote host
+
+        if not self.host_list[host]:
+            self.logger.error("Hot %s is not reachable. Can not start component %s" % (host, comp_name))
+            return
+
         cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave'" % (host, TMP_SLAVE_DIR, comp_name))
         self.logger.debug("Run cmd:\n%s" % cmd)
         send_main_session_command(self.session, cmd)
@@ -276,9 +306,15 @@ class ControlCenter:
             return check_component(comp, self.session, self.logger)
         else:
             self.logger.debug("Starting remote check")
-            cmd = "ssh %s 'hyperion --config %s/%s.yaml slave -c'" % (comp['host'], TMP_SLAVE_DIR, comp['name'])
-            ret = call(cmd, shell=True)
-            return CheckState(ret)
+            if self.host_list[comp['host']]:
+                cmd = "ssh %s 'hyperion --config %s/%s.yaml slave -c'" % (comp['host'], TMP_SLAVE_DIR, comp['name'])
+                ret = call(cmd, shell=True)
+                return CheckState(ret)
+            else:
+                self.logger.error("Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
+                                                                                                   comp['name']))
+                # TODO: add unreachable CheckState
+                return CheckState.STOPPED
 
     ###################
     # CLI Functions
