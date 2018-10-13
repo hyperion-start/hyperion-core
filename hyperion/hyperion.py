@@ -35,7 +35,7 @@ else:
     graph_enabled = True
 
 
-FORMAT = "%(asctime)s: %(name)s [%(levelname)s]:\t%(message)s"
+FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]:\t%(message)s"
 DEFAULT_WAIT_TIME = 5.0
 
 logging.basicConfig(level=logging.WARNING, format=FORMAT, datefmt='%I:%M:%S')
