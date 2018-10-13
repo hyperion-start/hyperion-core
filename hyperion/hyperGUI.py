@@ -91,7 +91,7 @@ class UiMainWindow(object):
         start_button.setText("start")
         start_button.clicked.connect(lambda: self.handleStartButton(comp))
 
-        stop_button = QtGui.QPushButton(scrollAreaWidgetContents)
+        stop_button = BlinkButton(scrollAreaWidgetContents)
         stop_button.setObjectName("stop_button_%s" % comp['name'])
         stop_button.setText("stop")
         stop_button.clicked.connect(lambda: self.handleStopButton(comp))
@@ -209,7 +209,6 @@ class UiMainWindow(object):
 
     def handleStopButton(self, comp):
         self.logger.debug("%s stop button pressed" % comp['name'])
-        self.control_center.stop_component(comp)
 
         if comp['name'] in self.terms:
             term = self.terms[comp['name']]
@@ -217,9 +216,34 @@ class UiMainWindow(object):
                 self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
                 hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
 
-        # Component wait time before check
-        sleep(hyperion.get_component_wait(comp))
-        self.handleCheckButton(comp)
+        stop_worker = StopWorker()
+        thread = QtCore.QThread()
+        stop_worker.moveToThread(thread)
+        stop_worker.done.connect(thread.quit)
+        stop_worker.done.connect(partial(self.handleCheckButton, comp))
+
+        thread.started.connect(partial(stop_worker.run_stop, self.control_center, comp))
+
+        stop_button = self.centralwidget.findChild(QtGui.QPushButton,
+                                                    "stop_button_%s" % comp['name'])  # type: QtGui.QPushButton
+        anim = QtCore.QPropertyAnimation(
+            stop_button,
+            "color",
+        )
+
+        stop_button.setStyleSheet("")
+        stop_button.setEnabled(False)
+
+        anim.setDuration(1000)
+        anim.setLoopCount(100)
+        anim.setStartValue(QtGui.QColor(255, 255, 255))
+        anim.setEndValue(QtGui.QColor(0, 0, 0))
+        anim.start()
+
+        self.animations[("stop_%s" % comp['name'])] = anim
+
+        thread.start()
+        self.threads.append(thread)
 
         term_toggle = self.centralwidget.findChild(QtGui.QCheckBox, "term_toggle_%s" % comp['name'])
         if term_toggle.isChecked():
@@ -329,6 +353,12 @@ class UiMainWindow(object):
             self.animations.pop("check_%s" % comp_name).stop()
             check_button.setColor(QtGui.QColor(255,255,255))
 
+        if self.animations.has_key("stop_%s" % comp_name):
+            self.animations.pop("stop_%s" % comp_name).stop()
+            stop_button = self.centralwidget.findChild(QtGui.QPushButton, "stop_button_%s" % comp_name)
+            stop_button.setColor(QtGui.QColor(255,255,255))
+            stop_button.setEnabled(True)
+
     @QtCore.pyqtSlot(int, dict, str)
     def start_button_callback(self, check_state, comp, failed_name):
 
@@ -370,6 +400,24 @@ class CheckWorkerThread(QtCore.QObject):
     @QtCore.pyqtSlot()
     def run_check(self, control_center, comp):
         self.check_signal.emit((control_center.check_component(comp)).value, comp['name'])
+        self.done.emit()
+
+
+class StopWorker(QtCore.QObject):
+    done = QtCore.pyqtSignal()
+
+    def __init__(self, parent=None):
+        super(self.__class__, self).__init__(parent)
+
+    @QtCore.pyqtSlot()
+    def run_stop(self, control_center, comp):
+        logger = logging.getLogger(__name__)
+        logger.debug("Running stop")
+        control_center.stop_component(comp)
+        # Component wait time before check
+        logger.debug("Waiting component wait time")
+        sleep(hyperion.get_component_wait(comp))
+        logger.debug("Done stopping")
         self.done.emit()
 
 
