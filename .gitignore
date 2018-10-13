@@ -6,3 +6,4 @@ dist/
 Deps.*
 debug-result.yml
 test*
+*.pyc
