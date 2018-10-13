@@ -20,7 +20,9 @@ setup(
     version=VERSION,
     install_requires=['libtmux', 'pyyaml', 'psutil'],
     extras_require={
-        'GRAPH': ['graphviz']
+        'GRAPH': ['graphviz'],
+        'INTERACTIVE': ['urwid'],
+        'FULL': ['graphviz', 'urwid']
     },
 
     description='The Hyperion Launch Engine',
