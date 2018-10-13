@@ -1,12 +1,10 @@
 name: nav
 
 cmd:
-  - start: echo "nav"
-  - check: pgrep rviz
+  - start: ros_env;
   - stop: echo "shutdown"
 
 depends:
   - roscore
-  - sim
 
 host: cor-dell

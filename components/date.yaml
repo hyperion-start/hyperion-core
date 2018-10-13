@@ -2,7 +2,7 @@ name: date
 
 cmd:
   - start: date
-  - check: pgrep date
+  - check: date  > /dev/null
   - stop: echo "shutdown"
 
 host: localhost

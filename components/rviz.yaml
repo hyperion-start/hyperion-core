@@ -1,7 +1,7 @@
 name: rviz
 
 cmd:
-  - start: rviz
+  - start: ros_env; rviz
   - check: pgrep rviz
   - stop: echo "shutdown"
 
@@ -9,4 +9,6 @@ depends:
   - roscore
   - nav
 
-host: cor-dell
+wait: 5
+
+host: localhost

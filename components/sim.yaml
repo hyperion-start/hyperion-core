@@ -1,10 +1,13 @@
 name: sim
 
 cmd:
-  - start: echo "started sim"
+  - start: gzserver --verbose
+  - check: pgrep gzclient
   - stop: echo "shutdown"
 
 depends:
-  - roscore
+  - rviz
+
+wait: 3
 
 host: cor-dell

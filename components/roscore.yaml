@@ -1,8 +1,10 @@
 name: roscore
 
 cmd:
-  - start: roscore
+  - start: ros_env && stdbuf -oL -eL roscore
   - check: pgrep roscore
   - stop: echo "shutdown"
+
+wait: 2
 
 host: localhost
