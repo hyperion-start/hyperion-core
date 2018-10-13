@@ -2,7 +2,7 @@ name: sim
 
 cmd:
   - start: gzserver --verbose
-  - check: pgrep gzclient
+  - check: pgrep gzclient > /dev/null
   - stop: echo "shutdown"
 
 depends:

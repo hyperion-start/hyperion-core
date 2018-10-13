@@ -2,6 +2,7 @@ name: ls
 
 cmd:
   - start: ls
+  - check: pgrep roscore > /dev/null
   - stop: echo "shutdown"
 
 host: localhost

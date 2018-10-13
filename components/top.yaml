@@ -2,7 +2,7 @@ name: top
 
 cmd:
   - start: top
-  - check: pgrep top
+  - check: pgrep top > /dev/null
   - stop: echo "shutdown"
 
 depends:

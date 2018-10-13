@@ -2,7 +2,7 @@ name: roscore
 
 cmd:
   - start: ros_env && stdbuf -oL -eL roscore
-  - check: pgrep roscore
+  - check: pgrep roscore > /dev/null
   - stop: echo "shutdown"
 
 wait: 2

@@ -2,7 +2,7 @@ name: xeyes
 
 cmd:
   - start: xeyes
-  - check: pgrep xeyes
+  - check: pgrep xeyes > /dev/null
   - stop: echo "shutdown"
 
 host: localhost
