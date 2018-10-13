@@ -356,7 +356,7 @@ class UiMainWindow(object):
             if retval == QtGui.QMessageBox.Retry:
                 self.handleStartButton(comp)
         else:
-            self.logger.debug("Starting '%s' succeeded without interference")
+            self.logger.debug("Starting '%s' succeeded without interference" % comp['name'])
             return
 
 
@@ -388,7 +388,6 @@ class StartWorker(QtCore.QObject):
         failed = False
         failed_comp = ""
 
-        print("Checking deps")
         for dep in comps:
             if not failed:
                 logger.debug("Checking dep %s" % dep.comp_name)
@@ -424,21 +423,23 @@ class StartWorker(QtCore.QObject):
 
         ret = hyperion.CheckState.DEP_FAILED
         if not failed:
-            logger.debug("Done starting")
+            logger.debug("Done starting dependencies. Now starting %s" % comp['name'])
             control_center.start_component_without_deps(comp)
 
             # Component wait time for startup
+            logger.debug("Waiting component startup wait time")
             sleep(hyperion.get_component_wait(comp))
 
             tries = 0
+            logger.debug("Running check to ensure start was successful")
             while True:
                 sleep(.5)
                 ret = control_center.check_component(comp)
                 if (ret is hyperion.CheckState.RUNNING or
-                        ret is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL) or tries > 10:
+                        ret is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL) or tries > 9:
                     break
+                logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
                 tries = tries + 1
-            ret = control_center.check_component(comp)
 
         self.intermediate.emit(ret.value, comp['name'])
         self.done.emit(ret.value, comp, failed_comp)
