@@ -33,6 +33,8 @@ class CheckState(Enum):
     STOPPED_BUT_SUCCESSFUL = 2
     STARTED_BY_HAND = 3
     DEP_FAILED = 4
+    UNREACHABLE = 5
+    NOT_INSTALLED = 6
 
 
 class StartState(Enum):
@@ -449,7 +451,10 @@ class ControlCenter(AbstractController):
             if self.host_list[comp['host']]:
                 cmd = "ssh %s 'hyperion --config %s/%s.yaml slave -c'" % (comp['host'], TMP_SLAVE_DIR, comp['name'])
                 ret = call(cmd, shell=True)
-                return CheckState(ret)
+                try:
+                    return CheckState(ret)
+                except ValueError:
+                    return CheckState.NOT_INSTALLED
             else:
                 self.logger.error("Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
                                                                                                    comp['name']))
