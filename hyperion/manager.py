@@ -374,6 +374,8 @@ class ControlCenter(AbstractController):
             window = self.session.new_window('ssh-%s' % hostname)
         window.cmd("send-keys", cmd, "Enter")
 
+        sleep(SSH_CONNECTION_TIMEOUT)
+
         pid = self.get_window_pid(window)
         procs = []
         for entry in pid:
@@ -392,7 +394,6 @@ class ControlCenter(AbstractController):
         # Add host to known list with process to poll from
         self.host_list[hostname] = ssh_proc
 
-        sleep(SSH_CONNECTION_TIMEOUT)
         self.logger.debug("Testing if connection was successful")
         if ssh_proc.is_running():
             self.logger.debug("SSH process still running. Connection was successful")
