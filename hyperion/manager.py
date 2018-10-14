@@ -14,8 +14,14 @@ from subprocess import call
 from enum import Enum
 from time import sleep
 from signal import *
-
+from lib.monitoring.threads import ComponentMonitorJob, HostMonitorJob, MonitoringThread
 import sys
+
+is_py2 = sys.version[0] == '2'
+if is_py2:
+    import Queue as queue
+else:
+    import queue as queue
 
 FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]:\t%(message)s"
 DEFAULT_WAIT_TIME = 5.0
@@ -227,6 +233,9 @@ class ControlCenter(AbstractController):
         super(ControlCenter, self).__init__(configfile)
         self.nodes = {}
         self.host_list = {}
+        self.monitor_queue = queue.Queue()
+        self.mon_thread = MonitoringThread(self.monitor_queue)
+        self.mon_thread.start()
 
         for sig in (SIGABRT, SIGILL, SIGINT, SIGSEGV, SIGTERM):
             signal(sig, self.signal_handler)
@@ -396,6 +405,8 @@ class ControlCenter(AbstractController):
 
         self.logger.debug("Testing if connection was successful")
         if ssh_proc.is_running():
+            self.logger.debug("Adding ssh master to monitor queue")
+            self.monitor_queue.put(HostMonitorJob(pids[0], 'ssh-%s' % hostname))
             self.logger.debug("SSH process still running. Connection was successful")
             return True
         else:
@@ -652,6 +663,9 @@ class ControlCenter(AbstractController):
 
     def cleanup(self):
         self.logger.info("Shutting down safely...")
+
+        self.logger.debug("Killing monitoring threads")
+        self.mon_thread.kill()
 
         for host in self.host_list:
             window = self.find_window('ssh-%s' % host)
