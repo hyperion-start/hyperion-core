@@ -347,6 +347,17 @@ class UiMainWindow(object):
 
             msg.exec_()
 
+        elif check_state is manager.CheckState.UNREACHABLE.value:
+            check_button.setStyleSheet("background-color: red")
+
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("Failed on '%s': Remote host not reachable!" % comp_name)
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
+
+            msg.exec_()
+
         check_button.setEnabled(True)
 
         if self.animations.has_key("start_%s" % comp_name):
@@ -461,7 +472,8 @@ class StartWorker(QtCore.QObject):
                         if (ret is manager.CheckState.RUNNING or
                                 ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
-                        if tries > 10:
+                        if tries > 10 or ret is manager.CheckState.NOT_INSTALLED or ret is \
+                                manager.CheckState.UNREACHABLE:
                             failed = True
                             failed_comp = dep.comp_name
                             ret = manager.CheckState.STOPPED
@@ -490,7 +502,9 @@ class StartWorker(QtCore.QObject):
                 sleep(.5)
                 ret = control_center.check_component(comp)
                 if (ret is manager.CheckState.RUNNING or
-                        ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL) or tries > 9:
+                        ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL or
+                        ret is manager.CheckState.UNREACHABLE or
+                        ret is manager.CheckState.NOT_INSTALLED) or tries > 9:
                     break
                 logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
                 tries = tries + 1
