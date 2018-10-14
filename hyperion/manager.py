@@ -529,7 +529,7 @@ class ControlCenter(AbstractController):
             return self.check_local_component(comp)
         else:
             self.logger.debug("Starting remote check")
-            if self.host_list[comp['host']]:
+            if self.host_list.get(comp['host']) is not None:
                 cmd = "ssh -F %s %s 'hyperion --config %s/%s.yaml slave -c'" % (CUSTOM_SSH_CONFIG_PATH, comp['host'], TMP_SLAVE_DIR, comp['name'])
                 ret = call(cmd, shell=True)
                 try:
@@ -539,8 +539,7 @@ class ControlCenter(AbstractController):
             else:
                 self.logger.error("Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
                                                                                                    comp['name']))
-                # TODO: add unreachable CheckState
-                return CheckState.STOPPED
+                return CheckState.UNREACHABLE
 
     ###################
     # CLI Functions
