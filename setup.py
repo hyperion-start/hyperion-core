@@ -8,13 +8,13 @@ setup(
     packages=find_packages(),
     entry_points={
         'console_scripts': [
-        'hyperion=hyperion:main',
+            'hyperion=hyperion:main',
         ],
     },
 
     package_data={
         # Include any files found in the 'scripts' subdirectory
-        '': ['scripts/*'],
+        '': ['bin/*'],
     },
 
     version=VERSION,

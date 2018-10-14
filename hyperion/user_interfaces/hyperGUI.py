@@ -1,14 +1,12 @@
-import hyperion
+import hyperion.manager as manager
 from PyQt4 import QtCore, QtGui
 import os
 import subprocess
 import logging
 from functools import partial
 from time import sleep
-from DepTree import Node
 
-BASE_DIR = os.path.dirname(__file__)
-SCRIPT_SHOW_TERM_PATH = ("%s/scripts/show_term.sh" % BASE_DIR)
+SCRIPT_SHOW_TERM_PATH = ("%s/bin/show_term.sh" % manager.BASE_DIR)
 
 
 try:
@@ -37,7 +35,7 @@ class UiMainWindow(object):
         self.threads = []
         self.animations = {}
 
-        self.control_center = control_center #type: hyperion.ControlCenter
+        self.control_center = control_center #type: manager.ControlCenter
         self.title = control_center.session_name
 
         self.logger.debug("title: %s" % self.title)
@@ -89,22 +87,22 @@ class UiMainWindow(object):
         start_button = BlinkButton('test', scrollAreaWidgetContents)
         start_button.setObjectName("start_button_%s" % comp['name'])
         start_button.setText("start")
-        start_button.clicked.connect(lambda: self.handleStartButton(comp))
+        start_button.clicked.connect(lambda: self.handle_start_button(comp))
 
         stop_button = BlinkButton(scrollAreaWidgetContents)
         stop_button.setObjectName("stop_button_%s" % comp['name'])
         stop_button.setText("stop")
-        stop_button.clicked.connect(lambda: self.handleStopButton(comp))
+        stop_button.clicked.connect(lambda: self.handle_stop_button(comp))
 
         check_button = BlinkButton(scrollAreaWidgetContents)
         check_button.setObjectName("check_button_%s" % comp['name'])
         check_button.setText("check")
-        check_button.clicked.connect(lambda: self.handleCheckButton(comp))
+        check_button.clicked.connect(lambda: self.handle_check_button(comp))
 
         term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
         term_toggle.setObjectName("term_toggle_%s" % comp['name'])
         term_toggle.setText("Show Term")
-        term_toggle.stateChanged.connect(lambda: self.handleTermToggleStateChanged(comp, term_toggle.isChecked()))
+        term_toggle.stateChanged.connect(lambda: self.handle_term_toggle_state_changed(comp, term_toggle.isChecked()))
 
         log_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
         log_toggle.setObjectName("log_toggle_%s" % comp['name'])
@@ -139,7 +137,7 @@ class UiMainWindow(object):
     def handleLogButton(self, comp):
         self.logger.debug("%s show log button pressed" % comp['name'])
 
-        cmd = "tail -n +1 -f %s/%s/latest.log" % (hyperion.TMP_LOG_PATH, comp['name'])
+        cmd = "tail -n +1 -f %s/%s/latest.log" % (manager.TMP_LOG_PATH, comp['name'])
 
         if self.control_center.run_on_localhost(comp):
             term = subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
@@ -148,9 +146,7 @@ class UiMainWindow(object):
             term = subprocess.Popen(['xterm', '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
                                     stdout=subprocess.PIPE)
 
-
-
-    def handleStartButton(self, comp):
+    def handle_start_button(self, comp):
         self.logger.debug("%s start button pressed" % comp['name'])
 
         start_worker = StartWorker()
@@ -207,20 +203,20 @@ class UiMainWindow(object):
         # Need to keep a surviving reference to the thread to save it from garbage collection
         self.threads.append(thread)
 
-    def handleStopButton(self, comp):
+    def handle_stop_button(self, comp):
         self.logger.debug("%s stop button pressed" % comp['name'])
 
         if comp['name'] in self.terms:
             term = self.terms[comp['name']]
             if term.poll() is None:
                 self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
-                hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
+                self.control_center.kill_session_by_name("%s-clone-session" % comp['name'])
 
         stop_worker = StopWorker()
         thread = QtCore.QThread()
         stop_worker.moveToThread(thread)
         stop_worker.done.connect(thread.quit)
-        stop_worker.done.connect(partial(self.handleCheckButton, comp))
+        stop_worker.done.connect(partial(self.handle_check_button, comp))
 
         thread.started.connect(partial(stop_worker.run_stop, self.control_center, comp))
 
@@ -249,7 +245,7 @@ class UiMainWindow(object):
         if term_toggle.isChecked():
             term_toggle.setChecked(False)
 
-    def handleCheckButton(self, comp):
+    def handle_check_button(self, comp):
         self.logger.debug("%s check button pressed" % comp['name'])
 
         check_worker = CheckWorkerThread()
@@ -283,10 +279,10 @@ class UiMainWindow(object):
         # Need to keep a surviving reference to the thread to save it from garbage collection
         self.threads.append(thread)
 
-    def handleTermToggleStateChanged(self, comp, isChecked):
-        self.logger.debug("%s show term set to: %d" % (comp['name'], isChecked))
+    def handle_term_toggle_state_changed(self, comp, is_checked):
+        self.logger.debug("%s show term set to: %d" % (comp['name'], is_checked))
 
-        if isChecked:
+        if is_checked:
 
             if self.control_center.run_on_localhost(comp):
                 self.logger.debug("Starting local clone session")
@@ -319,7 +315,7 @@ class UiMainWindow(object):
 
                 if self.control_center.run_on_localhost(comp):
                     self.logger.debug("Session '%s' is running locally" % comp['name'])
-                    hyperion.kill_session_by_name(self.control_center.server, "%s-clone-session" % comp['name'])
+                    self.control_center.kill_session_by_name("%s-clone-session" % comp['name'])
                 else:
                     self.logger.debug("Session '%s' is running on remote host %s" % (comp['name'], comp['host']))
                     self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['name'], comp['host'])
@@ -330,15 +326,15 @@ class UiMainWindow(object):
     def check_button_callback(self, check_state, comp_name):
         check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp_name)
 
-        if check_state is hyperion.CheckState.STOPPED.value:
+        if check_state is manager.CheckState.STOPPED.value:
             check_button.setStyleSheet("background-color: red")
-        elif check_state is hyperion.CheckState.RUNNING.value:
+        elif check_state is manager.CheckState.RUNNING.value:
             check_button.setStyleSheet("background-color: green")
-        elif check_state is hyperion.CheckState.STARTED_BY_HAND.value:
+        elif check_state is manager.CheckState.STARTED_BY_HAND.value:
             check_button.setStyleSheet("background-color: lightsalmon")
-        elif check_state is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL.value:
+        elif check_state is manager.CheckState.STOPPED_BUT_SUCCESSFUL.value:
             check_button.setStyleSheet("background-color: darkcyan")
-        elif check_state is hyperion.CheckState.DEP_FAILED.value:
+        elif check_state is manager.CheckState.DEP_FAILED.value:
             check_button.setStyleSheet("background-color: darkred")
 
         check_button.setEnabled(True)
@@ -363,7 +359,7 @@ class UiMainWindow(object):
     def start_button_callback(self, check_state, comp, failed_name):
 
         msg = QtGui.QMessageBox()
-        if check_state is hyperion.CheckState.DEP_FAILED.value:
+        if check_state is manager.CheckState.DEP_FAILED.value:
             msg.setIcon(QtGui.QMessageBox.Warning)
             msg.setText("Start process of '%s' was interrupted" % comp['name'])
             msg.setInformativeText("Dependency '%s' failed!" % failed_name)
@@ -374,9 +370,9 @@ class UiMainWindow(object):
             retval = msg.exec_()
 
             if retval == QtGui.QMessageBox.Retry:
-                self.handleStartButton(comp)
+                self.handle_start_button(comp)
 
-        elif check_state is hyperion.CheckState.STOPPED.value:
+        elif check_state is manager.CheckState.STOPPED.value:
             msg.setIcon(QtGui.QMessageBox.Warning)
             msg.setText("Failed starting '%s'" % comp['name'])
             msg.setWindowTitle("Warning")
@@ -384,7 +380,7 @@ class UiMainWindow(object):
             retval = msg.exec_()
 
             if retval == QtGui.QMessageBox.Retry:
-                self.handleStartButton(comp)
+                self.handle_start_button(comp)
         else:
             self.logger.debug("Starting '%s' succeeded without interference" % comp['name'])
             return
@@ -416,7 +412,7 @@ class StopWorker(QtCore.QObject):
         control_center.stop_component(comp)
         # Component wait time before check
         logger.debug("Waiting component wait time")
-        sleep(hyperion.get_component_wait(comp))
+        sleep(control_center.get_component_wait(comp))
         logger.debug("Done stopping")
         self.done.emit()
 
@@ -440,7 +436,7 @@ class StartWorker(QtCore.QObject):
             if not failed:
                 logger.debug("Checking dep %s" % dep.comp_name)
                 ret = control_center.check_component(dep.component)
-                if ret is not hyperion.CheckState.STOPPED:
+                if ret is not manager.CheckState.STOPPED:
                     logger.debug("Dep %s already running" % dep.comp_name)
                     self.intermediate.emit(ret.value, dep.comp_name)
                 else:
@@ -448,43 +444,43 @@ class StartWorker(QtCore.QObject):
                     logger.debug("Starting dep %s" % dep.comp_name)
                     control_center.start_component_without_deps(dep.component)
                     # Component wait time for startup
-                    sleep(hyperion.get_component_wait(dep.component))
+                    sleep(control_center.get_component_wait(dep.component))
                     while True:
                         sleep(.5)
                         ret = control_center.check_component(dep.component)
-                        if (ret is hyperion.CheckState.RUNNING or
-                                ret is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL):
+                        if (ret is manager.CheckState.RUNNING or
+                                ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
                         if tries > 10:
                             failed = True
                             failed_comp = dep.comp_name
-                            ret = hyperion.CheckState.STOPPED
+                            ret = manager.CheckState.STOPPED
                             break
                         tries = tries + 1
                     self.intermediate.emit(ret.value, dep.comp_name)
             else:
                 ret = control_center.check_component(dep.component)
-                if ret is not hyperion.CheckState.STOPPED:
+                if ret is not manager.CheckState.STOPPED:
                     self.intermediate.emit(ret.value, dep.comp_name)
                 else:
-                    self.intermediate.emit(hyperion.CheckState.DEP_FAILED.value, dep.comp_name)
+                    self.intermediate.emit(manager.CheckState.DEP_FAILED.value, dep.comp_name)
 
-        ret = hyperion.CheckState.DEP_FAILED
+        ret = manager.CheckState.DEP_FAILED
         if not failed:
             logger.debug("Done starting dependencies. Now starting %s" % comp['name'])
             control_center.start_component_without_deps(comp)
 
             # Component wait time for startup
             logger.debug("Waiting component startup wait time")
-            sleep(hyperion.get_component_wait(comp))
+            sleep(control_center.get_component_wait(comp))
 
             tries = 0
             logger.debug("Running check to ensure start was successful")
             while True:
                 sleep(.5)
                 ret = control_center.check_component(comp)
-                if (ret is hyperion.CheckState.RUNNING or
-                        ret is hyperion.CheckState.STOPPED_BUT_SUCCESSFUL) or tries > 9:
+                if (ret is manager.CheckState.RUNNING or
+                        ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL) or tries > 9:
                     break
                 logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
                 tries = tries + 1
