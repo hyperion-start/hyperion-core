@@ -221,7 +221,7 @@ class UiMainWindow(object):
     def handleLogButton(self, comp):
         self.logger.debug("%s show log button pressed" % comp['name'])
 
-        cmd = "tail -n +1 -f %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['name'])
+        cmd = "tail -n +1 -F %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['name'])
 
         if self.control_center.run_on_localhost(comp):
             subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
