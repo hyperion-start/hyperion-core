@@ -8,10 +8,12 @@ import os
 import signal
 import socket
 import uuid
+import shutil
 from psutil import Process
 from subprocess import call
 from enum import Enum
 from time import sleep
+from signal import *
 
 import sys
 
@@ -22,6 +24,11 @@ logging.basicConfig(level=logging.WARNING, format=FORMAT, datefmt='%I:%M:%S')
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
 TMP_COMP_DIR = "/tmp/Hyperion/components"
 TMP_LOG_PATH = "/tmp/Hyperion/log"
+
+SSH_CONFIG_PATH = "%s/.ssh/config" % os.path.expanduser("~")
+SSH_CONTROLMASTERS_PATH = "%s/.ssh/controlmasters" % os.path.expanduser("~")
+CUSTOM_SSH_CONFIG_PATH = "/tmp/Hyperion/ssh-config"
+SSH_CONNECTION_TIMEOUT = 1
 
 BASE_DIR = os.path.dirname(__file__)
 SCRIPT_CLONE_PATH = ("%s/bin/start_named_clone_session.sh" % BASE_DIR)
@@ -195,7 +202,7 @@ class AbstractController(object):
 
         for proc in procs:
             self.logger.debug("Killing leftover child process %s" % proc.name())
-            os.kill(proc.pid, signal.SIGTERM)
+            os.kill(proc.pid, SIGTERM)
 
         self.logger.debug("Rotating log for %s" % comp_name)
         setup_log(window, log_file, comp_name)
@@ -220,6 +227,9 @@ class ControlCenter(AbstractController):
         super(ControlCenter, self).__init__(configfile)
         self.nodes = {}
         self.host_list = {}
+
+        for sig in (SIGABRT, SIGILL, SIGINT, SIGSEGV, SIGTERM):
+            signal(sig, self.signal_handler)
 
         if configfile:
             self.load_config(configfile)
@@ -250,12 +260,13 @@ class ControlCenter(AbstractController):
     ###################
     # Setup
     ###################
-
     def init(self):
         if not self.config:
             self.logger.error(" Config not loaded yet!")
 
         else:
+            self.setup_ssh_config()
+
             for group in self.config['groups']:
                 for comp in group['components']:
                     self.logger.debug("Checking component '%s' in group '%s' on host '%s'" %
@@ -263,11 +274,13 @@ class ControlCenter(AbstractController):
 
                     if comp['host'] != "localhost" and not self.run_on_localhost(comp):
                         if comp['host'] not in self.host_list:
-                            if self.host_reachable(comp['host']):
-                                self.copy_component_to_remote(comp, comp['name'], comp['host'])
-                                self.host_list[comp['host']] = True
-                            else:
-                                self.host_list[comp['host']] = False
+                            if self.establish_master_connection(comp['host']):
+                                self.logger.debug("Master connection to %s established!" % comp['host'])
+                        if self.host_list.get(comp['host']) is not None:
+                            self.copy_component_to_remote(comp, comp['name'], comp['host'])
+                        else:
+                            self.logger.debug("Not copying because host %s is not reachable: %s" %
+                                              (comp['host'], self.host_list.get(comp['name'])))
 
             self.set_dependencies(True)
 
@@ -319,26 +332,94 @@ class ControlCenter(AbstractController):
         with open(tmp_comp_path, 'w') as outfile:
             dump(infile, outfile, default_flow_style=False)
 
-        self.logger.debug('Copying component "%s" to remote host "%s"' % (comp, host))
-        cmd = ("ssh %s 'mkdir -p %s' & scp %s %s:%s/%s.yaml" %
-               (host, TMP_SLAVE_DIR, tmp_comp_path, host, TMP_SLAVE_DIR, comp))
-        self.send_main_session_command(cmd)
+            self.logger.debug('Copying component "%s" to remote host "%s"' % (comp, host))
+            cmd = ("ssh -F %s %s 'mkdir -p %s' & scp %s %s:%s/%s.yaml" %
+                   (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, tmp_comp_path, host, TMP_SLAVE_DIR, comp))
+            self.send_main_session_command(cmd)
 
-    def host_reachable(self, hostname):
-        # https://stackoverflow.com/questions/2535055/check-if-remote-host-is-up-in-python
+    def setup_ssh_config(self):
+        try:
+            self.logger.debug("Trying to copy ssh config from %s to %s" % (SSH_CONFIG_PATH, CUSTOM_SSH_CONFIG_PATH))
+            ensure_dir(CUSTOM_SSH_CONFIG_PATH)
+            ensure_dir('%s/somefile' % SSH_CONTROLMASTERS_PATH)
+            shutil.copy(SSH_CONFIG_PATH, CUSTOM_SSH_CONFIG_PATH)
+        except IOError:
+            self.logger.critical("Could not copy ssh config! Make sure you have a config in your users .ssh folder!")
+            sys.exit(1)
+
+        try:
+            conf = open(CUSTOM_SSH_CONFIG_PATH, 'a')
+            conf.write("Host *\n    ControlMaster yes\n    ControlPath ~/.ssh/controlmasters/%C")
+        except IOError:
+            self.logger.error("Append to custom ssh config!")
+
+    def establish_master_connection(self, hostname):
+        self.logger.debug("Establishing master connection to host %s" % hostname)
+
+        cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (CUSTOM_SSH_CONFIG_PATH,
+                                                                      hostname, SSH_CONNECTION_TIMEOUT)
+
         is_up = True if os.system("ping -c 1 -w 2 " + hostname) is 0 else False
-        if is_up:
-            self.logger.debug("Host %s is reachable via ping" % hostname)
-            ssh_success = True if os.system("ssh %s -n -o BatchMode=yes -o ConnectTimeout=5" % hostname) is 0 else False
-            if ssh_success:
-                self.logger.debug("ssh connection to %s succeeded" % hostname)
-                return True
-            else:
-                self.logger.error("ssh connection to %s failed! Check if an ssh connection is allowed or if the "
-                                  "certificate has to be renewed" % hostname)
-                return False
+        if not is_up:
+            self.logger.error("Host %s is not reachable!" % hostname)
+            self.host_list[hostname] = None
+            return False
+
+        window = self.find_window('ssh-%s' % hostname)
+        if window:
+            self.logger.debug("Connecting to '%s' in old window" % hostname)
+            window.cmd("send-keys", "", "C-c")
         else:
-            self.logger.error("Host %s not reachable" % hostname)
+            self.logger.debug("Connecting to '%s' in new window" % hostname)
+            window = self.session.new_window('ssh-%s' % hostname)
+        window.cmd("send-keys", cmd, "Enter")
+
+        pid = self.get_window_pid(window)
+        procs = []
+        for entry in pid:
+            procs.extend(Process(entry).children(recursive=True))
+
+        pids = []
+        for p in procs:
+                pids.append(p.pid)
+                print(p.name())
+
+        if len(pids) < 1:
+            self.host_list[hostname] = None
+            return False
+
+        ssh_proc = Process(pids[0])
+        # Add host to known list with process to poll from
+        self.host_list[hostname] = ssh_proc
+
+        sleep(SSH_CONNECTION_TIMEOUT)
+        self.logger.debug("Testing if connection was successful")
+        if ssh_proc.is_running():
+            self.logger.debug("SSH process still running. Connection was successful")
+            return True
+        else:
+            self.logger.debug("SSH process has finished. Connection was not successful. Check if an ssh connection "
+                              "is allowed or if the certificate has to be renewed")
+            return False
+
+    def reconnect_with_host(self, hostname):
+        # Check if really necessary
+        self.logger.debug("Reconnecting with %s" % hostname)
+        proc = self.host_list.get(hostname).poll()
+        if proc is None:
+            self.logger.debug("Killing off leftover process")
+            proc.kill()
+
+        # Start new connection
+        if self.establish_master_connection(hostname):
+            # Sync components
+            self.logger.debug("Syncinc components to remote host")
+            for group in self.config['groups']:
+                for comp in group['components']:
+                    if comp['host'] == hostname:
+                        self.copy_component_to_remote(comp, comp['name'], comp['host'])
+            return True
+        else:
             return False
 
     ###################
@@ -353,9 +434,9 @@ class ControlCenter(AbstractController):
 
             if window:
                 self.logger.debug("window '%s' found running" % comp['name'])
-                self.logger.info("Shutting down window...")
+                self.logger.debug("Shutting down window...")
                 self.kill_window(window)
-                self.logger.info("... done!")
+                self.logger.debug("... done!")
 
     def stop_remote_component(self, comp_name, host):
         # invoke Hyperion in slave kill mode on remote host
@@ -364,7 +445,7 @@ class ControlCenter(AbstractController):
             self.logger.error("Host %s is unreachable. Can not stop component %s" % (host, comp_name))
             return
 
-        cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave --kill'" % (host, TMP_SLAVE_DIR, comp_name))
+        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave --kill'" % (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
         self.send_main_session_command(cmd)
 
     ###################
@@ -426,7 +507,7 @@ class ControlCenter(AbstractController):
                 self.logger.debug("Restarting '%s' in old window" % comp['name'])
                 self.start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
             else:
-                self.logger.info("creating window '%s'" % comp['name'])
+                self.logger.debug("creating window '%s'" % comp['name'])
                 window = self.session.new_window(comp['name'])
                 self.start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
 
@@ -437,7 +518,7 @@ class ControlCenter(AbstractController):
             self.logger.error("Hot %s is not reachable. Can not start component %s" % (host, comp_name))
             return
 
-        cmd = ("ssh %s 'hyperion --config %s/%s.yaml slave'" % (host, TMP_SLAVE_DIR, comp_name))
+        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave'" % (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
         self.send_main_session_command(cmd)
 
     ###################
@@ -449,7 +530,7 @@ class ControlCenter(AbstractController):
         else:
             self.logger.debug("Starting remote check")
             if self.host_list[comp['host']]:
-                cmd = "ssh %s 'hyperion --config %s/%s.yaml slave -c'" % (comp['host'], TMP_SLAVE_DIR, comp['name'])
+                cmd = "ssh -F %s %s 'hyperion --config %s/%s.yaml slave -c'" % (CUSTOM_SSH_CONFIG_PATH, comp['host'], TMP_SLAVE_DIR, comp['name'])
                 ret = call(cmd, shell=True)
                 try:
                     return CheckState(ret)
@@ -550,7 +631,7 @@ class ControlCenter(AbstractController):
     # TMUX
     ###################
     def kill_remote_session_by_name(self, name, host):
-        cmd = "ssh -t %s 'tmux kill-session -t %s'" % (host, name)
+        cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (CUSTOM_SSH_CONFIG_PATH, host, name)
         self.send_main_session_command(cmd)
 
     def start_clone_session(self, comp_name, session_name):
@@ -559,8 +640,28 @@ class ControlCenter(AbstractController):
 
     def start_remote_clone_session(self, comp_name, session_name, hostname):
         remote_cmd = ("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name))
-        cmd = "ssh %s 'bash -s' < %s" % (hostname, remote_cmd)
+        cmd = "ssh -F %s %s 'bash -s' < %s" % (CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
         self.send_main_session_command(cmd)
+
+    ###################
+    # Safe shutdown
+    ###################
+    def signal_handler(self, signum, frame):
+        self.logger.debug("received signal %s. Running cleanup" % signum)
+        self.cleanup()
+
+    def cleanup(self):
+        self.logger.info("Shutting down safely...")
+
+        for host in self.host_list:
+            window = self.find_window('ssh-%s' % host)
+
+            if window:
+                self.logger.debug("Close ssh-master window of host %s" % host)
+                self.kill_window(window)
+
+        self.kill_session_by_name(self.session_name)
+        self.logger.info("... Done")
 
 
 class SlaveLauncher(AbstractController):
@@ -580,15 +681,15 @@ class SlaveLauncher(AbstractController):
                 "session_name": "slave-session"
             })
 
-            self.logger.info('found running slave session on server')
+            self.logger.debug('found running slave session on server')
         elif not kill_mode and not check_mode:
-            self.logger.info('starting new slave session on server')
+            self.logger.debug('starting new slave session on server')
             self.session = self.server.new_session(
                 session_name="slave-session"
             )
 
         else:
-            self.logger.info("No slave session found on server. Aborting")
+            self.logger.debug("No slave session found on server. Aborting")
             exit(CheckState.STOPPED)
 
         if configfile:
@@ -611,16 +712,16 @@ class SlaveLauncher(AbstractController):
             if window:
                 self.logger.debug("window '%s' found running" % self.window_name)
                 if self.kill_mode:
-                    self.logger.info("Shutting down window...")
+                    self.logger.debug("Shutting down window...")
                     self.kill_window(window)
-                    self.logger.info("... done!")
+                    self.logger.debug("... done!")
             elif not self.kill_mode:
-                self.logger.info("creating window '%s'" % self.window_name)
+                self.logger.debug("creating window '%s'" % self.window_name)
                 window = self.session.new_window(self.window_name)
                 self.start_window(window, self.config['cmd'][0]['start'], self.log_file, self.window_name)
 
             else:
-                self.logger.info("There is no component running by the name '%s'. Exiting kill mode" %
+                self.logger.debug("There is no component running by the name '%s'. Exiting kill mode" %
                                  self.window_name)
 
     def run_check(self):

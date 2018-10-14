@@ -40,7 +40,7 @@ def start_gui(control_center):
     ui = hyperGUI.UiMainWindow()
     ui.ui_init(main_window, control_center)
     main_window.show()
-    sys.exit(app.exec_())
+    app.exec_()
 
 
 ###################
@@ -140,6 +140,7 @@ def main():
             logger.debug("Chose interactive mode")
             if interactive_enabled:
                 interactiveCLI.main(cc)
+                cc.cleanup()
             else:
                 clilogger.error("To use this feature you need urwid! Check the README.md for install instructions")
         elif args.list:
@@ -166,6 +167,7 @@ def main():
                 logger.debug("Chose check %s" % args.component)
                 for comp in comps:
                     cc.check_by_cli(comp)
+            cc.cleanup()
 
     elif args.cmd == 'gui':
         if gui_enabled:
@@ -174,6 +176,7 @@ def main():
             cc = ControlCenter(args.config)
             cc.init()
             start_gui(cc)
+            cc.cleanup()
         else:
             logger.error("To use this feature you need PyQt4! Check the README.md for install instructions")
             sys.exit(1)
@@ -190,6 +193,7 @@ def main():
                              "(pip install -e .['GRAPH'])")
         else:
             cc.set_dependencies(True)
+        cc.cleanup()
 
     elif args.cmd == 'slave':
         logger.debug("Launching slave mode")
