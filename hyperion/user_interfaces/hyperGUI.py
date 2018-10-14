@@ -336,6 +336,16 @@ class UiMainWindow(object):
             check_button.setStyleSheet("background-color: darkcyan")
         elif check_state is manager.CheckState.DEP_FAILED.value:
             check_button.setStyleSheet("background-color: darkred")
+        elif check_state is manager.CheckState.NOT_INSTALLED.value:
+            check_button.setStyleSheet("background-color: red")
+
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("Failed on '%s': Hyperion is not installed on remote host!" % comp_name)
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
+
+            msg.exec_()
 
         check_button.setEnabled(True)
 
