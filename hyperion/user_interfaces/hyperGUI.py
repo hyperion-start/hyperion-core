@@ -286,7 +286,7 @@ class UiMainWindow(object):
 
             if self.control_center.run_on_localhost(comp):
                 self.logger.debug("Starting local clone session")
-                self.control_center.start_clone_session(comp['name'], self.title)
+                self.control_center.start_clone_session(comp)
 
                 # Safety wait to ensure clone session is running
                 sleep(.5)
@@ -296,7 +296,7 @@ class UiMainWindow(object):
                 self.terms[comp['name']] = term
             else:
                 self.logger.debug("Starting remote clone session")
-                self.control_center.start_remote_clone_session(comp['name'], 'slave-session', comp['host'])
+                self.control_center.start_remote_clone_session(comp)
 
                 # Safety wait to ensure clone session is running
                 sleep(.5)

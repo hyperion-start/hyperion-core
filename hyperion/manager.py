@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-from libtmux import Server
+from libtmux import Server, Window
 from yaml import load, dump
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve, CircularReferenceException
@@ -15,6 +15,7 @@ from enum import Enum
 from time import sleep
 from signal import *
 from lib.monitoring.threads import ComponentMonitorJob, HostMonitorJob, MonitoringThread
+import lib.util.exception as exceptions
 import sys
 
 is_py2 = sys.version[0] == '2'
@@ -24,7 +25,10 @@ else:
     import queue as queue
 
 FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]:\t%(message)s"
-DEFAULT_WAIT_TIME = 5.0
+"""Logger output formatting"""
+
+DEFAULT_WAIT_TIME = 3.0
+"""Default time to wait for a component to start"""
 
 logging.basicConfig(level=logging.WARNING, format=FORMAT, datefmt='%I:%M:%S')
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
@@ -32,15 +36,26 @@ TMP_COMP_DIR = "/tmp/Hyperion/components"
 TMP_LOG_PATH = "/tmp/Hyperion/log"
 
 SSH_CONFIG_PATH = "%s/.ssh/config" % os.path.expanduser("~")
+"""File path of users standard SSH config"""
+
 SSH_CONTROLMASTERS_PATH = "%s/.ssh/controlmasters" % os.path.expanduser("~")
+"""File path to the SSH control master directory"""
+
 CUSTOM_SSH_CONFIG_PATH = "/tmp/Hyperion/ssh-config"
+"""File path to the custom SSH configuration file used in this module"""
+
 SSH_CONNECTION_TIMEOUT = 1
+"""How many Seconds to wait before an SSH connection attempt fails"""
 
 BASE_DIR = os.path.dirname(__file__)
+"""Path to the directory this file is contained in"""
+
 SCRIPT_CLONE_PATH = ("%s/bin/start_named_clone_session.sh" % BASE_DIR)
+"""File path of the 'clone session' script"""
 
 
 class CheckState(Enum):
+    """Enum that provides information about the status of a run check"""
     RUNNING = 0
     STOPPED = 1
     STOPPED_BUT_SUCCESSFUL = 2
@@ -51,6 +66,7 @@ class CheckState(Enum):
 
 
 class StartState(Enum):
+    """Enum that provides information about the start state of a component"""
     STARTED = 0
     ALREADY_RUNNING = 1
     FAILED = 2
@@ -59,34 +75,64 @@ class StartState(Enum):
 ###################
 # Logging
 ###################
-def setup_log(window, file, comp_name):
-    clear_log(file)
-    ensure_dir(file)
+def setup_log(window, filepath, comp_name):
+    """Redirect stdout and stderr of window to file.
+
+    Rotate logs and ensure the log directory for component `comp_name` exists, than,
+    redirect the outputs of `window` to /dev/tty to undo the case that previous output was already redirected.
+    After that redirect outputs to `file`.
+
+    :param window: tmux reference to the window the component is being run in.
+    :type window: Window
+    :param filepath: filepath of the component log file
+    :type filepath: str
+    :param comp_name: name of the component being run
+    :type comp_name: str
+    :return: None
+    """
+
+    clear_log(filepath)
+    ensure_dir(filepath)
 
     window.cmd("send-keys", "exec > /dev/tty", "Enter")
 
     # Reroute stderr to log file
-    window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % file, "Enter")
+    window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % filepath, "Enter")
     # Reroute stdout to log file
-    window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % file, "Enter")
+    window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % filepath, "Enter")
     # Reroute stdin to log file <== causes remote host to logout, disabled for now
     # window.cmd("send-keys", "exec 0> >(exec tee -i -a '%s')" % file, "Enter")
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\\t$(date)"' % comp_name), "Enter")
 
 
 def clear_log(file_path):
+    """If found rename the log at file_path to a uuid.
+
+    :param file_path: log file path
+    :type file_path: str
+    :return: None
+    """
+
     if os.path.isfile(file_path):
         directory = os.path.dirname(file_path)
         os.rename(file_path, "%s/%s.log" % (directory, uuid.uuid4().hex))
 
 
 def ensure_dir(file_path):
+    """If not already existing, recursively create parent directory of file_path.
+
+    :param file_path: log file path
+    :type file_path: str
+    :return: None
+    """
+
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
         os.makedirs(directory)
 
 
 class AbstractController(object):
+    """Abstract controller class that defines basic controller variables and methods."""
 
     def __init__(self, configfile):
         self.logger = logging.getLogger(__name__)
@@ -97,6 +143,12 @@ class AbstractController(object):
         self.server = None
 
     def load_config(self, filename="default.yaml"):
+        """Load configuration recursively from yaml file.
+
+        :param filename: path to the configuration file.
+        :type filename: str
+        :return: None
+        """
         with open(filename) as data_file:
             self.config = load(data_file, Loader)
 
@@ -104,6 +156,13 @@ class AbstractController(object):
     # Component Management
     ###################
     def run_component_check(self, comp):
+        """Runs the component check defined in the component configuration and returns the exit state.
+
+        :param comp: Component configuration
+        :type comp: dict
+        :return: Check exit state (fail = False / success = True).
+        :rtype: bool
+        """
         self.logger.debug("Running specific component check for %s" % comp['name'])
         if call(comp['cmd'][1]['check'], shell=True) == 0:
             self.logger.debug("Check returned true")
@@ -113,11 +172,21 @@ class AbstractController(object):
             return False
 
     def check_local_component(self, comp):
+        """Check if a local component is running and return the corresponding CheckState.
+
+        :param comp: Component configuration
+        :type comp: dict
+        :return: State of the component
+        :rtype: CheckState
+        """
         logger = self.logger
 
         logger.debug("Running component check for %s" % comp['name'])
         check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
         window = self.find_window(comp['name'])
+
+        ret = []
+
         if window:
             pid = self.get_window_pid(window)
             logger.debug("Found window pid: %s" % pid)
@@ -133,39 +202,54 @@ class AbstractController(object):
                     pids.append(p.pid)
             logger.debug("Window is running %s non-logger child processes: %s" % (len(pids), pids))
 
+            ret.append(pids[0])
+
             if len(pids) < 1:
                 logger.debug("Main process has finished. Running custom check if available")
                 if check_available and self.run_component_check(comp):
                     logger.debug("Process terminated but check was successful")
-                    return CheckState.STOPPED_BUT_SUCCESSFUL
+                    ret.append(CheckState.STOPPED_BUT_SUCCESSFUL)
                 else:
                     logger.debug("Check failed or no check available: returning false")
-                    return CheckState.STOPPED
+                    ret.append(CheckState.STOPPED)
             elif check_available and self.run_component_check(comp):
                 logger.debug("Check succeeded")
-                return CheckState.RUNNING
+                ret.append(CheckState.RUNNING)
             elif not check_available:
                 logger.debug("No custom check specified and got sufficient pid amount: returning true")
-                return CheckState.RUNNING
+                ret.append(CheckState.RUNNING)
             else:
                 logger.debug("Check failed: returning false")
-                return CheckState.STOPPED
+                ret.append(CheckState.STOPPED)
         else:
             logger.debug("%s window is not running. Running custom check" % comp['name'])
             if check_available and self.run_component_check(comp):
                 logger.debug("Component was not started by Hyperion, but the check succeeded")
-                return CheckState.STARTED_BY_HAND
+                ret.extend([0, CheckState.STARTED_BY_HAND])
             else:
                 logger.debug("Window not running and no check command is available or it failed: returning false")
-                return CheckState.STOPPED
+                ret.extend([0, CheckState.STOPPED])
 
     def get_window_pid(self, window):
+        """Returns pid of the tmux window process.
+
+        :param window: tmux window
+        :type window: Window
+        :return: pid of the window as list
+        :rtype: list of int
+        """
         self.logger.debug("Fetching pids of window %s" % window.name)
         r = window.cmd('list-panes',
                        "-F #{pane_pid}")
         return [int(p) for p in r.stdout]
 
     def get_component_wait(self, comp):
+        """Returns time to wait after component start (default of 5 seconds unless overwritten in configuration).
+
+        :param comp: Component configuration
+        :return: Component wait time
+        :rtype: float
+        """
         self.logger.debug("Retrieving wait time of component %s" % comp['name'])
         if 'wait' in comp:
             self.logger.debug("Found %s seconds as wait time for %s" % (float(comp['wait']), comp['name']))
@@ -176,19 +260,32 @@ class AbstractController(object):
             return DEFAULT_WAIT_TIME
 
     def get_component_by_name(self, comp_name):
+        """Return component configuration by providing only the name.
+
+        :param comp_name: Component name
+        :type comp_name: str
+        :return: Component configuration
+        :rtype: dict
+        :raises exceptions.WindowNotFoundException: If component was not found
+        """
         self.logger.debug("Searching for %s in components" % comp_name)
         for group in self.config['groups']:
             for comp in group['components']:
                 if comp['name'] == comp_name:
                     self.logger.debug("Component %s found" % comp_name)
                     return comp
-        self.logger.warning("Component %s not found in current configuration" % comp_name)
-        return 1
+        raise exceptions.WindowNotFoundException('Component %s not found in current configuration' % comp_name)
 
     ###################
     # TMUX
     ###################
     def kill_session_by_name(self, name):
+        """Kill tmux session by name.
+
+        :param name: Name of the session to be killed
+        :type name: str
+        :return: None
+        """
         self.logger.debug("Killing session by name %s" % name)
         session = self.server.find_where({
             "session_name": name
@@ -196,11 +293,33 @@ class AbstractController(object):
         session.kill_session()
 
     def kill_window(self, window):
+        """Kill tmux window by reference.
+
+        :param window: Window to be killed
+        :type window: Window
+        :return: None
+        """
         self.logger.debug("Killing window by name %s" % window.name)
         window.cmd("send-keys", "", "C-c")
         window.kill_window()
 
-    def start_window(self, window, cmd, log_file, comp_name):
+    def start_window(self, window, comp, log_file):
+        """Execute cmd in window.
+
+        Mainly used to run a component start command in its designated window
+
+        :param window: Window the component will be started in
+        :type window: Window
+        :param comp: Component configuration
+        :type comp: dict
+        :param log_file: log file path
+        :type log_file: str
+        :return: None
+        """
+
+        cmd = comp['cmd'][0]['start']
+        comp_name = comp['name']
+
         pid = self.get_window_pid(window)
         procs = []
         for entry in pid:
@@ -216,20 +335,48 @@ class AbstractController(object):
         window.cmd("send-keys", cmd, "Enter")
 
     def find_window(self, window_name):
+        """Return window by name (None if not found).
+
+        :param window_name: Window name
+        :type window_name: str
+        :return: Window with name `window_name`
+        :rtype: Window or None
+        """
+
         window = self.session.find_where({
             "window_name": window_name
         })
         return window
 
     def send_main_session_command(self, cmd):
+        """Send command to the main window of the master session.
+
+        `Session.cmd` sends the command to the currently active window of the session, and when issuing commands to the
+        session, usually it is not intended to interact with component windows thus this functions fetches the main
+        window and calls the `cmd` function on it.
+
+        :param cmd: Command to execute
+        :type cmd: str
+        :return: None
+        """
         self.logger.debug("Sending command to master session main window: %s" % cmd)
         window = self.find_window('Main')
         window.cmd("send-keys", cmd, "Enter")
 
 
 class ControlCenter(AbstractController):
+    """Controller class that is able to handle a master session."""
 
     def __init__(self, configfile=None):
+        """Sets up the ControlCenter
+
+        Initializes an empty node dict, an empty host_list dict, creates a queue for monitor jobs and a monitoring
+        thread that is started right away and sets a handler for signals. After that the configuration file is loaded
+        and a master session with a main window is created if not already existing.
+
+        :param configfile: Path to the configuration to initialize
+        :type configfile: str
+        """
         super(ControlCenter, self).__init__(configfile)
         self.nodes = {}
         self.host_list = {}
@@ -270,6 +417,13 @@ class ControlCenter(AbstractController):
     # Setup
     ###################
     def init(self):
+        """Initialize the controller.
+
+        Sets up master ssh connections to all used hosts, copies components to them if they are reachable and computes a
+        dependency tree for all used components.
+
+        :return: None
+        """
         if not self.config:
             self.logger.error(" Config not loaded yet!")
 
@@ -286,7 +440,7 @@ class ControlCenter(AbstractController):
                             if self.establish_master_connection(comp['host']):
                                 self.logger.debug("Master connection to %s established!" % comp['host'])
                         if self.host_list.get(comp['host']) is not None:
-                            self.copy_component_to_remote(comp, comp['name'], comp['host'])
+                            self.copy_component_to_remote(comp, comp['host'])
                         else:
                             self.logger.debug("Not copying because host %s is not reachable: %s" %
                                               (comp['host'], self.host_list.get(comp['name'])))
@@ -294,6 +448,12 @@ class ControlCenter(AbstractController):
             self.set_dependencies(True)
 
     def set_dependencies(self, exit_on_fail):
+        """Parses all components constructing a dependency tree.
+
+        :param exit_on_fail: Whether the program should be exited on an encountered error
+        :type exit_on_fail: bool
+        :return: None
+        """
         for group in self.config['groups']:
             for comp in group['components']:
                 self.nodes[comp['name']] = Node(comp)
@@ -334,19 +494,42 @@ class ControlCenter(AbstractController):
             if exit_on_fail:
                 exit(1)
 
-    def copy_component_to_remote(self, infile, comp, host):
+    def copy_component_to_remote(self, comp, host):
+        """Copies `comp` to `TMP_SLAVE_DIR` on the remote host `host`.
+
+        To do so `comp` gets temporarily saved as standalone configfile on the local machine (in `TMP_COMP_DIR`) and
+        then scpd to `TMP_SLAVE_DIR` on `host` (after ensuring the containing directory exists via mkdir -p invocation
+        over ssh in the main window of the master session).
+
+        :param comp: Component to copy
+        :type comp: dict
+        :param host: Host to copy the component to
+        :type host: str
+        :return: None
+        """
+
+        comp_name = comp['name']
+
         self.logger.debug("Saving component to tmp")
-        tmp_comp_path = ('%s/%s.yaml' % (TMP_COMP_DIR, comp))
+        tmp_comp_path = ('%s/%s.yaml' % (TMP_COMP_DIR, comp_name))
         ensure_dir(tmp_comp_path)
         with open(tmp_comp_path, 'w') as outfile:
-            dump(infile, outfile, default_flow_style=False)
+            dump(comp, outfile, default_flow_style=False)
 
-            self.logger.debug('Copying component "%s" to remote host "%s"' % (comp, host))
+            self.logger.debug('Copying component "%s" to remote host "%s"' % (comp_name, host))
             cmd = ("ssh -F %s %s 'mkdir -p %s' & scp %s %s:%s/%s.yaml" %
-                   (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, tmp_comp_path, host, TMP_SLAVE_DIR, comp))
+                   (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, tmp_comp_path, host, TMP_SLAVE_DIR, comp_name))
             self.send_main_session_command(cmd)
 
     def setup_ssh_config(self):
+        """Creates an ssh configuration that is saved to `CUSTOM_SSH_CONFIG_PATH`.
+
+        The user config in `SSH_CONFIG_PATH` is copied to `CUSTOM_SSH_CONFIG_PATH` and then appends the lines enabling
+        master connections for all hosts to it. This is done in order to use the master connection feature without
+        tempering with the users standard configuration.
+
+        :return: None
+        """
         try:
             self.logger.debug("Trying to copy ssh config from %s to %s" % (SSH_CONFIG_PATH, CUSTOM_SSH_CONFIG_PATH))
             ensure_dir(CUSTOM_SSH_CONFIG_PATH)
@@ -360,9 +543,20 @@ class ControlCenter(AbstractController):
             conf = open(CUSTOM_SSH_CONFIG_PATH, 'a')
             conf.write("Host *\n    ControlMaster yes\n    ControlPath ~/.ssh/controlmasters/%C")
         except IOError:
-            self.logger.error("Append to custom ssh config!")
+            self.logger.error("Could not append to custom ssh config!")
 
     def establish_master_connection(self, hostname):
+        """Create a master ssh connection to host `hostname` in a dedicated window.
+
+        The pid of the ssh session is put into the monitoring thread to have a means to check if the connection still
+        exists. Also `host` is added to the list of known hosts with its current status.
+
+        :param hostname: Host to establish a connection with
+        :type hostname: str
+        :return: Whether establishing the connection was successful or not
+        :rtype: bool
+        """
+
         self.logger.debug("Establishing master connection to host %s" % hostname)
 
         cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (CUSTOM_SSH_CONFIG_PATH,
@@ -392,8 +586,8 @@ class ControlCenter(AbstractController):
 
         pids = []
         for p in procs:
-                pids.append(p.pid)
-                print(p.name())
+            pids.append(p.pid)
+            print(p.name())
 
         if len(pids) < 1:
             self.host_list[hostname] = None
@@ -415,6 +609,14 @@ class ControlCenter(AbstractController):
             return False
 
     def reconnect_with_host(self, hostname):
+        """Re-establish master connection to host `hostname`
+
+        :param hostname: Host to connect to
+        :type hostname: str
+        :return: Whether establishing the connection was successful or not
+        :rtype: bool
+        """
+
         # Check if really necessary
         self.logger.debug("Reconnecting with %s" % hostname)
         proc = self.host_list.get(hostname).poll()
@@ -429,7 +631,7 @@ class ControlCenter(AbstractController):
             for group in self.config['groups']:
                 for comp in group['components']:
                     if comp['host'] == hostname:
-                        self.copy_component_to_remote(comp, comp['name'], comp['host'])
+                        self.copy_component_to_remote(comp, comp['host'])
             return True
         else:
             return False
@@ -438,9 +640,18 @@ class ControlCenter(AbstractController):
     # Stop
     ###################
     def stop_component(self, comp):
+        """Stop component `comp`.
+
+        Invokes the lower level stop function depending on whether the component is run locally or on a remote host.
+
+        :param comp: Component to stop
+        :type comp: dict
+        :return: None
+        """
+
         if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
             self.logger.debug("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
-            self.stop_remote_component(comp['name'], comp['host'])
+            self.stop_remote_component(comp)
         else:
             window = self.find_window(comp['name'])
 
@@ -450,20 +661,41 @@ class ControlCenter(AbstractController):
                 self.kill_window(window)
                 self.logger.debug("... done!")
 
-    def stop_remote_component(self, comp_name, host):
-        # invoke Hyperion in slave kill mode on remote host
+    def stop_remote_component(self, comp):
+        """Stops remote component `comp`.
 
+        Via ssh Hyperion is executed on the remote host in slave mode with the --kill option.
+
+        :param comp: Component to stop
+        :type comp: dict
+        :return: None
+        """
+
+        comp_name = comp['name']
+        host = comp['host']
+        # invoke Hyperion in slave kill mode on remote host
         if not self.host_list[host]:
             self.logger.error("Host %s is unreachable. Can not stop component %s" % (host, comp_name))
             return
 
-        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave --kill'" % (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
+        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave --kill'" % (
+            CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
         self.send_main_session_command(cmd)
 
     ###################
     # Start
     ###################
     def start_component(self, comp):
+        """Invoke dependency based start of component `comp`.
+
+        Traverses the path of dependencies and invokes a call to ``start_component_without_deps`` for all found
+        dependencies before calling it for `comp`.
+
+        :param comp: Component to start
+        :type comp: dict
+        :return: Information on the start process
+        :rtype: StartState
+        """
 
         node = self.nodes.get(comp['name'])
         res = []
@@ -490,7 +722,7 @@ class ControlCenter(AbstractController):
                         self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_name, state))
                         state = self.check_component(node.component)
                         if (state is not CheckState.RUNNING or
-                           state is not CheckState.STOPPED_BUT_SUCCESSFUL):
+                                state is not CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
                         if tries > 10:
                             return StartState.FAILED
@@ -508,41 +740,76 @@ class ControlCenter(AbstractController):
         return StartState.STARTED
 
     def start_component_without_deps(self, comp):
-        if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
-            self.logger.debug("Starting remote component '%s' on host '%s'" % (comp['name'], comp['host']))
-            self.start_remote_component(comp['name'], comp['host'])
+        """Chooses which lower level start function to use depending on whether the component is run on a remote host or not.
+
+        :param comp: Component to start
+        :type comp: dict
+        :return: None
+        """
+
+        comp_name = comp['name']
+        host = comp['host']
+
+        if host != 'localhost' and not self.run_on_localhost(comp):
+            self.logger.debug("Starting remote component '%s' on host '%s'" % (comp_name, host))
+            self.start_remote_component(comp)
         else:
-            log_file = ("%s/%s/latest.log" % (TMP_LOG_PATH, comp['name']))
-            window = self.find_window(comp['name'])
+            log_file = ("%s/%s/latest.log" % (TMP_LOG_PATH, comp_name))
+            window = self.find_window(comp_name)
 
             if window:
-                self.logger.debug("Restarting '%s' in old window" % comp['name'])
-                self.start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
+                self.logger.debug("Restarting '%s' in old window" % comp_name)
+                self.start_window(window, comp, log_file)
             else:
-                self.logger.debug("creating window '%s'" % comp['name'])
-                window = self.session.new_window(comp['name'])
-                self.start_window(window, comp['cmd'][0]['start'], log_file, comp['name'])
+                self.logger.debug("creating window '%s'" % comp_name)
+                window = self.session.new_window(comp_name)
+                self.start_window(window, comp, log_file)
 
-    def start_remote_component(self, comp_name, host):
+    def start_remote_component(self, comp):
+        """Start component 'comp' on remote host.
+
+        The remote component is started by invoking Hyperion over ssh in slave mode.
+
+        :param comp: Component to start
+        :type comp: dict
+        :return: None
+        """
+
+        comp_name = comp['name']
+        host = comp['host']
         # invoke Hyperion in slave mode on each remote host
 
         if not self.host_list[host]:
             self.logger.error("Hot %s is not reachable. Can not start component %s" % (host, comp_name))
             return
 
-        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave'" % (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
+        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave'" % (
+            CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
         self.send_main_session_command(cmd)
 
     ###################
     # Check
     ###################
     def check_component(self, comp):
+        """Runs component check for `comp` and returns status.
+
+        If `comp` is run locally the call is redirected to ``check_local_component``. If the `comp` is run on a remote
+        host the function checks, if the host is reachable and on success issues an ssh command over the master
+        connection which starts Hyperion in slave mode with the check option. The return value of the call is then
+        interpreted for further processing.
+
+        :param comp: Component to check
+        :type comp: dict
+        :return: State of the component
+        :rtype: CheckState
+        """
         if self.run_on_localhost(comp):
             return self.check_local_component(comp)
         else:
             self.logger.debug("Starting remote check")
             if self.host_list.get(comp['host']) is not None:
-                cmd = "ssh -F %s %s 'hyperion --config %s/%s.yaml slave -c'" % (CUSTOM_SSH_CONFIG_PATH, comp['host'], TMP_SLAVE_DIR, comp['name'])
+                cmd = "ssh -F %s %s 'hyperion --config %s/%s.yaml slave -c'" % (
+                    CUSTOM_SSH_CONFIG_PATH, comp['host'], TMP_SLAVE_DIR, comp['name'])
                 ret = call(cmd, shell=True)
                 try:
                     return CheckState(ret)
@@ -557,14 +824,30 @@ class ControlCenter(AbstractController):
     # CLI Functions
     ###################
     def list_components(self):
+        """List all components used by the current configuration.
+
+        :return: List of components
+        :rtype: list of str
+        """
+
         return [self.nodes.get(node).comp_name for node in self.nodes]
 
     def start_by_cli(self, comp_name):
+        """Interface function for starting component by name `comp_name` from the cli.
+
+        Logging information is provided on the INFO level.
+
+        :param comp_name: Name of the component to start
+        :type comp_name: str
+        :return: None
+        """
+
         logger = logging.getLogger('CLI-RESPONSE')
 
-        comp = self.get_component_by_name(comp_name)
-        if comp == 1:
-            logger.info("No component named '%s' was found!" % comp_name)
+        try:
+            comp = self.get_component_by_name(comp_name)
+        except exceptions.WindowNotFoundException as e:
+            logger.warning(e.message)
             return
 
         logger.info("Starting component '%s' ..." % comp_name)
@@ -580,10 +863,20 @@ class ControlCenter(AbstractController):
             logger.info("Aborted '%s' start: Component is already running!" % comp_name)
 
     def stop_by_cli(self, comp_name):
+        """Interface function for stopping component by name `comp_name` from the cli.
+
+        Logging information is provided on the INFO level.
+
+        :param comp_name: Name of the component to stop
+        :type comp_name: str
+        :return: None
+        """
+
         logger = logging.getLogger('CLI-RESPONSE')
-        comp = self.get_component_by_name(comp_name)
-        if comp == 1:
-            logger.info("No component named '%s' was found!" % comp_name)
+        try:
+            comp = self.get_component_by_name(comp_name)
+        except exceptions.WindowNotFoundException as e:
+            logger.warning(e.message)
             return
         logger.info("Stopping component '%s' ...")
         self.stop_component(comp)
@@ -592,26 +885,57 @@ class ControlCenter(AbstractController):
         logger.info("Check returned status: %s" % ret.name)
 
     def check_by_cli(self, comp_name):
+        """Interface function for checking component by name `comp_name` from the cli.
+
+        Logging information is provided on the INFO level.
+
+        :param comp_name: Name of the component to check
+        :type comp_name: str
+        :return: None
+        """
+
         logger = logging.getLogger('CLI-RESPONSE')
         logger.info("Checking component %s ..." % comp_name)
-        comp = self.get_component_by_name(comp_name)
-
-        if comp == 1:
-            logger.info("No component named '%s' was found!" % comp_name)
+        try:
+            comp = self.get_component_by_name(comp_name)
+        except exceptions.WindowNotFoundException as e:
+            logger.warning(e.message)
             return
         ret = self.check_component(comp)
         logger.info("Check returned status: %s" % ret.name)
 
     def start_clone_session_and_attach(self, comp_name):
+        """Interface function for show term of component by name `comp_name` from the cli. !!(NYI)!!
+
+        :param comp_name: Name of the component to show
+        :type comp_name: str
+        :return: None
+        """
+
         self.logger.debug("NYI")
 
     def show_comp_log(self, comp_name):
+        """Interface function for viewing the log of component by name `comp_name` from the cli. !!(NYI)!!
+
+        :param comp_name: Name of the component whose log to show
+        :type comp_name: str
+        :return: None
+        """
+
         self.logger.debug("NYI")
 
     ###################
     # Dependency management
     ###################
     def get_dep_list(self, comp):
+        """Get a list of all components that `comp` depends on.
+
+        :param comp: Component to get dependencies from
+        :type comp: dict
+        :return: List of components
+        :rtype: list of Node
+        """
+
         node = self.nodes.get(comp['name'])
         res = []
         unres = []
@@ -624,6 +948,14 @@ class ControlCenter(AbstractController):
     # Host related checks
     ###################
     def is_localhost(self, hostname):
+        """Check if 'hostname' resolves to localhost.
+
+        :param hostname: Name of host to check
+        :type hostname: str
+        :return: Whether 'host' resolves to localhost or not
+        :rtype: bool
+        """
+
         try:
             hn_out = socket.gethostbyname(hostname)
             if hn_out == '127.0.0.1' or hn_out == '::1':
@@ -636,20 +968,62 @@ class ControlCenter(AbstractController):
             sys.exit("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
 
     def run_on_localhost(self, comp):
+        """Check if component 'comp' is run on localhost or not.
+
+        :param comp: Component to check
+        :type comp: dict
+        :return: Whether component is run on localhost or not
+        :rtype: bool
+        """
+
         return self.is_localhost(comp['host'])
 
     ###################
     # TMUX
     ###################
     def kill_remote_session_by_name(self, name, host):
+        """Kill tmux session by name 'name' on host 'host'
+
+        :param name: Name of the session to kill
+        :type name: str
+        :param host: Host that the session runs on
+        :type host: str
+        :return: None
+        """
+
         cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (CUSTOM_SSH_CONFIG_PATH, host, name)
         self.send_main_session_command(cmd)
 
-    def start_clone_session(self, comp_name, session_name):
-        cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name)
+    def start_clone_session(self, comp):
+        """Start a clone session of the master session and open the window of component `comp`.
+
+        Because the libtmux library does not provide functions to achieve this, a bash script is run to automatize the
+        process.
+
+        :param comp: Component whose window is to be shown in the cloned session
+        :type comp_name: str
+        :returns None
+        """
+
+        comp_name = comp['name']
+        cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, self.session_name, comp_name)
         self.send_main_session_command(cmd)
 
-    def start_remote_clone_session(self, comp_name, session_name, hostname):
+    def start_remote_clone_session(self, comp):
+        """Start a clone session of the remote slave session and open the window of component `comp`.
+
+        Same as ``start_clone_session`` only that the bash script is fed into a ssh command issued over the main window
+        of the master session.
+
+        :param comp: Component whose window is to be shown in the clone session
+        :type comp: dict
+        :return:
+        """
+
+        session_name = 'slave-session'
+        comp_name = comp['name']
+        hostname = comp['host']
+
         remote_cmd = ("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name))
         cmd = "ssh -F %s %s 'bash -s' < %s" % (CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
         self.send_main_session_command(cmd)
@@ -658,10 +1032,23 @@ class ControlCenter(AbstractController):
     # Safe shutdown
     ###################
     def signal_handler(self, signum, frame):
+        """Handler that invokes cleanup on a received signal.
+
+        :param signum: Signal signum
+        :type int
+        :param frame:
+        :return: None
+        """
         self.logger.debug("received signal %s. Running cleanup" % signum)
         self.cleanup()
 
     def cleanup(self):
+        """Clean up for safe shutdown.
+
+        Kills the monitoring thread, the ssh master connections and then shuts down the tmux master session.
+
+        :return: None
+        """
         self.logger.info("Shutting down safely...")
 
         self.logger.debug("Killing monitoring threads")
@@ -679,8 +1066,19 @@ class ControlCenter(AbstractController):
 
 
 class SlaveLauncher(AbstractController):
+    """Controller class that performs a single slave execution task."""
 
     def __init__(self, configfile, kill_mode=False, check_mode=False):
+        """Initializes slave.
+
+        :param configfile: Path to configuration file (component configuration)
+        :type configfile: str
+        :param kill_mode: Whether the slave was started in kill mode or not
+        :type kill_mode: bool
+        :param check_mode: Whether the slave was started in check mode or not
+        :type check_mode: bool
+        """
+
         super(SlaveLauncher, self).__init__(configfile)
         self.kill_mode = kill_mode
         self.check_mode = check_mode
@@ -715,6 +1113,10 @@ class SlaveLauncher(AbstractController):
             self.logger.error("No slave component config provided")
 
     def init(self):
+        """Runs the mode specified by the slave execution call (start/stop or preparation for check)
+
+        :return: None
+        """
         if not self.config:
             self.logger.error(" Config not loaded yet!")
         elif not self.session:
@@ -732,13 +1134,18 @@ class SlaveLauncher(AbstractController):
             elif not self.kill_mode:
                 self.logger.debug("creating window '%s'" % self.window_name)
                 window = self.session.new_window(self.window_name)
-                self.start_window(window, self.config['cmd'][0]['start'], self.log_file, self.window_name)
+                self.start_window(window, self.config, self.log_file)
 
             else:
                 self.logger.debug("There is no component running by the name '%s'. Exiting kill mode" %
-                                 self.window_name)
+                                  self.window_name)
 
     def run_check(self):
+        """Run check for the current component.
+
+        :return: Status of the component
+        :rtype: CheckState
+        """
         if not self.config:
             self.logger.error("Config not loaded yet!")
             exit(CheckState.STOPPED.value)
