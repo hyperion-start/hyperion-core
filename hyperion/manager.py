@@ -10,7 +10,7 @@ import socket
 import uuid
 import shutil
 from psutil import Process
-from subprocess import call
+from subprocess import call, Popen, PIPE
 from enum import Enum
 from time import sleep
 from signal import *
@@ -807,16 +807,30 @@ class ControlCenter(AbstractController):
         :rtype: CheckState
         """
         if self.run_on_localhost(comp):
-            return self.check_local_component(comp)
+            ret = self.check_local_component(comp)
+
+            pid = ret[0]
+            if pid != 0:
+                self.monitor_queue.put(ComponentMonitorJob(pid, comp['name']))
+            return ret[1]
         else:
             self.logger.debug("Starting remote check")
             if self.host_list.get(comp['host']) is not None:
-                cmd = "ssh -F %s %s 'hyperion --config %s/%s.yaml slave -c'" % (
-                    CUSTOM_SSH_CONFIG_PATH, comp['host'], TMP_SLAVE_DIR, comp['name'])
-                ret = call(cmd, shell=True)
+                p = Popen(['ssh', '-F', CUSTOM_SSH_CONFIG_PATH, comp['host'], 'hyperion --config %s/%s.yaml slave -c' %
+                           (TMP_SLAVE_DIR, comp['name'])], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+
+                while p.poll() is None:
+                    sleep(.5)
+                pid = p.stdout.readlines()[-1]
+
+                if pid != 0:
+                    self.logger.debug("Got remote pid %s for component %s" % (pid, comp['name']))
+                    self.monitor_queue.put(ComponentMonitorJob(pid, comp['name'], comp['host']))
+                rc = CheckState(p.returncode)
                 try:
-                    return CheckState(ret)
+                    return rc
                 except ValueError:
+                    self.logger.error("Hyperion is not installed on host %s!" % comp['host'])
                     return CheckState.NOT_INSTALLED
             else:
                 self.logger.error("Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
@@ -1105,7 +1119,9 @@ class SlaveLauncher(AbstractController):
 
         else:
             self.logger.debug("No slave session found on server. Aborting")
-            exit(CheckState.STOPPED)
+            #Print fake pid
+            print(0)
+            exit(CheckState.STOPPED.value)
 
         if configfile:
             self.load_config(configfile)
@@ -1156,5 +1172,6 @@ class SlaveLauncher(AbstractController):
             self.logger.error("Init aborted. No session was found!")
             exit(CheckState.STOPPED.value)
 
-        check_state = self.check_local_component(self.config)
-        exit(check_state.value)
+        ret = self.check_local_component(self.config)
+        print(ret[0])
+        exit(ret[1].value)
