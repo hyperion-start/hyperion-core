@@ -176,8 +176,8 @@ class AbstractController(object):
 
         :param comp: Component configuration
         :type comp: dict
-        :return: State of the component
-        :rtype: CheckState
+        :return: tuple of pid and component status. If the component is not running, the pid is 0.
+        :rtype: (int, CheckState)
         """
         logger = self.logger
 
@@ -185,50 +185,53 @@ class AbstractController(object):
         check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
         window = self.find_window(comp['name'])
 
-        ret = []
+        ret = None
+        pid = 0
 
         if window:
-            pid = self.get_window_pid(window)
-            logger.debug("Found window pid: %s" % pid)
+            w_pid = self.get_window_pid(window)
+            logger.debug("Found window pid: %s" % w_pid)
 
             # May return more child pids if logging is done via tee (which then was started twice in the window too)
             procs = []
-            for entry in pid:
+            for entry in w_pid:
                 procs.extend(Process(entry).children(recursive=True))
 
             pids = []
             for p in procs:
-                if p.name != 'tee':
+                if p.name() != 'tee':
                     pids.append(p.pid)
             logger.debug("Window is running %s non-logger child processes: %s" % (len(pids), pids))
-
-            ret.append(pids[0])
 
             if len(pids) < 1:
                 logger.debug("Main process has finished. Running custom check if available")
                 if check_available and self.run_component_check(comp):
                     logger.debug("Process terminated but check was successful")
-                    ret.append(CheckState.STOPPED_BUT_SUCCESSFUL)
+                    ret = CheckState.STOPPED_BUT_SUCCESSFUL
                 else:
                     logger.debug("Check failed or no check available: returning false")
-                    ret.append(CheckState.STOPPED)
+                    ret = CheckState.STOPPED
             elif check_available and self.run_component_check(comp):
                 logger.debug("Check succeeded")
-                ret.append(CheckState.RUNNING)
+                pid = pids[0]
+                ret = CheckState.RUNNING
             elif not check_available:
                 logger.debug("No custom check specified and got sufficient pid amount: returning true")
-                ret.append(CheckState.RUNNING)
+                pid = pids[0]
+                ret = CheckState.RUNNING
             else:
                 logger.debug("Check failed: returning false")
-                ret.append(CheckState.STOPPED)
+                ret = CheckState.STOPPED
         else:
             logger.debug("%s window is not running. Running custom check" % comp['name'])
             if check_available and self.run_component_check(comp):
                 logger.debug("Component was not started by Hyperion, but the check succeeded")
-                ret.extend([0, CheckState.STARTED_BY_HAND])
+                ret = CheckState.STARTED_BY_HAND
             else:
                 logger.debug("Window not running and no check command is available or it failed: returning false")
-                ret.extend([0, CheckState.STOPPED])
+                ret = CheckState.STOPPED
+
+        return pid, ret
 
     def get_window_pid(self, window):
         """Returns pid of the tmux window process.
