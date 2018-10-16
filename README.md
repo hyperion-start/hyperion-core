@@ -21,6 +21,11 @@ To enable dependency graph visualisation, you need to install via pip with ```pi
 
 Given the fact, that PyQt4 can not be handled by pip, it has to be installed via a package manager ```apt install python-qt4``` (on debian based distributions). Hyperion is able to detect if PyQt4 is installed at runtime and if so enable the GUI features.
 
+
+### Requirements
+
+tmux >= 1.8 is required to handle libtmux's calls.
+
 ## Usage
 
 Hyperion is planned to support various modes, but currently the main developing focus is set on the 'run' and the 'slave' mode:
