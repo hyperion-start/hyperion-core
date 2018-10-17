@@ -1,10 +1,18 @@
 import hyperion.manager as manager
 from PyQt4 import QtCore, QtGui
+import sys
 import subprocess
 import logging
 from functools import partial
 from time import sleep
 import hyperion.lib.util.config as config
+from hyperion.lib.monitoring.threads import LocalCrashEvent, RemoteCrashEvent, DisconnectEvent
+
+is_py2 = sys.version[0] == '2'
+if is_py2:
+    import Queue as queue
+else:
+    import queue as queue
 
 SCRIPT_SHOW_TERM_PATH = ("%s/bin/show_term.sh" % manager.BASE_DIR)
 
@@ -54,6 +62,20 @@ class UiMainWindow(object):
         self.verticalLayout.addWidget(self.tabWidget)
         main_window.setCentralWidget(self.centralwidget)
         self.tabWidget.setCurrentIndex(0)
+
+        event_manger = self.event_manager = EventManager()
+        thread = QtCore.QThread()
+        event_manger.crash_signal.connect(self.handle_crash_signal)
+        event_manger.crash_signal.connect(self.check_button_callback)
+        event_manger.disconnect_signal.connect(self.handle_disconnect_signal)
+
+        event_manger.moveToThread(thread)
+        event_manger.done.connect(thread.quit)
+        thread.started.connect(partial(event_manger.start, self.control_center))
+
+        thread.start()
+        self.threads.append(thread)
+        event_manger.done.connect(lambda: self.threads.remove(thread))
 
     def create_tabs(self):
         for group in self.control_center.config['groups']:
@@ -323,6 +345,40 @@ class UiMainWindow(object):
             else:
                 self.logger.debug("Term already closed! Command must have crashed. Open log!")
 
+    @QtCore.pyqtSlot(str, int)
+    def handle_crash_signal(self, check_status, comp_name):
+        if check_status is manager.CheckState.STOPPED:
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("Component '%s' crashed!" % comp_name)
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
+
+            msg.exec_()
+
+    @QtCore.pyqtSlot(str)
+    def handle_disconnect_signal(self, hostname):
+        msg = QtGui.QMessageBox()
+        msg.setIcon(QtGui.QMessageBox.Critical)
+        msg.setText("Lost connection to '%s'!" % hostname)
+        msg.setWindowTitle("Error")
+        msg.setStandardButtons(QtGui.QMessageBox.Retry | QtGui.QMessageBox.Close)
+
+        retval = msg.exec_()
+
+        if retval == QtGui.QMessageBox.Retry:
+            self.logger.debug("Chose retry connecting to %s" % hostname)
+            if not self.control_center.reconnect_with_host(hostname):
+                msg = QtGui.QMessageBox()
+                msg.setIcon(QtGui.QMessageBox.Critical)
+                msg.setText("Could not establish connection to '%s'. Will retry periodically in background." % hostname)
+                msg.setWindowTitle("Error")
+                msg.setStandardButtons(QtGui.QMessageBox.Close)
+
+                msg.exec_()
+            else:
+                self.logger.debug("Reconnect successful")
+
     @QtCore.pyqtSlot(int, str)
     def check_button_callback(self, check_state, comp_name):
         check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp_name)
@@ -406,6 +462,38 @@ class UiMainWindow(object):
         else:
             self.logger.debug("Starting '%s' succeeded without interference" % comp['name'])
             return
+
+
+class EventManager(QtCore.QObject):
+    crash_signal = QtCore.pyqtSignal(int, str)
+    disconnect_signal = QtCore.pyqtSignal(str)
+    done = QtCore.pyqtSignal()
+
+    def __init__(self, parent=None, is_ending=False):
+        super(self.__class__, self).__init__(parent)
+        self.is_ending = is_ending
+
+    def shutdown(self):
+        self.is_ending = True
+
+    @QtCore.pyqtSlot()
+    def start(self, control_center):
+        logger = logging.getLogger(__name__)
+
+        event_queue = queue.Queue()
+        control_center.mon_thread.add_subscriber(event_queue)
+
+        while not self.is_ending:
+            mon_event = event_queue.get()
+
+            if isinstance(mon_event, DisconnectEvent):
+                logger.warning("Got disconnect event from monitoring thread holding message: %s" % mon_event.message)
+                self.disconnect_signal.emit(mon_event.hostname)
+            elif isinstance(mon_event, LocalCrashEvent) or isinstance(mon_event, RemoteCrashEvent):
+                logger.warning("Received crash event from monitoring thread holding message: %s" % mon_event.message)
+                comp = control_center.get_component_by_name(mon_event.comp_name)
+                self.crash_signal.emit((control_center.check_component(comp)).value, mon_event.comp_name)
+        self.done.emit()
 
 
 class CheckWorkerThread(QtCore.QObject):
