@@ -9,12 +9,14 @@ import uuid
 import shutil
 from psutil import Process
 from subprocess import call, Popen, PIPE
+from threading import Lock
 from enum import Enum
 from time import sleep
 from signal import *
-from lib.monitoring.threads import ComponentMonitorJob, HostMonitorJob, MonitoringThread
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
+from lib.monitoring.threads import LocalComponentMonitoringJob, RemoteComponentMonitoringJob, \
+    HostMonitorJob, MonitoringThread
 import lib.util.exception as exceptions
 import lib.util.config as config
 
@@ -362,6 +364,7 @@ class ControlCenter(AbstractController):
         super(ControlCenter, self).__init__(configfile)
         self.nodes = {}
         self.host_list = {}
+        self.host_list_lock = Lock()
         self.monitor_queue = queue.Queue()
         self.mon_thread = MonitoringThread(self.monitor_queue)
         self.mon_thread.start()
@@ -549,7 +552,10 @@ class ControlCenter(AbstractController):
         is_up = True if os.system("ping -c 1 -w 2 " + hostname) is 0 else False
         if not is_up:
             self.logger.error("Host %s is not reachable!" % hostname)
+
+            self.host_list_lock.acquire()
             self.host_list[hostname] = None
+            self.host_list_lock.release()
             return False
 
         window = self.find_window('ssh-%s' % hostname)
@@ -574,17 +580,21 @@ class ControlCenter(AbstractController):
             print(p.name())
 
         if len(pids) < 1:
+            self.host_list_lock.acquire()
             self.host_list[hostname] = None
+            self.host_list_lock.release()
             return False
 
         ssh_proc = Process(pids[0])
         # Add host to known list with process to poll from
+        self.host_list_lock.acquire()
         self.host_list[hostname] = ssh_proc
+        self.host_list_lock.release()
 
         self.logger.debug("Testing if connection was successful")
         if ssh_proc.is_running():
             self.logger.debug("Adding ssh master to monitor queue")
-            self.monitor_queue.put(HostMonitorJob(pids[0], 'ssh-%s' % hostname))
+            self.monitor_queue.put(HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock))
             self.logger.debug("SSH process still running. Connection was successful")
             return True
         else:
@@ -603,8 +613,8 @@ class ControlCenter(AbstractController):
 
         # Check if really necessary
         self.logger.debug("Reconnecting with %s" % hostname)
-        proc = self.host_list.get(hostname).poll()
-        if proc is None:
+        proc = self.host_list.get(hostname)
+        if proc.poll() is None:
             self.logger.debug("Killing off leftover process")
             proc.kill()
 
@@ -792,7 +802,7 @@ class ControlCenter(AbstractController):
 
             pid = ret[0]
             if pid != 0:
-                self.monitor_queue.put(ComponentMonitorJob(pid, comp['name']))
+                self.monitor_queue.put(LocalComponentMonitoringJob(pid, comp['name']))
             return ret[1]
         else:
             self.logger.debug("Starting remote check")
@@ -806,7 +816,7 @@ class ControlCenter(AbstractController):
 
                 if pid != 0:
                     self.logger.debug("Got remote pid %s for component %s" % (pid, comp['name']))
-                    self.monitor_queue.put(ComponentMonitorJob(pid, comp['name'], comp['host']))
+                    self.monitor_queue.put(RemoteComponentMonitoringJob(pid, comp['name'], comp['host'], self.host_list))
                 rc = CheckState(p.returncode)
                 try:
                     return rc
