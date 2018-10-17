@@ -17,6 +17,7 @@ except AttributeError:
 try:
     _encoding = QtGui.QApplication.UnicodeUTF8
 
+
     def _translate(context, text, disambig):
         return QtGui.QApplication.translate(context, text, disambig, _encoding)
 except AttributeError:
@@ -34,7 +35,7 @@ class UiMainWindow(object):
         self.threads = []
         self.animations = {}
 
-        self.control_center = control_center #type: manager.ControlCenter
+        self.control_center = control_center  # type: manager.ControlCenter
         self.title = control_center.session_name
 
         self.logger.debug("title: %s" % self.title)
@@ -220,7 +221,7 @@ class UiMainWindow(object):
         thread.started.connect(partial(stop_worker.run_stop, self.control_center, comp))
 
         stop_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                    "stop_button_%s" % comp['name'])  # type: QtGui.QPushButton
+                                                   "stop_button_%s" % comp['name'])  # type: QtGui.QPushButton
         anim = QtCore.QPropertyAnimation(
             stop_button,
             "color",
@@ -255,7 +256,8 @@ class UiMainWindow(object):
         check_worker.done.connect(thread.quit)
         thread.started.connect(partial(check_worker.run_check, self.control_center, comp))
 
-        check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp['name'])#type: QtGui.QPushButton
+        check_button = self.centralwidget.findChild(QtGui.QPushButton,
+                                                    "check_button_%s" % comp['name'])  # type: QtGui.QPushButton
         anim = QtCore.QPropertyAnimation(
             check_button,
             "color",
@@ -291,7 +293,7 @@ class UiMainWindow(object):
                 sleep(.5)
                 term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH),
                                          ("%s-clone-session" % comp['name'])], stdout=subprocess.PIPE)
-                
+
                 self.terms[comp['name']] = term
             else:
                 self.logger.debug("Starting remote clone session")
@@ -362,17 +364,17 @@ class UiMainWindow(object):
         if self.animations.has_key("start_%s" % comp_name):
             self.animations.pop("start_%s" % comp_name).stop()
             start_button = self.centralwidget.findChild(QtGui.QPushButton, "start_button_%s" % comp_name)
-            start_button.setColor(QtGui.QColor(255,255,255))
+            start_button.setColor(QtGui.QColor(255, 255, 255))
             start_button.setEnabled(True)
 
         if self.animations.has_key("check_%s" % comp_name):
             self.animations.pop("check_%s" % comp_name).stop()
-            check_button.setColor(QtGui.QColor(255,255,255))
+            check_button.setColor(QtGui.QColor(255, 255, 255))
 
         if self.animations.has_key("stop_%s" % comp_name):
             self.animations.pop("stop_%s" % comp_name).stop()
             stop_button = self.centralwidget.findChild(QtGui.QPushButton, "stop_button_%s" % comp_name)
-            stop_button.setColor(QtGui.QColor(255,255,255))
+            stop_button.setColor(QtGui.QColor(255, 255, 255))
             stop_button.setEnabled(True)
 
     @QtCore.pyqtSlot(int, dict, str)
@@ -501,9 +503,9 @@ class StartWorker(QtCore.QObject):
                 sleep(.5)
                 ret = control_center.check_component(comp)
                 if (ret is manager.CheckState.RUNNING or
-                        ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL or
-                        ret is manager.CheckState.UNREACHABLE or
-                        ret is manager.CheckState.NOT_INSTALLED) or tries > 9:
+                    ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL or
+                    ret is manager.CheckState.UNREACHABLE or
+                    ret is manager.CheckState.NOT_INSTALLED) or tries > 9:
                     break
                 logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
                 tries = tries + 1
