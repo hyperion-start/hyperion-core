@@ -133,7 +133,7 @@ def main():
         clilogger.setLevel(logging.DEBUG)
         logger.debug("Launching cli mode")
 
-        cc = ControlCenter(args.config)
+        cc = ControlCenter(args.config, args.interactive)
         cc.init()
 
         if args.interactive:
@@ -173,7 +173,7 @@ def main():
         if gui_enabled:
             logger.debug("Launching GUI runner mode")
 
-            cc = ControlCenter(args.config)
+            cc = ControlCenter(args.config, True)
             cc.init()
             start_gui(cc)
             cc.cleanup()

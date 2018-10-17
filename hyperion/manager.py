@@ -351,7 +351,7 @@ class AbstractController(object):
 class ControlCenter(AbstractController):
     """Controller class that is able to handle a master session."""
 
-    def __init__(self, configfile=None):
+    def __init__(self, configfile=None, monitor_enabled=False):
         """Sets up the ControlCenter
 
         Initializes an empty node dict, an empty host_list dict, creates a queue for monitor jobs and a monitoring
@@ -360,14 +360,18 @@ class ControlCenter(AbstractController):
 
         :param configfile: Path to the configuration to initialize
         :type configfile: str
+        :param monitor_enabled: Whether the monitoring thread should be launched or not
+        :type monitor_enabled: bool
         """
+
         super(ControlCenter, self).__init__(configfile)
         self.nodes = {}
         self.host_list = {}
         self.host_list_lock = Lock()
         self.monitor_queue = queue.Queue()
         self.mon_thread = MonitoringThread(self.monitor_queue)
-        self.mon_thread.start()
+        if monitor_enabled:
+            self.mon_thread.start()
 
         for sig in (SIGABRT, SIGILL, SIGINT, SIGSEGV, SIGTERM):
             signal(sig, self.signal_handler)
@@ -1059,7 +1063,7 @@ class ControlCenter(AbstractController):
         """
         self.logger.info("Shutting down safely...")
 
-        self.logger.debug("Killing monitoring threads")
+        self.logger.debug("Killing monitoring thread")
         self.mon_thread.kill()
 
         for host in self.host_list:
