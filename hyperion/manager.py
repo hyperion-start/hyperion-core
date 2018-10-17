@@ -553,7 +553,7 @@ class ControlCenter(AbstractController):
         cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
                                                                       hostname, config.SSH_CONNECTION_TIMEOUT)
 
-        is_up = True if os.system("ping -c 1 -w 2 " + hostname) is 0 else False
+        is_up = True if os.system("ping -c 1 -w 2 %s" % hostname) is 0 else False
         if not is_up:
             self.logger.error("Host %s is not reachable!" % hostname)
 
@@ -618,7 +618,7 @@ class ControlCenter(AbstractController):
         # Check if really necessary
         self.logger.debug("Reconnecting with %s" % hostname)
         proc = self.host_list.get(hostname)
-        if proc.poll() is None:
+        if proc is not None:
             self.logger.debug("Killing off leftover process")
             proc.kill()
 
