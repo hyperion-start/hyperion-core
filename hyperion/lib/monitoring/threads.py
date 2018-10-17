@@ -3,6 +3,7 @@ import logging
 import sys
 import time
 import hyperion.lib.util.config as config
+from os import system
 from subprocess import call
 from psutil import Process, NoSuchProcess
 is_py2 = sys.version[0] == '2'
@@ -139,7 +140,7 @@ class HostMonitorJob(object):
     def run_check(self):
         try:
             proc = Process(self.pid)
-            if proc.is_running():
+            if proc.is_running() and system("ping -c 1 -w 2 %s > /dev/null" % self.hostname) is 0:
                 return True
         except NoSuchProcess:
             pass
@@ -292,4 +293,4 @@ class MonitoringThread(Thread):
                     for subscriber in self.subscribed_queues:
                         subscriber.put(ret)
 
-            time.sleep(5)
+            time.sleep(1)
