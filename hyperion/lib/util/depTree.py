@@ -1,10 +1,4 @@
-import sys
-
-
-class CircularReferenceException(Exception):
-    def __init__(self, node1, node2):
-        self.node1 = node1
-        self.node2 = node2
+from exception import CircularReferenceException
 
 
 class Node(object):

@@ -1,11 +1,9 @@
 #! /usr/bin/env python
 from libtmux import Server, Window
 from yaml import load, dump
-from lib.util.setupParser import Loader
-from lib.util.depTree import Node, dep_resolve, CircularReferenceException
 import logging
 import os
-import signal
+import sys
 import socket
 import uuid
 import shutil
@@ -15,8 +13,9 @@ from enum import Enum
 from time import sleep
 from signal import *
 from lib.monitoring.threads import ComponentMonitorJob, HostMonitorJob, MonitoringThread
+from lib.util.setupParser import Loader
+from lib.util.depTree import Node, dep_resolve
 import lib.util.exception as exceptions
-import sys
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -492,7 +491,7 @@ class ControlCenter(AbstractController):
                 if node is not master_node:
                     dep_string = "%s -> %s" % (dep_string, node.comp_name)
             self.logger.debug("Dependency tree for start all: %s" % dep_string)
-        except CircularReferenceException as ex:
+        except exceptions.CircularReferenceException as ex:
             self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
             if exit_on_fail:
                 exit(1)
