@@ -16,6 +16,7 @@ from lib.monitoring.threads import ComponentMonitorJob, HostMonitorJob, Monitori
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
 import lib.util.exception as exceptions
+import lib.util.config as config
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -23,28 +24,7 @@ if is_py2:
 else:
     import queue as queue
 
-FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]:\t%(message)s"
-"""Logger output formatting"""
-
-DEFAULT_WAIT_TIME = 3.0
-"""Default time to wait for a component to start"""
-
-logging.basicConfig(level=logging.WARNING, format=FORMAT, datefmt='%I:%M:%S')
-TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
-TMP_COMP_DIR = "/tmp/Hyperion/components"
-TMP_LOG_PATH = "/tmp/Hyperion/log"
-
-SSH_CONFIG_PATH = "%s/.ssh/config" % os.path.expanduser("~")
-"""File path of users standard SSH config"""
-
-SSH_CONTROLMASTERS_PATH = "%s/.ssh/controlmasters" % os.path.expanduser("~")
-"""File path to the SSH control master directory"""
-
-CUSTOM_SSH_CONFIG_PATH = "/tmp/Hyperion/ssh-config"
-"""File path to the custom SSH configuration file used in this module"""
-
-SSH_CONNECTION_TIMEOUT = 1
-"""How many Seconds to wait before an SSH connection attempt fails"""
+logging.basicConfig(level=logging.WARNING, format=config.FORMAT, datefmt='%I:%M:%S')
 
 BASE_DIR = os.path.dirname(__file__)
 """Path to the directory this file is contained in"""
@@ -257,9 +237,9 @@ class AbstractController(object):
             self.logger.debug("Found %s seconds as wait time for %s" % (float(comp['wait']), comp['name']))
             return float(comp['wait'])
         else:
-            self.logger.debug("No wait time for %s found, using default of %s seconds" % (comp['name'],
-                                                                                          DEFAULT_WAIT_TIME))
-            return DEFAULT_WAIT_TIME
+            self.logger.debug("No wait time for %s found, using default of %s seconds" %
+                              (comp['name'], config.DEFAULT_COMP_WAIT_TIME))
+            return config.DEFAULT_COMP_WAIT_TIME
 
     def get_component_by_name(self, comp_name):
         """Return component configuration by providing only the name.
@@ -513,14 +493,15 @@ class ControlCenter(AbstractController):
         comp_name = comp['name']
 
         self.logger.debug("Saving component to tmp")
-        tmp_comp_path = ('%s/%s.yaml' % (TMP_COMP_DIR, comp_name))
+        tmp_comp_path = ('%s/%s.yaml' % (config.TMP_COMP_DIR, comp_name))
         ensure_dir(tmp_comp_path)
         with open(tmp_comp_path, 'w') as outfile:
             dump(comp, outfile, default_flow_style=False)
 
             self.logger.debug('Copying component "%s" to remote host "%s"' % (comp_name, host))
             cmd = ("ssh -F %s %s 'mkdir -p %s' & scp %s %s:%s/%s.yaml" %
-                   (CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, tmp_comp_path, host, TMP_SLAVE_DIR, comp_name))
+                   (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, tmp_comp_path, host,
+                    config.TMP_SLAVE_DIR, comp_name))
             self.send_main_session_command(cmd)
 
     def setup_ssh_config(self):
@@ -533,16 +514,17 @@ class ControlCenter(AbstractController):
         :return: None
         """
         try:
-            self.logger.debug("Trying to copy ssh config from %s to %s" % (SSH_CONFIG_PATH, CUSTOM_SSH_CONFIG_PATH))
-            ensure_dir(CUSTOM_SSH_CONFIG_PATH)
-            ensure_dir('%s/somefile' % SSH_CONTROLMASTERS_PATH)
-            shutil.copy(SSH_CONFIG_PATH, CUSTOM_SSH_CONFIG_PATH)
+            self.logger.debug("Trying to copy ssh config from %s to %s" % (config.SSH_CONFIG_PATH,
+                                                                           config.CUSTOM_SSH_CONFIG_PATH))
+            ensure_dir(config.CUSTOM_SSH_CONFIG_PATH)
+            ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH)
+            shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
         except IOError:
             self.logger.critical("Could not copy ssh config! Make sure you have a config in your users .ssh folder!")
             sys.exit(1)
 
         try:
-            conf = open(CUSTOM_SSH_CONFIG_PATH, 'a')
+            conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
             conf.write("Host *\n    ControlMaster yes\n    ControlPath ~/.ssh/controlmasters/%C")
         except IOError:
             self.logger.error("Could not append to custom ssh config!")
@@ -561,8 +543,8 @@ class ControlCenter(AbstractController):
 
         self.logger.debug("Establishing master connection to host %s" % hostname)
 
-        cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (CUSTOM_SSH_CONFIG_PATH,
-                                                                      hostname, SSH_CONNECTION_TIMEOUT)
+        cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
+                                                                      hostname, config.SSH_CONNECTION_TIMEOUT)
 
         is_up = True if os.system("ping -c 1 -w 2 " + hostname) is 0 else False
         if not is_up:
@@ -579,7 +561,7 @@ class ControlCenter(AbstractController):
             window = self.session.new_window('ssh-%s' % hostname)
         window.cmd("send-keys", cmd, "Enter")
 
-        sleep(SSH_CONNECTION_TIMEOUT)
+        sleep(config.SSH_CONNECTION_TIMEOUT)
 
         pid = self.get_window_pid(window)
         procs = []
@@ -681,7 +663,7 @@ class ControlCenter(AbstractController):
             return
 
         cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave --kill'" % (
-            CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
+            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_name))
         self.send_main_session_command(cmd)
 
     ###################
@@ -756,7 +738,7 @@ class ControlCenter(AbstractController):
             self.logger.debug("Starting remote component '%s' on host '%s'" % (comp_name, host))
             self.start_remote_component(comp)
         else:
-            log_file = ("%s/%s/latest.log" % (TMP_LOG_PATH, comp_name))
+            log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, comp_name))
             window = self.find_window(comp_name)
 
             if window:
@@ -786,7 +768,7 @@ class ControlCenter(AbstractController):
             return
 
         cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave'" % (
-            CUSTOM_SSH_CONFIG_PATH, host, TMP_SLAVE_DIR, comp_name))
+            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_name))
         self.send_main_session_command(cmd)
 
     ###################
@@ -815,12 +797,12 @@ class ControlCenter(AbstractController):
         else:
             self.logger.debug("Starting remote check")
             if self.host_list.get(comp['host']) is not None:
-                p = Popen(['ssh', '-F', CUSTOM_SSH_CONFIG_PATH, comp['host'], 'hyperion --config %s/%s.yaml slave -c' %
-                           (TMP_SLAVE_DIR, comp['name'])], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+                p = Popen(['ssh', '-F', config.CUSTOM_SSH_CONFIG_PATH, comp['host'], 'hyperion --config %s/%s.yaml slave -c' %
+                           (config.TMP_SLAVE_DIR, comp['name'])], stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
                 while p.poll() is None:
                     sleep(.5)
-                pid = p.stdout.readlines()[-1]
+                pid = int(p.stdout.readlines()[-1])
 
                 if pid != 0:
                     self.logger.debug("Got remote pid %s for component %s" % (pid, comp['name']))
@@ -1007,7 +989,7 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (CUSTOM_SSH_CONFIG_PATH, host, name)
+        cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, name)
         self.send_main_session_command(cmd)
 
     def start_clone_session(self, comp):
@@ -1041,7 +1023,7 @@ class ControlCenter(AbstractController):
         hostname = comp['host']
 
         remote_cmd = ("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name))
-        cmd = "ssh -F %s %s 'bash -s' < %s" % (CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
+        cmd = "ssh -F %s %s 'bash -s' < %s" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
         self.send_main_session_command(cmd)
 
     ###################
@@ -1118,14 +1100,14 @@ class SlaveLauncher(AbstractController):
 
         else:
             self.logger.debug("No slave session found on server. Aborting")
-            #Print fake pid
+            # Print fake pid
             print(0)
             exit(CheckState.STOPPED.value)
 
         if configfile:
             self.load_config(configfile)
             self.window_name = self.config['name']
-            self.log_file = ("%s/%s/latest.log" % (TMP_LOG_PATH, self.window_name))
+            self.log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, self.window_name))
             ensure_dir(self.log_file)
         else:
             self.logger.error("No slave component config provided")

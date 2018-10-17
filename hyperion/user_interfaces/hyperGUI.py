@@ -1,13 +1,12 @@
 import hyperion.manager as manager
 from PyQt4 import QtCore, QtGui
-import os
 import subprocess
 import logging
 from functools import partial
 from time import sleep
+import hyperion.lib.util.config as config
 
 SCRIPT_SHOW_TERM_PATH = ("%s/bin/show_term.sh" % manager.BASE_DIR)
-
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -137,14 +136,14 @@ class UiMainWindow(object):
     def handleLogButton(self, comp):
         self.logger.debug("%s show log button pressed" % comp['name'])
 
-        cmd = "tail -n +1 -f %s/%s/latest.log" % (manager.TMP_LOG_PATH, comp['name'])
+        cmd = "tail -n +1 -f %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['name'])
 
         if self.control_center.run_on_localhost(comp):
-            term = subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
+            subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
 
         else:
-            term = subprocess.Popen(['xterm', '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
-                                    stdout=subprocess.PIPE)
+            subprocess.Popen(['xterm', '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
+                             stdout=subprocess.PIPE)
 
     def handle_start_button(self, comp):
         self.logger.debug("%s start button pressed" % comp['name'])
