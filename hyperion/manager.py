@@ -11,7 +11,7 @@ from psutil import Process
 from subprocess import call, Popen, PIPE
 from threading import Lock
 from enum import Enum
-from time import sleep
+from time import sleep, time
 from signal import *
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
@@ -553,7 +553,7 @@ class ControlCenter(AbstractController):
         cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
                                                                       hostname, config.SSH_CONNECTION_TIMEOUT)
 
-        is_up = True if os.system("ping -c 1 -w 2 %s" % hostname) is 0 else False
+        is_up = True if os.system("ping -c 1 -w 2 %s > /dev/null" % hostname) is 0 else False
         if not is_up:
             self.logger.error("Host %s is not reachable!" % hostname)
 
@@ -571,17 +571,21 @@ class ControlCenter(AbstractController):
             window = self.session.new_window('ssh-%s' % hostname)
         window.cmd("send-keys", cmd, "Enter")
 
-        sleep(config.SSH_CONNECTION_TIMEOUT)
+        t_end = time() + config.SSH_CONNECTION_TIMEOUT
 
         pid = self.get_window_pid(window)
-        procs = []
-        for entry in pid:
-            procs.extend(Process(entry).children(recursive=True))
-
         pids = []
-        for p in procs:
-            pids.append(p.pid)
-            print(p.name())
+
+        while time() < t_end:
+            procs = []
+            for entry in pid:
+                procs.extend(Process(entry).children(recursive=True))
+
+            for p in procs:
+                if p.name() == 'ssh':
+                    pids.append(p.pid)
+            if len(pids) > 0:
+                break
 
         if len(pids) < 1:
             self.host_list_lock.acquire()

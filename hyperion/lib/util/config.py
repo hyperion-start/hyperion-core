@@ -13,7 +13,7 @@ SSH_CONTROLMASTERS_PATH = "%s/.ssh/controlmasters" % expanduser("~")
 CUSTOM_SSH_CONFIG_PATH = "/tmp/Hyperion/ssh-config"
 """File path to the custom SSH configuration file used in this module"""
 
-SSH_CONNECTION_TIMEOUT = 1
+SSH_CONNECTION_TIMEOUT = 4
 """How many Seconds to wait before an SSH connection attempt fails"""
 
 FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]:\t%(message)s"
