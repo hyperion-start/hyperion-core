@@ -7,7 +7,7 @@ import sys
 import socket
 import uuid
 import shutil
-from psutil import Process
+from psutil import Process, NoSuchProcess
 from subprocess import call, Popen, PIPE
 from threading import Lock
 from enum import Enum
@@ -582,8 +582,11 @@ class ControlCenter(AbstractController):
                 procs.extend(Process(entry).children(recursive=True))
 
             for p in procs:
-                if p.name() == 'ssh':
-                    pids.append(p.pid)
+                try:
+                    if p.name() == 'ssh':
+                        pids.append(p.pid)
+                except NoSuchProcess:
+                    pass
             if len(pids) > 0:
                 break
 
