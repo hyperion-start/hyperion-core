@@ -1,6 +1,7 @@
 import logging
 import argparse
 import sys
+from signal import *
 from manager import ControlCenter, SlaveLauncher
 from lib.util.depTree import CircularReferenceException, dep_resolve
 
@@ -34,11 +35,11 @@ else:
 ###################
 # GUI
 ###################
-def start_gui(control_center):
+def start_gui(control_center, ui):
     app = QtGui.QApplication(sys.argv)
     main_window = QtGui.QMainWindow()
-    ui = hyperGUI.UiMainWindow()
     ui.ui_init(main_window, control_center)
+    app.aboutToQuit.connect(ui.close)
     main_window.show()
     app.exec_()
 
@@ -174,9 +175,13 @@ def main():
             logger.debug("Launching GUI runner mode")
 
             cc = ControlCenter(args.config, True)
+            ui = hyperGUI.UiMainWindow()
+
+            for sig in (SIGABRT, SIGILL, SIGINT, SIGSEGV, SIGTERM):
+                signal(sig, ui.handle_signal)
+
             cc.init()
-            start_gui(cc)
-            cc.cleanup()
+            start_gui(cc, ui)
         else:
             logger.error("To use this feature you need PyQt4! Check the README.md for install instructions")
             sys.exit(1)
