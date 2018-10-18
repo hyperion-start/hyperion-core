@@ -1058,7 +1058,7 @@ class ControlCenter(AbstractController):
         self.logger.debug("received signal %s. Running cleanup" % signum)
         self.cleanup()
 
-    def cleanup(self, full):
+    def cleanup(self, full=False):
         """Clean up for safe shutdown.
 
         Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
