@@ -35,6 +35,20 @@ except AttributeError:
 
 class UiMainWindow(object):
 
+    def handle_signal(self, signum, frame):
+        self.close()
+
+    def close(self):
+        msg = QtGui.QMessageBox()
+        msg.setIcon(QtGui.QMessageBox.Information)
+        msg.setText("Do you want to close all running processes?")
+        msg.setWindowTitle("Closing Application")
+        msg.setStandardButtons(QtGui.QMessageBox.Yes | QtGui.QMessageBox.No)
+        ret = msg.exec_()
+
+        self.control_center.cleanup(ret == QtGui.QMessageBox.Yes)
+        exit(0)
+
     def ui_init(self, main_window, control_center):
 
         self.logger = logging.getLogger(__name__)
@@ -203,7 +217,6 @@ class UiMainWindow(object):
             msg.setStandardButtons(QtGui.QMessageBox.Close)
 
             msg.exec_()
-
 
     def handleLogButton(self, comp):
         self.logger.debug("%s show log button pressed" % comp['name'])
