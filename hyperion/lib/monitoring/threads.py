@@ -279,7 +279,6 @@ class MonitoringThread(Thread):
                     comp_jobs.append(mon_job)
                     already_handleled[mon_job.comp_name] = True
 
-
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)
             for mon_job in jobs:
