@@ -58,10 +58,13 @@ class UiMainWindow(object):
         self.tabWidget.setObjectName(_fromUtf8("tabWidget"))
 
         self.create_tabs()
+        self.create_host_bar()
 
         self.verticalLayout.addWidget(self.tabWidget)
         main_window.setCentralWidget(self.centralwidget)
         self.tabWidget.setCurrentIndex(0)
+
+        self.verticalLayout.addLayout(self.hostWidget)
 
         event_manger = self.event_manager = EventManager()
         thread = QtCore.QThread()
@@ -76,6 +79,26 @@ class UiMainWindow(object):
         thread.start()
         self.threads.append(thread)
         event_manger.done.connect(lambda: self.threads.remove(thread))
+
+    def create_host_bar(self):
+        self.hostWidget = container = QtGui.QHBoxLayout()
+        container.setContentsMargins(0,0,1,0)
+
+        container.addWidget(QtGui.QLabel('SSH to: '))
+
+        for host in self.control_center.host_list:
+                host_button = BlinkButton('%s' % host, self.centralwidget)
+                host_button.setObjectName("host_button_%s" % host)
+                host_button.clicked.connect(partial(self.handle_host_button, host))
+                host_button.setFocusPolicy(QtCore.Qt.NoFocus)
+
+                if self.control_center.host_list.get(host):
+                    host_button.setStyleSheet("background-color: green")
+                else:
+                    host_button.setStyleSheet("background-color: darkred")
+
+                container.addWidget(host_button)
+        container.addStretch(0)
 
     def create_tabs(self):
         for group in self.control_center.config['groups']:
@@ -155,6 +178,32 @@ class UiMainWindow(object):
         check_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
         return horizontalLayout_components
+
+    def handle_host_button(self, host):
+        if self.control_center.is_localhost(host):
+            self.logger.debug("Clicked host is localhost. Opening xterm")
+            subprocess.Popen(['xterm'], stdout=subprocess.PIPE)
+        elif self.control_center.host_list.get(host):
+            self.logger.debug("Clicked host remote host. Opening xterm with ssh")
+            cmd = 'ssh -F %s %s' % (config.CUSTOM_SSH_CONFIG_PATH, host)
+            subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
+        elif self.control_center.reconnect_with_host(host):
+            self.logger.debug("Clicked remote host is up again! Opening xterm with ssh")
+            host_button = self.centralwidget.findChild(QtGui.QPushButton, "host_button_%s" % host)
+            host_button.setStyleSheet("background-color: green")
+            cmd = 'ssh -F %s %s' % (config.CUSTOM_SSH_CONFIG_PATH, host)
+            subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
+        else:
+            self.logger.error("Clicked remote host is down!")
+
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Warning)
+            msg.setText("Could not connect to host '%s'" % host)
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
+
+            msg.exec_()
+
 
     def handleLogButton(self, comp):
         self.logger.debug("%s show log button pressed" % comp['name'])
@@ -361,6 +410,9 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(str)
     def handle_disconnect_signal(self, hostname):
+        host_button = self.centralwidget.findChild(QtGui.QPushButton, "host_button_%s" % hostname)
+        host_button.setStyleSheet("background-color: darkred")
+
         msg = QtGui.QMessageBox()
         msg.setIcon(QtGui.QMessageBox.Critical)
         msg.setText("Lost connection to '%s'!" % hostname)
@@ -380,6 +432,7 @@ class UiMainWindow(object):
 
                 msg.exec_()
             else:
+                host_button.setStyleSheet("background-color: green")
                 self.logger.debug("Reconnect successful")
 
     @QtCore.pyqtSlot(int, str)
