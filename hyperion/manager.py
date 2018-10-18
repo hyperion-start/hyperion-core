@@ -976,7 +976,7 @@ class ControlCenter(AbstractController):
         """
 
         try:
-            hn_out = socket.gethostbyname(hostname)
+            hn_out = socket.gethostbyname('%s' % hostname)
             if hn_out == '127.0.0.1' or hn_out == '::1':
                 self.logger.debug("Host '%s' is localhost" % hostname)
                 return True
