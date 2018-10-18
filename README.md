@@ -39,10 +39,10 @@ hyperion --config systems/demo.yaml run
 The run mode will initialize the configured system with the executing host as controlling instance. The the used components will be copied to the hosts they will be run on and a GUI to start, monitor and stop components will show.
 
 <p align="center">
-  <img src="https://github.com/DavidPL1/Hyperion/wiki/img/gui-prototype-092018.png?raw=true" alt="Screenshot of the GUI prototype in September 2018"/>
+<img src="https://github.com/DavidPL1/Hyperion/wiki/img/gui-prototype-18102018.png" width="70%" height="70%" alt="Screenshot of the GUI prototype in October 18th 2018"/>
 </p>
 
-***Image:*** *Screenshot of the current GUI prototype (September 2018)*
+***Image:*** *Screenshot of the current GUI prototype (October 18th 2018)*
 
 ### Slave mode
 
