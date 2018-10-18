@@ -460,8 +460,9 @@ class ControlCenter(AbstractController):
                         node.add_edge(self.nodes[dep])
                     else:
                         self.logger.error("Unmet dependency: '%s' for component '%s'!" % (dep, node.comp_name))
+                        self.logger.debug("exit on fail: %s" % exit_on_fail)
                         if exit_on_fail:
-                            exit(1)
+                            self.cleanup(status=1)
         self.nodes['master_node'] = master_node
 
         # Test if starting all components is possible
@@ -478,7 +479,7 @@ class ControlCenter(AbstractController):
         except exceptions.CircularReferenceException as ex:
             self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
             if exit_on_fail:
-                exit(1)
+                self.cleanup(status=1)
 
     def copy_component_to_remote(self, comp, host):
         """Copies `comp` to `TMP_SLAVE_DIR` on the remote host `host`.
@@ -1058,7 +1059,7 @@ class ControlCenter(AbstractController):
         self.logger.debug("received signal %s. Running cleanup" % signum)
         self.cleanup()
 
-    def cleanup(self, full=False):
+    def cleanup(self, full=False, status=0):
         """Clean up for safe shutdown.
 
         Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
@@ -1088,6 +1089,7 @@ class ControlCenter(AbstractController):
 
             self.kill_session_by_name(self.session_name)
         self.logger.info("... Done")
+        exit(status)
 
 
 class SlaveLauncher(AbstractController):
