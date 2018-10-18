@@ -12,7 +12,6 @@ from subprocess import call, Popen, PIPE
 from threading import Lock
 from enum import Enum
 from time import sleep, time
-from signal import *
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
 from lib.monitoring.threads import LocalComponentMonitoringJob, RemoteComponentMonitoringJob, \
@@ -372,9 +371,6 @@ class ControlCenter(AbstractController):
         self.mon_thread = MonitoringThread(self.monitor_queue)
         if monitor_enabled:
             self.mon_thread.start()
-
-        for sig in (SIGABRT, SIGILL, SIGINT, SIGSEGV, SIGTERM):
-            signal(sig, self.signal_handler)
 
         if configfile:
             self.load_config(configfile)
@@ -1061,26 +1057,35 @@ class ControlCenter(AbstractController):
         self.logger.debug("received signal %s. Running cleanup" % signum)
         self.cleanup()
 
-    def cleanup(self):
+    def cleanup(self, full):
         """Clean up for safe shutdown.
 
-        Kills the monitoring thread, the ssh master connections and then shuts down the tmux master session.
+        Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
+        and then shuts down the local tmux master session.
 
+        :param full: Whether everything shall be shutdown or not
+        :type full: bool
         :return: None
         """
+
         self.logger.info("Shutting down safely...")
 
         self.logger.debug("Killing monitoring thread")
         self.mon_thread.kill()
 
-        for host in self.host_list:
-            window = self.find_window('ssh-%s' % host)
+        if full:
+            self.logger.debug("Chose full shutdown. Killing remote and main sessions")
 
-            if window:
-                self.logger.debug("Close ssh-master window of host %s" % host)
-                self.kill_window(window)
+            for host in self.host_list:
+                window = self.find_window('ssh-%s' % host)
 
-        self.kill_session_by_name(self.session_name)
+                if window:
+                    self.logger.debug("Killing remote slave session of host %s" % host)
+                    self.kill_remote_session_by_name("slave-session", host)
+                    self.logger.debug("Close ssh-master window of host %s" % host)
+                    self.kill_window(window)
+
+            self.kill_session_by_name(self.session_name)
         self.logger.info("... Done")
 
 
