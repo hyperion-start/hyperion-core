@@ -544,7 +544,10 @@ class EventManager(QtCore.QObject):
 
             if isinstance(mon_event, DisconnectEvent):
                 logger.warning("Got disconnect event from monitoring thread holding message: %s" % mon_event.message)
-                self.disconnect_signal.emit(mon_event.hostname)
+                logger.debug("Retrying auto reconnect...")
+                if not control_center.reconnect_with_host(mon_event.hostname):
+                    logger.debug("... Failed! Showing disconnect popup")
+                    self.disconnect_signal.emit(mon_event.hostname)
             elif isinstance(mon_event, LocalCrashEvent) or isinstance(mon_event, RemoteCrashEvent):
                 logger.warning("Received crash event from monitoring thread holding message: %s" % mon_event.message)
                 comp = control_center.get_component_by_name(mon_event.comp_name)
