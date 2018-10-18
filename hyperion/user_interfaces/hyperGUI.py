@@ -232,7 +232,10 @@ class UiMainWindow(object):
             term = self.terms[comp['name']]
             if term.poll() is None:
                 self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
-                self.control_center.kill_session_by_name("%s-clone-session" % comp['name'])
+                if self.control_center.run_on_localhost(comp):
+                    self.control_center.kill_session_by_name("%s-clone-session" % comp['name'])
+                else:
+                    self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['name'], comp['host'])
 
         stop_worker = StopWorker()
         thread = QtCore.QThread()
