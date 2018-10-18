@@ -11,6 +11,7 @@ from psutil import Process, NoSuchProcess
 from subprocess import call, Popen, PIPE
 from threading import Lock
 from enum import Enum
+from signal import SIGTERM
 from time import sleep, time
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
