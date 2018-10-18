@@ -269,17 +269,19 @@ class MonitoringThread(Thread):
 
             comp_jobs = []
             jobs = []
+            already_handleled = {}
             # Get all enqueued jobs for this iteration
             while not self.job_queue.empty():
                 mon_job = self.job_queue.get()
                 if isinstance(mon_job, HostMonitorJob):
                     jobs.append(mon_job)
-                if isinstance(mon_job, ComponentMonitorJob):
+                if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_name not in already_handleled:
                     comp_jobs.append(mon_job)
+                    already_handleled[mon_job.comp_name] = True
+
 
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)
-
             for mon_job in jobs:
                 logger.debug(mon_job.info())
                 ret = mon_job.run_check()
