@@ -77,6 +77,12 @@ class UiMainWindow(object):
         self.tabWidget.setCurrentIndex(0)
 
         self.verticalLayout.addLayout(self.allComponentsWidget)
+
+        split = QtGui.QFrame()
+        split.setFrameShape(QtGui.QFrame.HLine)
+        split.setFrameShadow(QtGui.QFrame.Sunken)
+        self.verticalLayout.addWidget(split)
+
         self.verticalLayout.addLayout(self.hostWidget)
 
         event_manger = self.event_manager = EventManager()
@@ -100,7 +106,7 @@ class UiMainWindow(object):
         comp_label = QtGui.QLabel('ALL COMPONENTS: ', self.centralwidget)
         comp_label.setObjectName("comp_label_all")
 
-        spacerItem = QtGui.QSpacerItem(200, 44, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+        spacerItem = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
 
         start_button = BlinkButton('start', self.centralwidget)
         start_button.setObjectName("start_button_all")
@@ -117,10 +123,14 @@ class UiMainWindow(object):
         check_button.clicked.connect(lambda: self.handle_check_all())
         check_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
+        spacerItem2 = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+
         container.addWidget(comp_label)
+        container.addItem(spacerItem)
         container.addWidget(start_button)
         container.addWidget(stop_button)
         container.addWidget(check_button)
+        container.addItem(spacerItem2)
 
     def create_host_bar(self):
         self.hostWidget = container = QtGui.QHBoxLayout()
@@ -155,8 +165,10 @@ class UiMainWindow(object):
             scrollAreaWidgetContents.setObjectName(_fromUtf8("scrollAreaWidgetContents"))
             verticalLayout_compList = QtGui.QVBoxLayout(scrollAreaWidgetContents)
             verticalLayout_compList.setObjectName(_fromUtf8("verticalLayout_compList"))
+            verticalLayout_compList.setContentsMargins(0, 0, 0, 0)
             for component in group['components']:
                 verticalLayout_compList.addLayout(self.create_component(component, scrollAreaWidgetContents))
+            verticalLayout_compList.addItem(QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding))
 
             scrollArea.setWidget(scrollAreaWidgetContents)
             horizontalLayout.addWidget(scrollArea)
@@ -169,7 +181,7 @@ class UiMainWindow(object):
         comp_label = QtGui.QLabel(scrollAreaWidgetContents)
         comp_label.setObjectName("comp_label_%s" % comp['name'])
 
-        spacerItem = QtGui.QSpacerItem(200, 44, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+        spacerItem = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
 
         start_button = BlinkButton('test', scrollAreaWidgetContents)
         start_button.setObjectName("start_button_%s" % comp['name'])
