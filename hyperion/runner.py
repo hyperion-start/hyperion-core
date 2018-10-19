@@ -177,8 +177,7 @@ def main():
             cc = ControlCenter(args.config, True)
             ui = hyperGUI.UiMainWindow()
 
-            for sig in (SIGABRT, SIGILL, SIGINT, SIGSEGV, SIGTERM):
-                signal(sig, ui.handle_signal)
+            signal(SIGINT, SIG_DFL)
 
             cc.init()
             start_gui(cc, ui)
