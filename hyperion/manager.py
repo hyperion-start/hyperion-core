@@ -130,8 +130,12 @@ class AbstractController(object):
         :type filename: str
         :return: None
         """
-        with open(filename) as data_file:
-            self.config = load(data_file, Loader)
+        try:
+            with open(filename) as data_file:
+                self.config = load(data_file, Loader)
+        except IOError as e:
+            self.logger.critical("No such file '%s' found" % filename)
+            raise e
 
     ###################
     # Component Management
@@ -374,7 +378,10 @@ class ControlCenter(AbstractController):
             self.mon_thread.start()
 
         if configfile:
-            self.load_config(configfile)
+            try:
+                self.load_config(configfile)
+            except IOError:
+                self.cleanup()
             self.session_name = self.config["name"]
 
             # Debug write resulting yaml file
@@ -1134,7 +1141,10 @@ class SlaveLauncher(AbstractController):
             exit(CheckState.STOPPED.value)
 
         if configfile:
-            self.load_config(configfile)
+            try:
+                self.load_config(configfile)
+            except IOError:
+                exit(1)
             self.window_name = self.config['name']
             self.log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, self.window_name))
             ensure_dir(self.log_file)
