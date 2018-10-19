@@ -28,7 +28,6 @@ try:
 except ImportError:
     interactive_enabled = False
 else:
-    print("Found urwid. Interactive CLI mode is available")
     interactive_enabled = True
 
 
@@ -36,6 +35,15 @@ else:
 # GUI
 ###################
 def start_gui(control_center, ui):
+    """Start the PyQt4 guided interface.
+
+    :param control_center: Manager holding the configuration
+    :type control_center: ControlCenter
+    :param ui: User interface to display
+    :type ui: hyperGUI.UiMainWindow
+    :return: None
+    """
+
     app = QtGui.QApplication(sys.argv)
     main_window = QtGui.QMainWindow()
     ui.ui_init(main_window, control_center)
@@ -48,6 +56,13 @@ def start_gui(control_center, ui):
 # Visualisation
 ###################
 def draw_graph(control_center):
+    """Generate and open a dependency graph pdf with graphviz.
+
+    :param control_center: Manager holding the configuration to generate.
+    :type control_center: ControlCenter
+    :return: None
+    """
+
     deps = Digraph("Deps", strict=True)
     deps.graph_attr.update(rankdir="BT")
     try:
@@ -77,6 +92,11 @@ def draw_graph(control_center):
 
 
 def main():
+    """Parse the command line arguments and start hyperion with the specified configuration in the desired mode.
+
+    :return: None
+    """
+
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     parser = argparse.ArgumentParser()
