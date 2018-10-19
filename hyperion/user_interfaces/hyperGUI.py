@@ -109,12 +109,12 @@ class UiMainWindow(object):
 
         stop_button = BlinkButton('stop', self.centralwidget)
         stop_button.setObjectName("stop_button_all")
-        #stop_button.clicked.connect(lambda: self.handle_stop_button(comp))
+        stop_button.clicked.connect(lambda: self.handle_stop_all())
         stop_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
         check_button = BlinkButton('check', self.centralwidget)
         check_button.setObjectName("check_button_all")
-        #check_button.clicked.connect(lambda: self.handle_check_button(comp))
+        check_button.clicked.connect(lambda: self.handle_check_all())
         check_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
         container.addWidget(comp_label)
@@ -417,6 +417,33 @@ class UiMainWindow(object):
         if term_toggle.isChecked():
             term_toggle.setChecked(False)
 
+    def handle_stop_all(self):
+        self.logger.debug("Clicked stop all")
+        stop_button = self.centralwidget.findChild(QtGui.QPushButton, "stop_button_all")
+
+        if not self.animations.has_key('stop_all'):
+            anim = QtCore.QPropertyAnimation(
+                stop_button,
+                "color",
+            )
+
+            stop_button.setStyleSheet("")
+
+            anim.setDuration(2000)
+            anim.setStartValue(QtGui.QColor(0, 0, 0))
+            anim.setEndValue(QtGui.QColor(255, 255, 255))
+        else:
+            anim = self.animations.get('stop_all')
+
+        anim.start()
+
+        self.animations['stop_all'] = anim
+
+        nodes = self.control_center.get_start_all_list()
+
+        for node in nodes:
+            self.handle_stop_button(node.component)
+
     def handle_check_button(self, comp):
         self.logger.debug("%s check button pressed" % comp['name'])
 
@@ -451,6 +478,33 @@ class UiMainWindow(object):
 
         # Need to keep a surviving reference to the thread to save it from garbage collection
         self.threads.append(thread)
+
+    def handle_check_all(self):
+        self.logger.debug("Clicked check all")
+        check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_all")
+
+        if not self.animations.has_key('check_all'):
+            anim = QtCore.QPropertyAnimation(
+                check_button,
+                "color",
+            )
+
+            check_button.setStyleSheet("")
+
+            anim.setDuration(2000)
+            anim.setStartValue(QtGui.QColor(0, 0, 0))
+            anim.setEndValue(QtGui.QColor(255, 255, 255))
+        else:
+            anim = self.animations.get('check_all')
+
+        anim.start()
+
+        self.animations['check_all'] = anim
+
+        nodes = self.control_center.get_start_all_list()
+
+        for node in nodes:
+            self.handle_check_button(node.component)
 
     def handle_term_toggle_state_changed(self, comp, is_checked):
         self.logger.debug("%s show term set to: %d" % (comp['name'], is_checked))
