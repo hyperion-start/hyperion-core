@@ -167,7 +167,7 @@ class UiMainWindow(object):
         log_button = QtGui.QPushButton(scrollAreaWidgetContents)
         log_button.setObjectName("log_button_%s" % comp['name'])
         log_button.setText("view log")
-        log_button.clicked.connect(lambda: self.handleLogButton(comp))
+        log_button.clicked.connect(lambda: self.handle_log_button(comp))
 
         comp_label.raise_()
         comp_label.setText(("%s@%s" % (comp['name'], comp['host'])))
@@ -215,7 +215,7 @@ class UiMainWindow(object):
 
             msg.exec_()
 
-    def handleLogButton(self, comp):
+    def handle_log_button(self, comp):
         self.logger.debug("%s show log button pressed" % comp['name'])
 
         cmd = "tail -n +1 -F %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['name'])
@@ -409,7 +409,7 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(str, int)
     def handle_crash_signal(self, check_status, comp_name):
-        if check_status is manager.CheckState.STOPPED:
+        if check_status is config.CheckState.STOPPED:
             msg = QtGui.QMessageBox()
             msg.setIcon(QtGui.QMessageBox.Critical)
             msg.setText("Component '%s' crashed!" % comp_name)
@@ -447,39 +447,10 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(int, str)
     def check_button_callback(self, check_state, comp_name):
+        check_state = config.CheckState(check_state)
         check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp_name)
 
-        if check_state is manager.CheckState.STOPPED.value:
-            check_button.setStyleSheet("background-color: red")
-        elif check_state is manager.CheckState.RUNNING.value:
-            check_button.setStyleSheet("background-color: green")
-        elif check_state is manager.CheckState.STARTED_BY_HAND.value:
-            check_button.setStyleSheet("background-color: lightsalmon")
-        elif check_state is manager.CheckState.STOPPED_BUT_SUCCESSFUL.value:
-            check_button.setStyleSheet("background-color: darkcyan")
-        elif check_state is manager.CheckState.DEP_FAILED.value:
-            check_button.setStyleSheet("background-color: darkred")
-        elif check_state is manager.CheckState.NOT_INSTALLED.value:
-            check_button.setStyleSheet("background-color: red")
-
-            msg = QtGui.QMessageBox()
-            msg.setIcon(QtGui.QMessageBox.Critical)
-            msg.setText("Failed on '%s': Hyperion is not installed on remote host!" % comp_name)
-            msg.setWindowTitle("Error")
-            msg.setStandardButtons(QtGui.QMessageBox.Close)
-
-            msg.exec_()
-
-        elif check_state is manager.CheckState.UNREACHABLE.value:
-            check_button.setStyleSheet("background-color: red")
-
-            msg = QtGui.QMessageBox()
-            msg.setIcon(QtGui.QMessageBox.Critical)
-            msg.setText("Failed on '%s': Remote host not reachable!" % comp_name)
-            msg.setWindowTitle("Error")
-            msg.setStandardButtons(QtGui.QMessageBox.Close)
-
-            msg.exec_()
+        check_button.setStyleSheet("background-color: %s" % config.STATE_CHECK_BUTTON_STYLE.get(check_state))
 
         check_button.setEnabled(True)
 
@@ -499,11 +470,20 @@ class UiMainWindow(object):
             stop_button.setColor(QtGui.QColor(255, 255, 255))
             stop_button.setEnabled(True)
 
+        if check_state is config.CheckState.NOT_INSTALLED or check_state is config.CheckState.UNREACHABLE:
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("'%s' failed with status: %s" % (comp_name, config.STATE_DESCRIPTION.get(check_state)))
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
+            msg.exec_()
+
     @QtCore.pyqtSlot(int, dict, str)
     def start_button_callback(self, check_state, comp, failed_name):
+        check_state = config.CheckState(check_state)
 
         msg = QtGui.QMessageBox()
-        if check_state is manager.CheckState.DEP_FAILED.value:
+        if check_state is config.CheckState.DEP_FAILED:
             msg.setIcon(QtGui.QMessageBox.Warning)
             msg.setText("Start process of '%s' was interrupted" % comp['name'])
             msg.setInformativeText("Dependency '%s' failed!" % failed_name)
@@ -516,7 +496,7 @@ class UiMainWindow(object):
             if retval == QtGui.QMessageBox.Retry:
                 self.handle_start_button(comp)
 
-        elif check_state is manager.CheckState.STOPPED.value:
+        elif check_state is config.CheckState.STOPPED:
             msg.setIcon(QtGui.QMessageBox.Warning)
             msg.setText("Failed starting '%s'" % comp['name'])
             msg.setWindowTitle("Warning")
@@ -615,7 +595,7 @@ class StartWorker(QtCore.QObject):
             if not failed:
                 logger.debug("Checking dep %s" % dep.comp_name)
                 ret = control_center.check_component(dep.component)
-                if ret is not manager.CheckState.STOPPED:
+                if ret is not config.CheckState.STOPPED:
                     logger.debug("Dep %s already running" % dep.comp_name)
                     self.intermediate.emit(ret.value, dep.comp_name)
                 else:
@@ -627,25 +607,25 @@ class StartWorker(QtCore.QObject):
                     while True:
                         sleep(.5)
                         ret = control_center.check_component(dep.component)
-                        if (ret is manager.CheckState.RUNNING or
-                                ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL):
+                        if (ret is config.CheckState.RUNNING or
+                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
-                        if tries > 10 or ret is manager.CheckState.NOT_INSTALLED or ret is \
-                                manager.CheckState.UNREACHABLE:
+                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
+                                config.CheckState.UNREACHABLE:
                             failed = True
                             failed_comp = dep.comp_name
-                            ret = manager.CheckState.STOPPED
+                            ret = config.CheckState.STOPPED
                             break
                         tries = tries + 1
                     self.intermediate.emit(ret.value, dep.comp_name)
             else:
                 ret = control_center.check_component(dep.component)
-                if ret is not manager.CheckState.STOPPED:
+                if ret is not config.CheckState.STOPPED:
                     self.intermediate.emit(ret.value, dep.comp_name)
                 else:
-                    self.intermediate.emit(manager.CheckState.DEP_FAILED.value, dep.comp_name)
+                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, dep.comp_name)
 
-        ret = manager.CheckState.DEP_FAILED
+        ret = config.CheckState.DEP_FAILED
         if not failed:
             logger.debug("Done starting dependencies. Now starting %s" % comp['name'])
             control_center.start_component_without_deps(comp)
@@ -659,10 +639,10 @@ class StartWorker(QtCore.QObject):
             while True:
                 sleep(.5)
                 ret = control_center.check_component(comp)
-                if (ret is manager.CheckState.RUNNING or
-                    ret is manager.CheckState.STOPPED_BUT_SUCCESSFUL or
-                    ret is manager.CheckState.UNREACHABLE or
-                    ret is manager.CheckState.NOT_INSTALLED) or tries > 9:
+                if (ret is config.CheckState.RUNNING or
+                    ret is config.CheckState.STOPPED_BUT_SUCCESSFUL or
+                    ret is config.CheckState.UNREACHABLE or
+                    ret is config.CheckState.NOT_INSTALLED) or tries > 9:
                     break
                 logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
                 tries = tries + 1

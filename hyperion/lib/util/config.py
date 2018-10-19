@@ -41,3 +41,25 @@ FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]:\t%(message)s"
 
 DEFAULT_COMP_WAIT_TIME = 3.0
 """Default time to wait for a component to start"""
+
+STATE_DESCRIPTION = {
+    CheckState.RUNNING: 'RUNNING',
+    CheckState.STOPPED: 'STOPPED',
+    CheckState.UNREACHABLE: 'HOST UNREACHABLE',
+    CheckState.NOT_INSTALLED: 'HYPERION NOT INSTALLED ON REMOTE',
+    CheckState.DEP_FAILED: 'DEPENDENCY FAILED',
+    CheckState.STARTED_BY_HAND: 'RUNNING BUT NOT STARTED BY HYPERION',
+    CheckState.STOPPED_BUT_SUCCESSFUL: 'STOPPED BUT CHECK WAS SUCCESSFUL'
+}
+"""Global string description dictionary for CheckStates"""
+
+STATE_CHECK_BUTTON_STYLE = {
+    CheckState.RUNNING: 'green',
+    CheckState.STOPPED: 'red',
+    CheckState.UNREACHABLE: 'HOST UNREACHABLE',
+    CheckState.NOT_INSTALLED: 'red',
+    CheckState.DEP_FAILED: 'darkred',
+    CheckState.STARTED_BY_HAND: 'lightsalmon',
+    CheckState.STOPPED_BUT_SUCCESSFUL: 'darkcyan'
+}
+"""Global check button color dictionary for CheckStates"""
