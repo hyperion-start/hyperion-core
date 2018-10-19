@@ -949,6 +949,21 @@ class ControlCenter(AbstractController):
 
         return res
 
+    def get_start_all_list(self):
+        """Get a list of all components ordered by dependency (from dependency to depends on).
+
+        :return: List of components
+        :rtype: list of Node
+        """
+
+        node = self.nodes.get('master_node')
+        res = []
+        unres = []
+        dep_resolve(node, res, unres)
+        res.remove(node)
+
+        return res
+
     ###################
     # Host related checks
     ###################

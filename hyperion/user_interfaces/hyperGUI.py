@@ -70,11 +70,13 @@ class UiMainWindow(object):
 
         self.create_tabs()
         self.create_host_bar()
+        self.create_all_components_section()
 
         self.verticalLayout.addWidget(self.tabWidget)
         main_window.setCentralWidget(self.centralwidget)
         self.tabWidget.setCurrentIndex(0)
 
+        self.verticalLayout.addLayout(self.allComponentsWidget)
         self.verticalLayout.addLayout(self.hostWidget)
 
         event_manger = self.event_manager = EventManager()
@@ -90,6 +92,35 @@ class UiMainWindow(object):
         thread.start()
         self.threads.append(thread)
         event_manger.done.connect(lambda: self.threads.remove(thread))
+
+    def create_all_components_section(self):
+        self.allComponentsWidget = container = QtGui.QHBoxLayout()
+        container.setContentsMargins(0, 0, 1, 0)
+
+        comp_label = QtGui.QLabel('ALL COMPONENTS: ', self.centralwidget)
+        comp_label.setObjectName("comp_label_all")
+
+        spacerItem = QtGui.QSpacerItem(200, 44, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+
+        start_button = BlinkButton('start', self.centralwidget)
+        start_button.setObjectName("start_button_all")
+        start_button.clicked.connect(lambda: self.handle_start_all())
+        start_button.setFocusPolicy(QtCore.Qt.NoFocus)
+
+        stop_button = BlinkButton('stop', self.centralwidget)
+        stop_button.setObjectName("stop_button_all")
+        #stop_button.clicked.connect(lambda: self.handle_stop_button(comp))
+        stop_button.setFocusPolicy(QtCore.Qt.NoFocus)
+
+        check_button = BlinkButton('check', self.centralwidget)
+        check_button.setObjectName("check_button_all")
+        #check_button.clicked.connect(lambda: self.handle_check_button(comp))
+        check_button.setFocusPolicy(QtCore.Qt.NoFocus)
+
+        container.addWidget(comp_label)
+        container.addWidget(start_button)
+        container.addWidget(stop_button)
+        container.addWidget(check_button)
 
     def create_host_bar(self):
         self.hostWidget = container = QtGui.QHBoxLayout()
@@ -226,6 +257,63 @@ class UiMainWindow(object):
         else:
             subprocess.Popen(['xterm', '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
                              stdout=subprocess.PIPE)
+
+    def handle_start_all(self):
+        self.logger.debug("Start all button pressed")
+
+        start_worker = StartWorker()
+        thread = QtCore.QThread()
+        start_worker.done.connect(self.start_all_callback)
+        start_worker.intermediate.connect(self.check_button_callback)
+
+        start_worker.moveToThread(thread)
+        start_worker.done.connect(thread.quit)
+        thread.started.connect(partial(start_worker.start_all, self.control_center))
+
+        deps = self.control_center.get_start_all_list()
+        for dep in deps:
+            start_button = self.centralwidget.findChild(QtGui.QPushButton,
+                                                        "start_button_%s" % dep.comp_name)  # type: QtGui.QPushButton
+            anim = QtCore.QPropertyAnimation(
+                start_button,
+                "color",
+            )
+
+            start_button.setStyleSheet("")
+
+            anim.setDuration(1000)
+            anim.setLoopCount(-1)
+            anim.setStartValue(QtGui.QColor(255, 255, 255))
+            anim.setEndValue(QtGui.QColor(0, 0, 0))
+            anim.start()
+
+            self.animations[("start_%s" % dep.comp_name)] = anim
+
+            start_button.setEnabled(False)
+
+        start_button = self.centralwidget.findChild(QtGui.QPushButton,
+                                                    "start_button_all")  # type: QtGui.QPushButton
+        anim = QtCore.QPropertyAnimation(
+            start_button,
+            "color",
+        )
+
+        start_button.setStyleSheet("")
+        start_button.setEnabled(False)
+
+        anim.setDuration(1000)
+        anim.setLoopCount(100)
+        anim.setStartValue(QtGui.QColor(255, 255, 255))
+        anim.setEndValue(QtGui.QColor(0, 0, 0))
+        anim.start()
+
+        start_worker.done.connect(lambda: self.threads.remove(thread))
+        self.animations["start_all"] = anim
+
+        thread.start()
+
+        # Need to keep a surviving reference to the thread to save it from garbage collection
+        self.threads.append(thread)
 
     def handle_start_button(self, comp):
         self.logger.debug("%s start button pressed" % comp['name'])
@@ -509,6 +597,24 @@ class UiMainWindow(object):
             self.logger.debug("Starting '%s' succeeded without interference" % comp['name'])
             return
 
+    @QtCore.pyqtSlot(int, dict, str)
+    def start_all_callback(self, check_state, comp, failed_name):
+        check_state = config.CheckState(check_state)
+
+        self.logger.debug("start all callback ended with: %s" % config.STATE_DESCRIPTION.get(check_state))
+        start_button = self.centralwidget.findChild(QtGui.QPushButton, "start_button_all")
+
+        if self.animations.has_key("start_all"):
+            self.animations.pop("start_all").stop()
+        start_button.setEnabled(True)
+        start_button.setStyleSheet("")
+
+        if check_state is config.CheckState.RUNNING:
+            self.logger.debug("Start all succeeded")
+        else:
+            start_button.setStyleSheet("background-color: red")
+            self.logger.debug("Start all failed")
+
 
 class EventManager(QtCore.QObject):
     crash_signal = QtCore.pyqtSignal(int, str)
@@ -649,6 +755,54 @@ class StartWorker(QtCore.QObject):
 
         self.intermediate.emit(ret.value, comp['name'])
         self.done.emit(ret.value, comp, failed_comp)
+
+    @QtCore.pyqtSlot()
+    def start_all(self, control_center):
+        logger = logging.getLogger(__name__)
+        comps = control_center.get_start_all_list()
+        failed = False
+        failed_comp = ""
+        ret_fail = 0
+
+        for dep in comps:
+            if not failed:
+                logger.debug("Checking %s" % dep.comp_name)
+                ret = control_center.check_component(dep.component)
+                if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
+                    logger.debug("Dep %s already running" % dep.comp_name)
+                    self.intermediate.emit(ret.value, dep.comp_name)
+                else:
+                    tries = 0
+                    logger.debug("Starting dep %s" % dep.comp_name)
+                    control_center.start_component_without_deps(dep.component)
+                    # Component wait time for startup
+                    sleep(control_center.get_component_wait(dep.component))
+                    while True:
+                        sleep(.5)
+                        ret = control_center.check_component(dep.component)
+                        if (ret is config.CheckState.RUNNING or
+                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                            break
+                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
+                                config.CheckState.UNREACHABLE:
+                            failed = True
+                            failed_comp = dep.comp_name
+                            ret_fail = ret
+                            ret = config.CheckState.STOPPED
+                            break
+                        tries = tries + 1
+                    self.intermediate.emit(ret.value, dep.comp_name)
+            else:
+                ret = control_center.check_component(dep.component)
+                if ret is not config.CheckState.STOPPED:
+                    self.intermediate.emit(ret.value, dep.comp_name)
+                else:
+                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, dep.comp_name)
+
+        if failed:
+            self.done.emit(ret_fail.value, {}, failed_comp)
+        else:
+            self.done.emit(config.CheckState.RUNNING.value, {}, 'none')
 
 
 class BlinkButton(QtGui.QPushButton):
