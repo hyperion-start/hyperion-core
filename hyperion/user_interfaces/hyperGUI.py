@@ -35,9 +35,6 @@ except AttributeError:
 
 class UiMainWindow(object):
 
-    def handle_signal(self, signum, frame):
-        self.close()
-
     def close(self):
         msg = QtGui.QMessageBox()
         msg.setIcon(QtGui.QMessageBox.Information)
