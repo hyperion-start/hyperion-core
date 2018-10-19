@@ -10,7 +10,6 @@ import shutil
 from psutil import Process, NoSuchProcess
 from subprocess import call, Popen, PIPE
 from threading import Lock
-from enum import Enum
 from signal import SIGTERM
 from time import sleep, time
 from lib.util.setupParser import Loader
@@ -33,25 +32,6 @@ BASE_DIR = os.path.dirname(__file__)
 
 SCRIPT_CLONE_PATH = ("%s/bin/start_named_clone_session.sh" % BASE_DIR)
 """File path of the 'clone session' script"""
-
-
-class CheckState(Enum):
-    """Enum that provides information about the status of a run check"""
-    RUNNING = 0
-    STOPPED = 1
-    STOPPED_BUT_SUCCESSFUL = 2
-    STARTED_BY_HAND = 3
-    DEP_FAILED = 4
-    UNREACHABLE = 5
-    NOT_INSTALLED = 6
-
-
-class StartState(Enum):
-    """Enum that provides information about the start state of a component"""
-    STARTED = 0
-    ALREADY_RUNNING = 1
-    FAILED = 2
-
 
 ###################
 # Logging
@@ -162,7 +142,7 @@ class AbstractController(object):
         :param comp: Component configuration
         :type comp: dict
         :return: tuple of pid and component status. If the component is not running, the pid is 0.
-        :rtype: (int, CheckState)
+        :rtype: (int, config.CheckState)
         """
         logger = self.logger
 
@@ -192,29 +172,29 @@ class AbstractController(object):
                 logger.debug("Main process has finished. Running custom check if available")
                 if check_available and self.run_component_check(comp):
                     logger.debug("Process terminated but check was successful")
-                    ret = CheckState.STOPPED_BUT_SUCCESSFUL
+                    ret = config.CheckState.STOPPED_BUT_SUCCESSFUL
                 else:
                     logger.debug("Check failed or no check available: returning false")
-                    ret = CheckState.STOPPED
+                    ret = config.CheckState.STOPPED
             elif check_available and self.run_component_check(comp):
                 logger.debug("Check succeeded")
                 pid = pids[0]
-                ret = CheckState.RUNNING
+                ret = config.CheckState.RUNNING
             elif not check_available:
                 logger.debug("No custom check specified and got sufficient pid amount: returning true")
                 pid = pids[0]
-                ret = CheckState.RUNNING
+                ret = config.CheckState.RUNNING
             else:
                 logger.debug("Check failed: returning false")
-                ret = CheckState.STOPPED
+                ret = config.CheckState.STOPPED
         else:
             logger.debug("%s window is not running. Running custom check" % comp['name'])
             if check_available and self.run_component_check(comp):
                 logger.debug("Component was not started by Hyperion, but the check succeeded")
-                ret = CheckState.STARTED_BY_HAND
+                ret = config.CheckState.STARTED_BY_HAND
             else:
                 logger.debug("Window not running and no check command is available or it failed: returning false")
-                ret = CheckState.STOPPED
+                ret = config.CheckState.STOPPED
 
         return pid, ret
 
@@ -704,7 +684,7 @@ class ControlCenter(AbstractController):
         :param comp: Component to start
         :type comp: dict
         :return: Information on the start process
-        :rtype: StartState
+        :rtype: config.StartState
         """
 
         node = self.nodes.get(comp['name'])
@@ -716,9 +696,9 @@ class ControlCenter(AbstractController):
             if node.comp_name != comp['name']:
                 self.logger.debug("Checking and starting %s" % node.comp_name)
                 state = self.check_component(node.component)
-                if (state is CheckState.STOPPED_BUT_SUCCESSFUL or
-                        state is CheckState.STARTED_BY_HAND or
-                        state is CheckState.RUNNING):
+                if (state is config.CheckState.STOPPED_BUT_SUCCESSFUL or
+                        state is config.CheckState.STARTED_BY_HAND or
+                        state is config.CheckState.RUNNING):
                     self.logger.debug("Component %s is already running, skipping to next in line" % comp['name'])
                 else:
                     self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_name, comp['name']))
@@ -729,25 +709,26 @@ class ControlCenter(AbstractController):
 
                     tries = 0
                     while True:
-                        self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_name, state))
+                        self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_name,
+                                                                                     config.STATE_DESCRIPTION.get(state)))
                         state = self.check_component(node.component)
-                        if (state is not CheckState.RUNNING or
-                                state is not CheckState.STOPPED_BUT_SUCCESSFUL):
+                        if (state is not config.CheckState.RUNNING or
+                                state is not config.CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
                         if tries > 10:
-                            return StartState.FAILED
+                            return config.StartState.FAILED
                         tries = tries + 1
                         sleep(.5)
 
         self.logger.debug("All dependencies satisfied, starting '%s'" % (comp['name']))
         state = self.check_component(node.component)
-        if (state is CheckState.STARTED_BY_HAND or
-                state is CheckState.RUNNING):
+        if (state is config.CheckState.STARTED_BY_HAND or
+                state is config.CheckState.RUNNING):
             self.logger.debug("Component %s is already running. Skipping start" % comp['name'])
-            return StartState.ALREADY_RUNNING
+            return config.StartState.ALREADY_RUNNING
         else:
             self.start_component_without_deps(comp)
-        return StartState.STARTED
+        return config.StartState.STARTED
 
     def start_component_without_deps(self, comp):
         """Chooses which lower level start function to use depending on whether the component is run on a remote host or not.
@@ -811,7 +792,7 @@ class ControlCenter(AbstractController):
         :param comp: Component to check
         :type comp: dict
         :return: State of the component
-        :rtype: CheckState
+        :rtype: config.CheckState
         """
         if self.run_on_localhost(comp):
             ret = self.check_local_component(comp)
@@ -833,16 +814,16 @@ class ControlCenter(AbstractController):
                 if pid != 0:
                     self.logger.debug("Got remote pid %s for component %s" % (pid, comp['name']))
                     self.monitor_queue.put(RemoteComponentMonitoringJob(pid, comp['name'], comp['host'], self.host_list))
-                rc = CheckState(p.returncode)
+                rc = config.CheckState(p.returncode)
                 try:
                     return rc
                 except ValueError:
                     self.logger.error("Hyperion is not installed on host %s!" % comp['host'])
-                    return CheckState.NOT_INSTALLED
+                    return config.CheckState.NOT_INSTALLED
             else:
                 self.logger.error("Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
                                                                                                    comp['name']))
-                return CheckState.UNREACHABLE
+                return config.CheckState.UNREACHABLE
 
     ###################
     # CLI Functions
@@ -876,14 +857,14 @@ class ControlCenter(AbstractController):
 
         logger.info("Starting component '%s' ..." % comp_name)
         ret = self.start_component(comp)
-        if ret is StartState.STARTED:
+        if ret is config.StartState.STARTED:
             logger.info("Started component '%s'" % comp_name)
             sleep(self.get_component_wait(comp))
             ret = self.check_component(comp)
-            logger.info("Check returned status: %s" % ret.name)
-        elif ret is StartState.FAILED:
+            logger.info("Check returned status: %s" % config.STATE_DESCRIPTION.get(ret))
+        elif ret is config.StartState.FAILED:
             logger.info("Starting '%s' failed!" % comp_name)
-        elif ret is StartState.ALREADY_RUNNING:
+        elif ret is config.StartState.ALREADY_RUNNING:
             logger.info("Aborted '%s' start: Component is already running!" % comp_name)
 
     def stop_by_cli(self, comp_name):
@@ -1139,7 +1120,7 @@ class SlaveLauncher(AbstractController):
             self.logger.debug("No slave session found on server. Aborting")
             # Print fake pid
             print(0)
-            exit(CheckState.STOPPED.value)
+            exit(config.CheckState.STOPPED.value)
 
         if configfile:
             try:
@@ -1184,14 +1165,14 @@ class SlaveLauncher(AbstractController):
         """Run check for the current component.
 
         :return: Status of the component
-        :rtype: CheckState
+        :rtype: config.CheckState
         """
         if not self.config:
             self.logger.error("Config not loaded yet!")
-            exit(CheckState.STOPPED.value)
+            exit(config.CheckState.STOPPED.value)
         elif not self.session:
             self.logger.error("Init aborted. No session was found!")
-            exit(CheckState.STOPPED.value)
+            exit(config.CheckState.STOPPED.value)
 
         ret = self.check_local_component(self.config)
         print(ret[0])

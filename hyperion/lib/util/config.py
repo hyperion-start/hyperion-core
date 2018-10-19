@@ -1,4 +1,24 @@
 from os.path import expanduser
+from enum import Enum
+
+
+class CheckState(Enum):
+    """Enum that provides information about the status of a run check"""
+    RUNNING = 0
+    STOPPED = 1
+    STOPPED_BUT_SUCCESSFUL = 2
+    STARTED_BY_HAND = 3
+    DEP_FAILED = 4
+    UNREACHABLE = 5
+    NOT_INSTALLED = 6
+
+
+class StartState(Enum):
+    """Enum that provides information about the start state of a component"""
+    STARTED = 0
+    ALREADY_RUNNING = 1
+    FAILED = 2
+
 
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
 TMP_COMP_DIR = "/tmp/Hyperion/components"
