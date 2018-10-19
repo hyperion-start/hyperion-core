@@ -140,7 +140,7 @@ class HostMonitorJob(object):
     def run_check(self):
         try:
             proc = Process(self.pid)
-            if proc.is_running() and system("exec >(ping %s -c 10 >/dev/null) </dev/null" % self.hostname) is 0:
+            if proc.is_running() and system('(ping -w2 -c 1 %s) > /dev/null' % self.hostname) is 0:
                 return True
         except NoSuchProcess:
             pass

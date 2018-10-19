@@ -558,7 +558,7 @@ class ControlCenter(AbstractController):
         cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
                                                                       hostname, config.SSH_CONNECTION_TIMEOUT)
 
-        is_up = True if os.system("exec >(ping -c 1 -w 2 %s >/dev/null) </dev/null" % hostname) is 0 else False
+        is_up = True if os.system('ping -w2 -c 1 %s > /dev/null' % hostname) is 0 else False
         if not is_up:
             self.logger.error("Host %s is not reachable!" % hostname)
 
@@ -989,7 +989,8 @@ class ControlCenter(AbstractController):
                 self.logger.debug("Host '%s' is not localhost" % hostname)
                 return False
         except socket.gaierror:
-            sys.exit("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
+            self.logger.error("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
+
 
     def run_on_localhost(self, comp):
         """Check if component 'comp' is run on localhost or not.
