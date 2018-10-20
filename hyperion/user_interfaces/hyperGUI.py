@@ -696,13 +696,13 @@ class UiMainWindow(object):
         """
         check_status = config.CheckState(check_status)
         if check_status is config.CheckState.STOPPED:
-            # msg = QtGui.QMessageBox()
-            # msg.setIcon(QtGui.QMessageBox.Critical)
-            # msg.setText("Component '%s' crashed!" % comp_name)
-            # msg.setWindowTitle("Error")
-            # msg.setStandardButtons(QtGui.QMessageBox.Close)
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("Component '%s' crashed!" % comp_name)
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
 
-            # msg.exec_()
+            msg.exec_()
 
             self.logger.debug("Component %s stopped!" % comp_name)
 
