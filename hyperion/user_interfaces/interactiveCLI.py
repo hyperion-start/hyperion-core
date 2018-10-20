@@ -1,12 +1,15 @@
 import urwid
 
 
-def exit_program(button):
-    raise urwid.ExitMainLoop()
-
-
 class StateController(object):
+    """Intermediate interface class that constructs a urwid UI connected to the core application."""
+
     def __init__(self, cc):
+        """Initialize StateController constructing the urwid UI.
+
+        :param cc: Reference to core application
+        :type cc: hyperion.ControlCenter
+        """
 
         self.cc = cc
         self.selected_group = 0
@@ -40,10 +43,20 @@ class StateController(object):
         main_body = self.main_body = urwid.Pile([group_filler, v_padding_states])
         self.layout = urwid.Frame(header=header, body=main_body, footer=menu)
 
-    def refresh_groups(self):
+    def refresh_group_status(self):
+        """Refresh the displayed groups (highlighting).
+
+        :returns: None
+        """
+
         self.group_filler.body = urwid.Columns(self.get_group_items())
 
     def get_group_items(self):
+        """Get groups defined in the configuration file and add an 'all' group.
+
+        :return: None
+        """
+
         groups = []
         for g in self.cc.config['groups']:
             grp = urwid.LineBox(urwid.Text(g['name']))
@@ -63,14 +76,41 @@ class StateController(object):
         return groups
 
     def change_group(self, val):
+        """Change the currently selected group.
+
+        :param val: Change of the index in the group list
+        :type val: int
+        :return: None
+        """
+
         if len(self.groups) > self.selected_group + val > -1:
             self.selected_group = self.selected_group + val
             self.group_changed()
 
     def comp_action_cb(self, button, action):
+        """Handle a component action menu button click.
+
+        Does nothing yet except resetting the view, since this state is just a prototype.
+
+        :param button: Clicked button
+        :type button: uriwd.Button
+        :param action: Component menu action name
+        :type action: str
+        :return: None
+        """
+
         main_loop.widget = self.layout
 
     def selected_comp(self, comp_button, comp):
+        """Shows component action menu as popup.
+
+        :param comp_button: Button that caused the callback
+        :type comp_button: urwid.Button
+        :param comp: Component belonging to the selected button
+        :type comp: dict
+        :return: None
+        """
+
         body = [urwid.Text("%s component menu" % comp['name']), urwid.Divider()]
 
         choices = u'Start Stop Check Log'.split()
@@ -87,6 +127,11 @@ class StateController(object):
         main_loop.widget = urwid.Frame(overlay)
 
     def group_changed(self):
+        """Reloads components to display and triggers a group status display refresh.
+
+        :return: None
+        """
+
         group = self.groups[self.selected_group]
 
         comps = []
@@ -104,9 +149,15 @@ class StateController(object):
                         comps.append(urwid.AttrMap(button, None, focus_map='reversed'))
 
         self.active_comps[0] = urwid.Pile(comps)
-        self.refresh_groups()
+        self.refresh_group_status()
 
     def handle_input(self, key):
+        """Handle user input that was not handled by active urwid components.
+
+        :param key: User input to process
+        :type key: str
+        :return: None
+        """
         if key == 'R' or key == 'r':
             refresh(main_loop, '')
 
@@ -123,6 +174,13 @@ class StateController(object):
 
 
 def main(cc):
+    """Creates a state controller and starts urwid.
+
+    :param cc: Reference to the core application
+    :type cc: hyperion.ControlCenter
+    :return: None
+    """
+
     cli_menu = StateController(cc)
 
     palette = [
@@ -147,6 +205,13 @@ def main(cc):
 
 
 def refresh(_loop, _data):
+    """Refresh the display and set an automatic trigger for 10 seconds.
+
+    :param _loop: Urwid main loop
+    :param _data:
+    :return: None
+    """
+
     main_loop.draw_screen()
     main_loop.set_alarm_in(10, refresh)
 
