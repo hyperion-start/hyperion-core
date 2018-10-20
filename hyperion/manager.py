@@ -350,7 +350,9 @@ class ControlCenter(AbstractController):
 
         super(ControlCenter, self).__init__(configfile)
         self.nodes = {}
-        self.host_list = {}
+        self.host_list = {
+            '%s' % socket.gethostname(): True
+        }
         self.host_list_lock = Lock()
         self.monitor_queue = queue.Queue()
         self.mon_thread = MonitoringThread(self.monitor_queue)
@@ -981,7 +983,7 @@ class ControlCenter(AbstractController):
 
         try:
             hn_out = socket.gethostbyname('%s' % hostname)
-            if hn_out == '127.0.0.1' or hn_out == '::1':
+            if hn_out == '127.0.0.1' or hn_out == '127.0.1.1' or hn_out == '::1':
                 self.logger.debug("Host '%s' is localhost" % hostname)
                 return True
             else:
