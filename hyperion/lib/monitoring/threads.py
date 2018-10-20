@@ -61,7 +61,7 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
                 return True
         except NoSuchProcess:
             pass
-        return CrashEvent(self.comp_name)
+        return LocalCrashEvent(self.comp_name)
 
     def info(self):
         """Generate a status information for the job describing what is being monitored.
@@ -282,10 +282,10 @@ class MonitoringThread(Thread):
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)
             for mon_job in jobs:
-                logger.debug(mon_job.info())
+                #logger.debug(mon_job.info())
                 ret = mon_job.run_check()
                 if ret is True:
-                    logger.debug("S'all good man")
+                    #logger.debug("S'all good man")
                     # If job is ok, put it back for the next iteration
                     self.job_queue.put(mon_job)
                 else:
