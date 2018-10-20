@@ -35,6 +35,19 @@ class ComponentMonitorJob(object):
         """
 
 
+class CancellationJob(ComponentMonitorJob):
+    def __init__(self, pid, comp_name):
+        """Creates a cancellation job for a component.
+
+        :param pid: Process id of the component
+        :type pid: int
+        :param comp_name: Name of the component
+        :type comp_name: str
+        """
+
+        super(CancellationJob, self).__init__(pid, comp_name)
+
+
 class LocalComponentMonitoringJob(ComponentMonitorJob):
     """Class that represents a local component monitoring job."""
 
@@ -268,6 +281,7 @@ class MonitoringThread(Thread):
         while not self.end:
 
             comp_jobs = []
+            cancellations = []
             jobs = []
             already_handleled = {}
             # Get all enqueued jobs for this iteration
@@ -278,6 +292,16 @@ class MonitoringThread(Thread):
                 if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_name not in already_handleled:
                     comp_jobs.append(mon_job)
                     already_handleled[mon_job.comp_name] = True
+                if isinstance(mon_job, CancellationJob):
+                    cancellations.append(mon_job)
+
+            # Remove all jobs that received a cancellation from the job list
+            remove = []
+            for mon_job in cancellations:
+                for comp_job in comp_jobs:
+                    if mon_job.comp_name is comp_job.comp_name:
+                        remove.append(comp_job)
+            [comp_jobs.remove(job) for job in remove]
 
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)
