@@ -15,7 +15,7 @@ from time import sleep, time
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
 from lib.monitoring.threads import LocalComponentMonitoringJob, RemoteComponentMonitoringJob, \
-    HostMonitorJob, MonitoringThread
+    HostMonitorJob, MonitoringThread, CancellationJob
 import lib.util.exception as exceptions
 import lib.util.config as config
 
@@ -638,6 +638,9 @@ class ControlCenter(AbstractController):
         :type comp: dict
         :return: None
         """
+
+        self.logger.debug("Removing %s from process monitoring list" % comp['name'])
+        self.monitor_queue.put(CancellationJob(0, comp['name']))
 
         if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
             self.logger.debug("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
