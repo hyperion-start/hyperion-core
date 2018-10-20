@@ -36,6 +36,11 @@ except AttributeError:
 class UiMainWindow(object):
 
     def close(self):
+        """Asks the user if a full shutdown is desired, then kills the manager instance and exits the GUI.
+
+        :return: None
+        """
+
         msg = QtGui.QMessageBox()
         msg.setIcon(QtGui.QMessageBox.Information)
         msg.setText("Do you want to close all running processes?")
@@ -43,10 +48,19 @@ class UiMainWindow(object):
         msg.setStandardButtons(QtGui.QMessageBox.Yes | QtGui.QMessageBox.No)
         ret = msg.exec_()
 
+        self.event_manager.shutdown()
         self.control_center.cleanup(ret == QtGui.QMessageBox.Yes)
         exit(0)
 
     def ui_init(self, main_window, control_center):
+        """Constructs the UI with all its components using information retrieved from ``control_center``.
+
+        :param main_window: Window the UI is constructed in
+        :type main_window: QtGui.QMainWindow
+        :param control_center: Managing interface holding all configuration information
+        :type control_center: manager.ControlCenter
+        :return: None
+        """
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
@@ -100,6 +114,11 @@ class UiMainWindow(object):
         event_manger.done.connect(lambda: self.threads.remove(thread))
 
     def create_all_components_section(self):
+        """Creates a horizontal layout containing the `ALL COMPONENTS` section.
+
+        :return: None
+        """
+
         self.allComponentsWidget = container = QtGui.QHBoxLayout()
         container.setContentsMargins(0, 0, 1, 0)
 
@@ -133,6 +152,11 @@ class UiMainWindow(object):
         container.addItem(spacerItem2)
 
     def create_host_bar(self):
+        """Creates a horizontal layout containing the hosts section.
+
+        :return: None
+        """
+
         self.hostWidget = container = QtGui.QHBoxLayout()
         container.setContentsMargins(0,0,1,0)
 
@@ -153,6 +177,11 @@ class UiMainWindow(object):
         container.addStretch(0)
 
     def create_tabs(self):
+        """Creates a tab entry for every group.
+
+        :return: None
+        """
+
         for group in self.control_center.config['groups']:
             groupTab = QtGui.QWidget()
             groupTab.setObjectName(group['name'])
@@ -175,6 +204,16 @@ class UiMainWindow(object):
             self.tabWidget.addTab(groupTab, group['name'])
 
     def create_component(self, comp, scrollAreaWidgetContents):
+        """Creates a component entry for a tab.
+
+        :param comp: Component to create UI objects for
+        :type comp: dict
+        :param scrollAreaWidgetContents: Parent scroll area content
+        :type scrollAreaWidgetContents: QtQui.QWidget
+        :return: Horizontal layout containing component UI objects
+        :rtype: QtGui.QHBoxLayout
+        """
+
         horizontalLayout_components = QtGui.QHBoxLayout()
         horizontalLayout_components.setObjectName(_fromUtf8("horizontalLayout_%s" % comp['name']))
 
@@ -234,6 +273,16 @@ class UiMainWindow(object):
         return horizontalLayout_components
 
     def handle_host_button(self, host):
+        """Handle a click on a specific host button.
+
+        If the host is local host, a simple xterm is opened. If it is a remote host, an xterm with an ssh connection to
+        the host is opened.
+
+        :param host: Host whose button was clicked
+        :type host: str
+        :return: None
+        """
+
         if self.control_center.is_localhost(host):
             self.logger.debug("Clicked host is localhost. Opening xterm")
             subprocess.Popen(['xterm'], stdout=subprocess.PIPE)
@@ -259,6 +308,15 @@ class UiMainWindow(object):
             msg.exec_()
 
     def handle_log_button(self, comp):
+        """Handles a click on a components log button.
+
+        Opens up an xterm displaying a log file with tail -F.
+
+        :param comp: Component whose log button was clicked
+        :type comp: dict
+        :return: None
+        """
+
         self.logger.debug("%s show log button pressed" % comp['name'])
 
         cmd = "tail -n +1 -F %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['name'])
@@ -271,6 +329,15 @@ class UiMainWindow(object):
                              stdout=subprocess.PIPE)
 
     def handle_start_all(self):
+        """Handles a click on the start all button.
+
+        Starts a worker that runs a dependency based start of all components in a separate thread.
+        Also starts an animation for all start buttons tied to the execution of the worker to show the user feedback
+        about the running process.
+
+        :return: None
+        """
+
         self.logger.debug("Start all button pressed")
 
         start_worker = StartWorker()
@@ -328,6 +395,16 @@ class UiMainWindow(object):
         self.threads.append(thread)
 
     def handle_start_button(self, comp):
+        """Handles a click on a components start button.
+
+        Starts a worker that runs a dependency based component start in a separate thread. Also starts an animation for
+        the clicked button tied to the execution of the worker to show the user feedback about the running process.
+
+        :param comp: Component whose start button was clicked
+        :type comp: dict
+        :return: None
+        """
+
         self.logger.debug("%s start button pressed" % comp['name'])
 
         start_worker = StartWorker()
@@ -385,6 +462,17 @@ class UiMainWindow(object):
         self.threads.append(thread)
 
     def handle_stop_button(self, comp):
+        """Handles a click on a components stop button.
+
+        Starts a worker that stops a component in a separate thread and closes a `show term`, if it is active.
+        Also starts an animation for the clicked button tied to the execution of the worker to show the user feedback
+        about the running process.
+
+        :param comp: Component whose stop button was clicked
+        :type comp: dict
+        :return: None
+        """
+
         self.logger.debug("%s stop button pressed" % comp['name'])
 
         if comp['name'] in self.terms:
@@ -430,6 +518,13 @@ class UiMainWindow(object):
             term_toggle.setChecked(False)
 
     def handle_stop_all(self):
+        """Handles a click on the `stop all` button.
+
+        Executes a ``handle_stop_button`` call for each component.
+
+        :return: None
+        """
+
         self.logger.debug("Clicked stop all")
         stop_button = self.centralwidget.findChild(QtGui.QPushButton, "stop_button_all")
 
@@ -457,6 +552,16 @@ class UiMainWindow(object):
             self.handle_stop_button(node.component)
 
     def handle_check_button(self, comp):
+        """Handles a click on a components check button.
+
+        Starts a worker that checks a component in a separate thread . Also starts an animation for the clicked button
+        tied to the execution of the worker to show the user feedback about the running process.
+
+        :param comp: Component whose check button was clicked
+        :type comp: dict
+        :return: None
+        """
+
         self.logger.debug("%s check button pressed" % comp['name'])
 
         check_worker = CheckWorkerThread()
@@ -492,6 +597,13 @@ class UiMainWindow(object):
         self.threads.append(thread)
 
     def handle_check_all(self):
+        """Handles a click on the `check all` button.
+
+        Executes a ``handle_check_button`` call for each component.
+
+        :return: None
+        """
+
         self.logger.debug("Clicked check all")
         check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_all")
 
@@ -519,6 +631,17 @@ class UiMainWindow(object):
             self.handle_check_button(node.component)
 
     def handle_term_toggle_state_changed(self, comp, is_checked):
+        """Handles toggle or de-toggle of a components show term checkbox.
+
+        Opens or closes an xterm with attached to a components (remote or local) tmux window in a cloned tmux session.
+
+        :param comp: Component whose show term checkbox was clicked
+        :type comp: dict
+        :param is_checked: Current state of the checkbox
+        :type is_checked: bool
+        :return: None
+        """
+
         self.logger.debug("%s show term set to: %d" % (comp['name'], is_checked))
 
         if is_checked:
@@ -563,6 +686,15 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(str, int)
     def handle_crash_signal(self, check_status, comp_name):
+        """Handler for a crash signal event that informs the user of a component crash.
+
+        :param check_status: Status generated by the check of the crashed component
+        :type check_status: int
+        :param comp_name: Name of the crashed component
+        :type comp_name: str
+        :return: None
+        """
+
         if check_status is config.CheckState.STOPPED:
             msg = QtGui.QMessageBox()
             msg.setIcon(QtGui.QMessageBox.Critical)
@@ -574,6 +706,13 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(str)
     def handle_disconnect_signal(self, hostname):
+        """Handles a disconnect signal event that informs the user of a connection loss to a host.
+
+        :param hostname: Name of the host the connection to was lost
+        :type hostname: str
+        :return: None
+        """
+
         host_button = self.centralwidget.findChild(QtGui.QPushButton, "host_button_%s" % hostname)
         host_button.setStyleSheet("background-color: darkred")
 
@@ -601,6 +740,15 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(int, str)
     def check_button_callback(self, check_state, comp_name):
+        """Handles the signal for a finished component check execution displaying user information on a fail.
+
+        :param check_state: Status returned by the component check
+        :type check_state: int
+        :param comp_name: Name of the checked component
+        :type comp_name: str
+        :return: None
+        """
+
         check_state = config.CheckState(check_state)
         check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_%s" % comp_name)
 
@@ -634,6 +782,17 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(int, dict, str)
     def start_button_callback(self, check_state, comp, failed_name):
+        """Handles the signal for a finished component start displaying user information on a fail.
+
+        :param check_state: Status of the component check run after the start
+        :type check_state: int
+        :param comp: Component that was started
+        :type comp: dict
+        :param failed_name: Name of a dependency that failed during the start process (dummy if none failed)
+        :type failed_name: str
+        :return: None
+        """
+
         check_state = config.CheckState(check_state)
 
         msg = QtGui.QMessageBox()
@@ -665,6 +824,17 @@ class UiMainWindow(object):
 
     @QtCore.pyqtSlot(int, dict, str)
     def start_all_callback(self, check_state, comp, failed_name):
+        """Handles the done signal of a start all worker thread.
+
+        :param check_state: Final state of the start all process
+        :type check_state: int
+        :param comp: Unused dummy (provided because the same signal as for a single component start is used)
+        :type comp: dict
+        :param failed_name: Unused dummy (provided because the same signal as for a single component start is used)
+        :type failed_name: str
+        :return: None
+        """
+
         check_state = config.CheckState(check_state)
 
         self.logger.debug("start all callback ended with: %s" % config.STATE_DESCRIPTION.get(check_state))
@@ -683,6 +853,7 @@ class UiMainWindow(object):
 
 
 class EventManager(QtCore.QObject):
+    """Class that handles events sent by the main applications monitoring thread."""
     crash_signal = QtCore.pyqtSignal(int, str)
     disconnect_signal = QtCore.pyqtSignal(str)
     done = QtCore.pyqtSignal()
@@ -692,10 +863,25 @@ class EventManager(QtCore.QObject):
         self.is_ending = is_ending
 
     def shutdown(self):
+        """Shutown the event manager thread safely by setting the main loop condition to false.
+
+        :return: None
+        """
+
         self.is_ending = True
 
     @QtCore.pyqtSlot()
     def start(self, control_center):
+        """Starts the EventManager main loop and subscribes to the monitoring thread event queue.
+
+        Emits signals to the UI thread to notify it about monitoring events.
+        Signals its termination by emitting a ``done`` signal.
+
+        :param control_center: Reference to the core application
+        :type control_center: hyperion.ControlCenter
+        :return: None
+        """
+
         logger = logging.getLogger(__name__)
 
         event_queue = queue.Queue()
@@ -726,6 +912,18 @@ class CheckWorkerThread(QtCore.QObject):
 
     @QtCore.pyqtSlot()
     def run_check(self, control_center, comp):
+        """Runs a component check in the core application.
+
+        Sends an ``check_singal`` signal to notify the UI thread of the component check result and signals its
+        termination by sending a ``done`` signal.
+
+        :param control_center: Reference to the core application.
+        :type control_center: hyperion.ControlCenter
+        :param comp: Component that is being checked
+        :type comp: dict
+        :return: None
+        """
+
         self.check_signal.emit((control_center.check_component(comp)).value, comp['name'])
         self.done.emit()
 
@@ -738,6 +936,17 @@ class StopWorker(QtCore.QObject):
 
     @QtCore.pyqtSlot()
     def run_stop(self, control_center, comp):
+        """Stops a component in the core application.
+
+        Signals its termination by sending a ``done`` signal.
+
+        :param control_center: Reference to the core application.
+        :type control_center: hyperion.ControlCenter
+        :param comp: Component that is being stopped
+        :type comp: dict
+        :return: None
+        """
+
         logger = logging.getLogger(__name__)
         logger.debug("Running stop")
         control_center.stop_component(comp)
@@ -757,6 +966,18 @@ class StartWorker(QtCore.QObject):
 
     @QtCore.pyqtSlot()
     def run_start(self, control_center, comp):
+        """Starts a component in the core application by starting all of its dependencies first.
+
+        Sends an ``intermediate`` signal for each started component and signals its termination by sending a ``done``
+        signal.
+
+        :param control_center: Reference to the core application.
+        :type control_center: hyperion.ControlCenter
+        :param comp: Component that is being started
+        :type comp: dict
+        :return: None
+        """
+
         logger = logging.getLogger(__name__)
         comps = control_center.get_dep_list(comp)
         control_center = control_center
@@ -824,6 +1045,16 @@ class StartWorker(QtCore.QObject):
 
     @QtCore.pyqtSlot()
     def start_all(self, control_center):
+        """Starts all components in the core application ordered by dependencies.
+
+        Sends an ``intermediate`` signal for each started component and signals its termination by sending a ``done``
+        signal.
+
+        :param control_center: Reference to the core application.
+        :type control_center: hyperion.ControlCenter
+        :return: None
+        """
+
         logger = logging.getLogger(__name__)
         comps = control_center.get_start_all_list()
         failed = False
@@ -872,6 +1103,7 @@ class StartWorker(QtCore.QObject):
 
 
 class BlinkButton(QtGui.QPushButton):
+    """QPushbutton extension adding a color attribute to enable an animation for the foreground color."""
     def __init__(self, *args, **kwargs):
         QtGui.QPushButton.__init__(self, *args, **kwargs)
         self.default_color = self.getColor()
