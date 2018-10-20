@@ -322,10 +322,13 @@ class UiMainWindow(object):
         cmd = "tail -n +1 -F %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['name'])
 
         if self.control_center.run_on_localhost(comp):
-            subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
+            subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title', 'log of %s' % comp['name'],
+                              '-e', '%s' % cmd], stdout=subprocess.PIPE)
 
         else:
-            subprocess.Popen(['xterm', '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
+            subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title',
+                              'log of %s on %s' % (comp['name'], comp['host']),
+                              '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
                              stdout=subprocess.PIPE)
 
     def handle_start_all(self):
