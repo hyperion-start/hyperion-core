@@ -23,6 +23,7 @@ class StartState(Enum):
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
 TMP_COMP_DIR = "/tmp/Hyperion/components"
 TMP_LOG_PATH = "/tmp/Hyperion/log"
+TMP_ENV_PATH = "/tmp/Hyperion/env"
 
 SSH_CONFIG_PATH = "%s/.ssh/config" % expanduser("~")
 """File path of users standard SSH config"""
