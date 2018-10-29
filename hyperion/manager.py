@@ -331,6 +331,40 @@ class AbstractController(object):
         window = self.find_window('Main')
         window.cmd("send-keys", cmd, "Enter")
 
+    def wait_until_main_window_not_busy(self):
+        """Blocks until main window of the master session has no child process left running.
+
+        :return: None
+        """
+
+        window = self.find_window('Main')
+        self.wait_until_window_not_busy(window)
+
+    def wait_until_window_not_busy(self, window):
+        """Checks whether the passed window is busy executing a process and blocks until it is not busy anymore.
+
+        :return: None
+        """
+
+        pid = self.get_window_pid(window)
+        pids = []
+
+        done = False
+
+        while not done:
+            done = True
+
+            procs = []
+            for entry in pid:
+                procs.extend(Process(entry).children(recursive=True))
+
+            for p in procs:
+                try:
+                    if p.is_running():
+                        done = False
+                except NoSuchProcess:
+                    pass
+
 
 class ControlCenter(AbstractController):
     """Controller class that is able to handle a master session."""
