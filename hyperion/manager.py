@@ -33,6 +33,10 @@ BASE_DIR = os.path.dirname(__file__)
 SCRIPT_CLONE_PATH = ("%s/bin/start_named_clone_session.sh" % BASE_DIR)
 """File path of the 'clone session' script"""
 
+SCRIPT_SHOW_SESSION_PATH = ("%s/bin/show_session.sh" % BASE_DIR)
+"""File path of the 'clone session' script"""
+
+
 ###################
 # Logging
 ###################
@@ -1119,8 +1123,8 @@ class ControlCenter(AbstractController):
         cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, name)
         self.send_main_session_command(cmd)
 
-    def start_clone_session(self, comp):
-        """Start a clone session of the master session and open the window of component `comp`.
+    def start_local_clone_session(self, comp):
+        """Start a local clone session of the master session and open the window of component `comp`.
 
         Because the libtmux library does not provide functions to achieve this, a bash script is run to automatize the
         process.

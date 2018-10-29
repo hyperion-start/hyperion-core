@@ -50,7 +50,6 @@ class UiMainWindow(object):
 
         self.event_manager.shutdown()
         self.control_center.cleanup(ret == QtGui.QMessageBox.Yes)
-        exit(0)
 
     def ui_init(self, main_window, control_center):
         """Constructs the UI with all its components using information retrieved from ``control_center``.
@@ -651,7 +650,7 @@ class UiMainWindow(object):
 
             if self.control_center.run_on_localhost(comp):
                 self.logger.debug("Starting local clone session")
-                self.control_center.start_clone_session(comp)
+                self.control_center.start_local_clone_session(comp)
 
                 # Safety wait to ensure clone session is running
                 sleep(.5)
