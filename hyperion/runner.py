@@ -124,6 +124,8 @@ def main():
     comp_mutex.add_argument('-s', '--start', help="start the component", dest='comp_start', action="store_true")
     comp_mutex.add_argument('-k', '--stop', help="Stop the component", dest='comp_stop', action="store_true")
     comp_mutex.add_argument('-c', '--check', help="Check the component", dest='comp_check', action="store_true")
+    comp_mutex.add_argument('-L', '--log', help="Show the component log", dest='comp_log', action="store_true")
+    comp_mutex.add_argument('-T', '--term', help="Show the component term", dest='comp_term', action="store_true")
 
     subparser_gui = subparsers.add_parser('gui', help="Launches the setup specified by the --config argument and "
                                                       "start the GUI")
@@ -188,6 +190,18 @@ def main():
                 logger.debug("Chose check %s" % args.component)
                 for comp in comps:
                     cc.check_by_cli(comp)
+            if args.comp_log:
+                logger.debug("Chose show log of %s" % args.component)
+                if len(comps) > 1:
+                    logger.warning("The show log option only supports a single component as argument. Only the first is"
+                                   "used!")
+                cc.show_comp_log(comps[0])
+            if args.comp_term:
+                logger.debug("Chose show term of %s" % args.component)
+                if len(comps) > 1:
+                    logger.warning("The show term option only supports a single component as argument. Only the first "
+                                   "is used!")
+                cc.start_clone_session_and_attach(comps[0])
             cc.cleanup()
 
     elif args.cmd == 'gui':

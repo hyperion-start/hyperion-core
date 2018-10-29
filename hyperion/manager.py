@@ -1018,14 +1018,26 @@ class ControlCenter(AbstractController):
         logger.info("Check returned status: %s" % ret.name)
 
     def start_clone_session_and_attach(self, comp_name):
-        """Interface function for show term of component by name `comp_name` from the cli. !!(NYI)!!
+        """Interface function for show term of component by name `comp_name` from the cli.
 
         :param comp_name: Name of the component to show
         :type comp_name: str
         :return: None
         """
 
-        self.logger.debug("NYI")
+        comp = self.get_component_by_name(comp_name)
+        if self.run_on_localhost(comp):
+            self.start_local_clone_session(comp)
+
+            cmd = "%s '%s-clone-session'" % (SCRIPT_SHOW_SESSION_PATH, comp_name)
+            call(cmd, shell=True)
+        else:
+            hostname = comp['host']
+            self.start_remote_clone_session(comp)
+
+            remote_cmd = ("%s '%s-clone-session'" % (SCRIPT_SHOW_SESSION_PATH, comp_name))
+            cmd = "ssh -F %s %s 'bash -s' < %s" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
+            call(cmd, shell=True)
 
     def show_comp_log(self, comp_name):
         """Interface function for viewing the log of component by name `comp_name` from the cli. !!(NYI)!!
@@ -1035,7 +1047,21 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        self.logger.debug("NYI")
+        cmd = '/bin/bash -c "tail -n +1 -F %s/%s/latest.log"' % (config.TMP_LOG_PATH, comp_name)
+
+        comp = self.get_component_by_name(comp_name)
+
+        if self.run_on_localhost(comp):
+            try:
+                call(cmd, shell=True)
+            except KeyboardInterrupt:
+                pass
+        else:
+            hostname = comp['host']
+            try:
+                call("ssh -F %s %s '/bin/bash -s' < \"%s\"" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, cmd), shell=True)
+            except KeyboardInterrupt:
+                pass
 
     ###################
     # Dependency management
@@ -1094,7 +1120,6 @@ class ControlCenter(AbstractController):
                 return False
         except socket.gaierror:
             self.logger.error("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
-
 
     def run_on_localhost(self, comp):
         """Check if component 'comp' is run on localhost or not.
