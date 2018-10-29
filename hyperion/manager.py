@@ -99,6 +99,7 @@ class AbstractController(object):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.configfile = configfile
+        self.custom_env_path = None
         self.config = None
         self.session = None
         self.server = None
@@ -110,12 +111,25 @@ class AbstractController(object):
         :type filename: str
         :return: None
         """
+
         try:
             with open(filename) as data_file:
                 self.config = load(data_file, Loader)
         except IOError as e:
             self.logger.critical("No such file '%s' found" % filename)
             raise e
+
+        if 'env' in self.config and self.config.get('env'):
+            env = self.config.get('env')
+            if os.path.isfile(env):
+                self.logger.debug("Custom env given as absolute path! Saving to config")
+                self.custom_env_path = env
+            elif os.path.isfile(os.path.join(os.path.dirname(filename), env)):
+                self.logger.debug("Custom env given as relative path! Saving to config")
+                self.custom_env_path = os.path.join(os.path.dirname(filename), env)
+            else:
+                self.logger.critical("Env file %s could not be found!" % env)
+                raise exceptions.EnvNotFoundException("Env file %s could not be found!" % env)
 
     ###################
     # Component Management
@@ -129,7 +143,17 @@ class AbstractController(object):
         :rtype: bool
         """
         self.logger.debug("Running specific component check for %s" % comp['name'])
-        if call(comp['cmd'][1]['check'], shell=True) == 0:
+
+        shell_init = ''
+        if self.custom_env_path:
+            shell_init = '. %s; ' % self.custom_env_path
+
+        p = Popen('%s%s' % (shell_init, comp['cmd'][1]['check']), shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+
+        while p.poll() is None:
+            sleep(.5)
+
+        if p.returncode == 0:
             self.logger.debug("Check returned true")
             return True
         else:
@@ -285,7 +309,6 @@ class AbstractController(object):
         :return: None
         """
 
-        cmd = comp['cmd'][0]['start']
         comp_name = comp['name']
 
         pid = self.get_window_pid(window)
@@ -299,8 +322,16 @@ class AbstractController(object):
 
         self.logger.debug("Rotating log for %s" % comp_name)
         setup_log(window, log_file, comp_name)
+
+        if self.custom_env_path:
+            self.logger.debug("Sourcing custom environment for %s" % comp_name)
+            cmd = ". %s" % self.custom_env_path
+            self.wait_until_window_not_busy(window)
+            window.cmd("send-keys", cmd, "Enter")
+
         self.logger.debug("Running start command for %s" % comp_name)
-        window.cmd("send-keys", cmd, "Enter")
+        self.wait_until_window_not_busy(window)
+        window.cmd("send-keys", comp['cmd'][0]['start'], "Enter")
 
     def find_window(self, window_name):
         """Return window by name (None if not found).
@@ -329,6 +360,8 @@ class AbstractController(object):
         """
         self.logger.debug("Sending command to master session main window: %s" % cmd)
         window = self.find_window('Main')
+
+        self.wait_until_window_not_busy(window)
         window.cmd("send-keys", cmd, "Enter")
 
     def wait_until_main_window_not_busy(self):
@@ -397,7 +430,9 @@ class ControlCenter(AbstractController):
             try:
                 self.load_config(configfile)
             except IOError:
-                self.cleanup()
+                self.cleanup(status=1)
+            except exceptions.EnvNotFoundException:
+                self.cleanup(status=1)
             self.session_name = self.config["name"]
 
             # Debug write resulting yaml file
@@ -455,6 +490,11 @@ class ControlCenter(AbstractController):
                                               (comp['host'], self.host_list.get(comp['name'])))
 
             self.set_dependencies(True)
+
+            if self.custom_env_path:
+                self.logger.debug("Sourcing custom environment in main window of master session")
+                cmd = ". %s" % self.custom_env_path
+                self.send_main_session_command(cmd)
 
     def set_dependencies(self, exit_on_fail):
         """Parses all components constructing a dependency tree.
@@ -523,13 +563,31 @@ class ControlCenter(AbstractController):
         self.logger.debug("Saving component to tmp")
         tmp_comp_path = ('%s/%s.yaml' % (config.TMP_COMP_DIR, comp_name))
         ensure_dir(tmp_comp_path)
+
+        if self.custom_env_path:
+            comp['env'] = "%s/%s" % (config.TMP_ENV_PATH, os.path.basename(self.custom_env_path))
+
         with open(tmp_comp_path, 'w') as outfile:
             dump(comp, outfile, default_flow_style=False)
 
             self.logger.debug('Copying component "%s" to remote host "%s"' % (comp_name, host))
-            cmd = ("ssh -F %s %s 'mkdir -p %s' & scp %s %s:%s/%s.yaml" %
+            cmd = ("ssh -F %s %s 'mkdir -p %s' && scp %s %s:%s/%s.yaml" %
                    (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, tmp_comp_path, host,
                     config.TMP_SLAVE_DIR, comp_name))
+            self.send_main_session_command(cmd)
+
+    def copy_env_file(self, host):
+        """Copies a custom environment file to source to the remote host `host` if it was specified in the config.
+
+        :param host: Host to copy the file to.
+        :type host: str
+        :return: None
+        """
+
+        if self.custom_env_path:
+            self.logger.debug("Copying custom env file to %s" % host)
+            cmd = ("ssh -F %s %s 'mkdir -p %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_ENV_PATH))
+            cmd = "%s && scp %s %s:%s/" % (cmd, os.path.abspath(self.custom_env_path), host, config.TMP_ENV_PATH)
             self.send_main_session_command(cmd)
 
     def setup_ssh_config(self):
@@ -586,7 +644,7 @@ class ControlCenter(AbstractController):
         window = self.find_window('ssh-%s' % hostname)
         if window:
             self.logger.debug("Connecting to '%s' in old window" % hostname)
-            window.cmd("send-keys", "", "C-c")
+            window.cmd("send-keys", "exit", "Enter")
         else:
             self.logger.debug("Connecting to '%s' in new window" % hostname)
             window = self.session.new_window('ssh-%s' % hostname)
@@ -628,6 +686,9 @@ class ControlCenter(AbstractController):
             self.logger.debug("Adding ssh master to monitor queue")
             self.monitor_queue.put(HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock))
             self.logger.debug("SSH process still running. Connection was successful")
+
+            self.logger.debug("Copying env files to remote %s" % hostname)
+            self.copy_env_file(hostname)
             return True
         else:
             self.logger.debug("SSH process has finished. Connection was not successful. Check if an ssh connection "
@@ -848,7 +909,11 @@ class ControlCenter(AbstractController):
 
                 while p.poll() is None:
                     sleep(.5)
-                pid = int(p.stdout.readlines()[-1])
+                try:
+                    pid = int(p.stdout.readlines()[-1])
+                except IndexError:
+                    self.logger.error("Something went wrong on the remote host while checking!")
+                    pid = 0
 
                 if pid != 0:
                     self.logger.debug("Got remote pid %s for component %s" % (pid, comp['name']))
@@ -1067,7 +1132,7 @@ class ControlCenter(AbstractController):
 
         comp_name = comp['name']
         cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, self.session_name, comp_name)
-        self.send_main_session_command(cmd)
+        call(cmd, shell=True)
 
     def start_remote_clone_session(self, comp):
         """Start a clone session of the remote slave session and open the window of component `comp`.
@@ -1095,7 +1160,7 @@ class ControlCenter(AbstractController):
         """Handler that invokes cleanup on a received signal.
 
         :param signum: Signal signum
-        :type int
+        :type signum: int
         :param frame:
         :return: None
         """
@@ -1179,8 +1244,11 @@ class SlaveLauncher(AbstractController):
         if configfile:
             try:
                 self.load_config(configfile)
-            except IOError:
+            except IOError or exceptions.EnvNotFoundException:
+                # Print fake pid
+                print(0)
                 exit(1)
+
             self.window_name = self.config['name']
             self.log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, self.window_name))
             ensure_dir(self.log_file)
@@ -1221,6 +1289,7 @@ class SlaveLauncher(AbstractController):
         :return: Status of the component
         :rtype: config.CheckState
         """
+
         if not self.config:
             self.logger.error("Config not loaded yet!")
             exit(config.CheckState.STOPPED.value)

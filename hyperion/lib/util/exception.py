@@ -7,7 +7,7 @@ class WindowNotFoundException(Exception):
         :param message: Message to provide
         :type message: str
         """
-        
+
         super(Exception, self).__init__(message)
 
 
@@ -24,3 +24,15 @@ class CircularReferenceException(Exception):
 
         self.node1 = node1
         self.node2 = node2
+
+
+class EnvNotFoundException(Exception):
+    """Exception to be thrown when a custom environment file could not be found."""
+    def __init__(self, message):
+        """Create EnvNotFoundException.
+
+        :param message: Message to provide
+        :type message: str
+        """
+
+        self.message = message
