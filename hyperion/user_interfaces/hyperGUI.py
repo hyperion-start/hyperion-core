@@ -797,7 +797,15 @@ class UiMainWindow(object):
         :return: None
         """
 
-        check_state = config.CheckState(check_state)
+        try:
+            start_state = config.StartState(check_state)
+        except ValueError:
+            start_state = None
+
+        try:
+            check_state = config.CheckState(check_state)
+        except ValueError:
+            check_state = None
 
         msg = QtGui.QMessageBox()
         if check_state is config.CheckState.DEP_FAILED:
@@ -822,6 +830,13 @@ class UiMainWindow(object):
 
             if retval == QtGui.QMessageBox.Retry:
                 self.handle_start_button(comp)
+        elif start_state is config.StartState.ALREADY_RUNNING:
+            self.logger.debug("Component '%s' already running!" % comp['name'])
+            msg.setIcon(QtGui.QMessageBox.Warning)
+            msg.setText("Component '%s' already running!" % comp['name'])
+            msg.setWindowTitle("Warning")
+            msg.setStandardButtons(QtGui.QMessageBox.Ok)
+            msg.exec_()
         else:
             self.logger.debug("Starting '%s' succeeded without interference" % comp['name'])
             return
@@ -987,6 +1002,19 @@ class StartWorker(QtCore.QObject):
         control_center = control_center
         failed = False
         failed_comp = ""
+
+        check = control_center.check_component(comp)
+        if (check is not config.CheckState.UNREACHABLE
+                and check is not config.CheckState.STOPPED
+                and check is not config.CheckState.NOT_INSTALLED):
+
+            self.intermediate.emit(check.value, comp['name'])
+            self.done.emit(config.StartState.ALREADY_RUNNING.value, comp, failed_comp)
+
+            for dep in comps:
+                ret = control_center.check_component(dep.component)
+                self.intermediate.emit(ret.value, dep.comp_name)
+            return
 
         for dep in comps:
             if not failed:
