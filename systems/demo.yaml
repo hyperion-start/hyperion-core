@@ -5,3 +5,5 @@ groups:
   - !include ../components/groups/group2.yaml
 
 autostart: true
+
+env: env/custom_env.sh
