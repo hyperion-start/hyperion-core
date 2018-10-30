@@ -333,8 +333,8 @@ class AbstractController(object):
             self.wait_until_window_not_busy(window)
             window.cmd("send-keys", cmd, "Enter")
 
-        self.logger.debug("Running start command for %s" % comp_name)
         self.wait_until_window_not_busy(window)
+        self.logger.debug("Running start command for %s" % comp_name)
         window.cmd("send-keys", comp['cmd'][0]['start'], "Enter")
 
     def find_window(self, window_name):
@@ -390,7 +390,7 @@ class AbstractController(object):
         self.logger.debug("... window '%s' is not busy anymore" % window.name)
 
     def is_window_busy(self, window):
-        """Checks whether the window has at least one running child process.
+        """Checks whether the window has at least one running child process (excluding tee processes).
 
         :param window: Window to be checked
         :return: True if window is busy, False if not
@@ -406,7 +406,8 @@ class AbstractController(object):
 
         for p in procs:
             try:
-                if p.is_running():
+                if p.is_running() and p.name() != 'tee':
+                    self.logger.debug("Running child process: %s" % p.name())
                     return True
             except NoSuchProcess:
                 pass
