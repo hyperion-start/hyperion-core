@@ -495,15 +495,18 @@ class ControlCenter(AbstractController):
                     self.logger.debug("Checking component '%s' in group '%s' on host '%s'" %
                                       (comp['name'], group['name'], comp['host']))
 
-                    if comp['host'] != "localhost" and not self.run_on_localhost(comp):
-                        if comp['host'] not in self.host_list:
-                            if self.establish_master_connection(comp['host']):
-                                self.logger.debug("Master connection to %s established!" % comp['host'])
-                        if self.host_list.get(comp['host']) is not None:
-                            self.copy_component_to_remote(comp, comp['host'])
-                        else:
-                            self.logger.debug("Not copying because host %s is not reachable: %s" %
-                                              (comp['host'], self.host_list.get(comp['name'])))
+                    try:
+                        if comp['host'] != "localhost" and not self.run_on_localhost(comp):
+                            if comp['host'] not in self.host_list:
+                                if self.establish_master_connection(comp['host']):
+                                    self.logger.debug("Master connection to %s established!" % comp['host'])
+                            if self.host_list.get(comp['host']) is not None:
+                                self.copy_component_to_remote(comp, comp['host'])
+                            else:
+                                self.logger.debug("Not copying because host %s is not reachable: %s" %
+                                                  (comp['host'], self.host_list.get(comp['name'])))
+                    except exceptions.HostUnknownException as ex:
+                        self.logger.error(ex.message)
 
             self.set_dependencies(True)
 
@@ -1136,7 +1139,7 @@ class ControlCenter(AbstractController):
                 self.logger.debug("Host '%s' is not localhost" % hostname)
                 return False
         except socket.gaierror:
-            self.logger.error("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
+            raise exceptions.HostUnknownException("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
 
     def run_on_localhost(self, comp):
         """Check if component 'comp' is run on localhost or not.
@@ -1146,8 +1149,10 @@ class ControlCenter(AbstractController):
         :return: Whether component is run on localhost or not
         :rtype: bool
         """
-
-        return self.is_localhost(comp['host'])
+        try:
+            return self.is_localhost(comp['host'])
+        except exceptions.HostUnknownException as ex:
+            raise ex
 
     ###################
     # TMUX

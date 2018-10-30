@@ -36,3 +36,10 @@ class EnvNotFoundException(Exception):
         """
 
         self.message = message
+
+
+class HostUnknownException(Exception):
+    """Exception to be thrown when a host can not be resolved."""
+
+    def __init__(self, message):
+        self.message = message
