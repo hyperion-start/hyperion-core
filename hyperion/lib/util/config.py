@@ -15,9 +15,9 @@ class CheckState(Enum):
 
 class StartState(Enum):
     """Enum that provides information about the start state of a component"""
-    STARTED = 0
-    ALREADY_RUNNING = 1
-    FAILED = 2
+    STARTED = 100
+    ALREADY_RUNNING = 101
+    FAILED = 102
 
 
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
