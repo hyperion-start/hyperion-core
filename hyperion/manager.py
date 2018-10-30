@@ -367,6 +367,7 @@ class AbstractController(object):
 
         self.wait_until_window_not_busy(window)
         window.cmd("send-keys", cmd, "Enter")
+        self.wait_until_window_not_busy(window)
 
     def wait_until_main_window_not_busy(self):
         """Blocks until main window of the master session has no child process left running.
@@ -383,24 +384,34 @@ class AbstractController(object):
         :return: None
         """
 
+        self.logger.debug("Waiting until window '%s' has no running child processes left ..." % window.name)
+        while self.is_window_busy(window):
+            sleep(0.5)
+        self.logger.debug("... window '%s' is not busy anymore" % window.name)
+
+    def is_window_busy(self, window):
+        """Checks whether the window has at least one running child process.
+
+        :param window: Window to be checked
+        :return: True if window is busy, False if not
+        :rtype: bool
+        """
+
         pid = self.get_window_pid(window)
         pids = []
 
-        done = False
+        procs = []
+        for entry in pid:
+            procs.extend(Process(entry).children(recursive=True))
 
-        while not done:
-            done = True
+        for p in procs:
+            try:
+                if p.is_running():
+                    return True
+            except NoSuchProcess:
+                pass
 
-            procs = []
-            for entry in pid:
-                procs.extend(Process(entry).children(recursive=True))
-
-            for p in procs:
-                try:
-                    if p.is_running():
-                        done = False
-                except NoSuchProcess:
-                    pass
+        return False
 
 
 class ControlCenter(AbstractController):
@@ -648,11 +659,17 @@ class ControlCenter(AbstractController):
         window = self.find_window('ssh-%s' % hostname)
         if window:
             self.logger.debug("Connecting to '%s' in old window" % hostname)
-            window.cmd("send-keys", "exit", "Enter")
+
+            if self.is_window_busy(window):
+                self.logger.debug("Old connection still alive. No need to reconnect")
+            else:
+                self.logger.debug("Old connection died. Reconnecting to host")
+                window.cmd("send-keys", cmd, "Enter")
+
         else:
             self.logger.debug("Connecting to '%s' in new window" % hostname)
             window = self.session.new_window('ssh-%s' % hostname)
-        window.cmd("send-keys", cmd, "Enter")
+            window.cmd("send-keys", cmd, "Enter")
 
         t_end = time() + config.SSH_CONNECTION_TIMEOUT
 
@@ -687,10 +704,9 @@ class ControlCenter(AbstractController):
 
         self.logger.debug("Testing if connection was successful")
         if ssh_proc.is_running():
+            self.logger.debug("SSH process still running. Connection was successful")
             self.logger.debug("Adding ssh master to monitor queue")
             self.monitor_queue.put(HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock))
-            self.logger.debug("SSH process still running. Connection was successful")
-
             self.logger.debug("Copying env files to remote %s" % hostname)
             self.copy_env_file(hostname)
             return True
