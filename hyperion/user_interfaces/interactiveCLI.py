@@ -1,6 +1,100 @@
 import urwid
 
 
+class LogTextWalker(urwid.ListWalker):
+    """ListWalker-compatible class for lazily reading file contents."""
+
+    def __init__(self, name):
+        self.file = open(name)
+        self.lines = []
+        self.focus = 0
+
+    def get_focus(self):
+        return self._get_at_pos(self.focus)
+
+    def set_focus(self, focus):
+        self.focus = focus
+        self._modified()
+
+    def get_next(self, start_from):
+        return self._get_at_pos(start_from + 1)
+
+    def get_prev(self, start_from):
+        return self._get_at_pos(start_from - 1)
+
+    def read_next_line(self):
+        """Read another line from the file."""
+
+        next_line = self.file.readline()
+
+        if not next_line or next_line[-1:] != '\n':
+            # no newline on last line of file
+            self.file = None
+        else:
+            # trim newline characters
+            next_line = next_line[:-1]
+
+        self.lines.append(urwid.Text(next_line))
+        return next_line
+
+    def _get_at_pos(self, pos):
+        """Return a widget for the line number passed."""
+
+        if pos < 0:
+            # line 0 is the start of the file, no more above
+            return None, None
+
+        if len(self.lines) > pos:
+            # we have that line so return it
+            return self.lines[pos], pos
+
+        if self.file is None:
+            # file is closed, so there are no more lines
+            return None, None
+
+        assert pos == len(self.lines), "out of order request?"
+
+        self.read_next_line()
+
+        return self.lines[-1], pos
+
+    def combine_focus_with_prev(self):
+        """Combine the focus edit widget with the one above."""
+
+        above, ignore = self.get_prev(self.focus)
+        if above is None:
+            # already at the top
+            return
+
+        focus = self.lines[self.focus]
+        above.set_edit_pos(len(above.edit_text))
+        above.set_edit_text(above.edit_text + focus.edit_text)
+        del self.lines[self.focus]
+        self.focus -= 1
+
+    def combine_focus_with_next(self):
+        """Combine the focus edit widget with the one below."""
+
+        below, ignore = self.get_next(self.focus)
+        if below is None:
+            # already at bottom
+            return
+
+        focus = self.lines[self.focus]
+        focus.set_edit_text(focus.edit_text + below.edit_text)
+        del self.lines[self.focus+1]
+
+
+class SimpleButton(urwid.Button):
+    def __init__(self, caption, callback=None, user_data=None):
+        super(SimpleButton, self).__init__("")
+        if callback:
+            urwid.connect_signal(self, 'click', callback, user_data)
+        label = urwid.SelectableIcon(caption, 0)
+        label.set_align_mode('center')
+        self._w = urwid.AttrMap(label, None, 'selected')
+
+
 class StateController(object):
     """Intermediate interface class that constructs a urwid UI connected to the core application."""
 
@@ -12,144 +106,199 @@ class StateController(object):
         """
 
         self.cc = cc
-        self.selected_group = 0
-        self.groups = []
+        self.selected_group = None
+        self.groups = {}
 
-        header_text = urwid.Text(u'%s' % cc.config['name'])
-        header = urwid.AttrMap(header_text, 'titlebar')
-        menu = urwid.Text([
+        header_text = urwid.Text(u'%s' % cc.config['name'], align='center')
+        header = urwid.Pile([urwid.Divider(), urwid.AttrMap(header_text, 'titlebar')])
+        menu = self.menu = urwid.Text([
             u'Press (', ('refresh button', u'N'), u') for next or (', ('refresh button', u'P'), u') for previous group | ',
             u'Press (', ('quit button', u'Q'), u') to quit.'
         ])
 
         for g in self.cc.config['groups']:
-            self.groups.append(g)
-        self.groups.append({'name': 'All'})
+            self.groups[g['name']] = g
+        self.groups['All'] = ({'name': 'All'})
 
-        groups = self.get_group_items()
+        self.radio_button_log_group = []
+        group_col = self.group_col = urwid.Columns([], 1)
+        components_pile = self.components_pile = urwid.Pile([])
+        host_pile = self.host_pile = urwid.Pile([
+            urwid.Columns([
+                urwid.AttrMap(SimpleButton('Host 1'), 'host', focus_map='reversed'),
+                urwid.Text('16', align='center'),
+                urwid.Text('100%', align='center'),
+                urwid.Text('100%', align='center')
+            ], 1),
 
-        group_bar = urwid.Columns(groups)
-        group_filler = self.group_filler = urwid.Filler(group_bar, valign='top', top=1)
+            urwid.Columns([
+                urwid.AttrMap(SimpleButton('Host 2'), 'host', focus_map='reversed'),
+                urwid.Text('1.6', align='center'),
+                urwid.Text('100%', align='center'),
+                urwid.Text('100%', align='center')
+            ], 1),
 
-        active_comps = self.active_comps = urwid.SimpleFocusListWalker([urwid.Text("Nothing to display")])
+            urwid.Columns([
+                urwid.AttrMap(SimpleButton('Host 3'), 'host', focus_map='reversed'),
+                urwid.Text('4', align='center'),
+                urwid.Text('100%', align='center'),
+                urwid.Text('100%', align='center')
+            ], 1)
+        ])
 
-        self.group_changed()
+        blank = urwid.Divider()
+        list_box_contents = [
+            blank,
+            urwid.Divider('='),
+            group_col,
+            urwid.Divider('='),
 
-        comp_box = urwid.ListBox(active_comps)
-        v_padding = urwid.Padding(comp_box, left=1, right=1)
-        state_box = urwid.LineBox(v_padding)
-        v_padding_states = urwid.Padding(state_box, left=2, right=2)
+            urwid.Padding(urwid.LineBox(components_pile), left=2, right=2),
 
-        main_body = self.main_body = urwid.Pile([group_filler, v_padding_states])
+            urwid.Columns([
+                urwid.Pile([
+                    urwid.LineBox(urwid.Pile([
+                        urwid.Columns([
+                            SimpleButton('Start'),
+                            SimpleButton('Stop'),
+                            SimpleButton('Check')
+                        ], 1)
+                    ]), 'All Components'),
+
+                    urwid.LineBox(
+                        urwid.Pile([
+                            urwid.AttrMap(urwid.Text('Host Stats', align='center'), 'titlebar'),
+                            urwid.Divider(),
+                            urwid.Columns([
+                                urwid.AttrMap(urwid.Text('Hostname', align='center'), 'important'),
+                                urwid.AttrMap(urwid.Text('Load AVG', align='center'), 'important'),
+                                urwid.AttrMap(urwid.Text('CPU', align='center'), 'important'),
+                                urwid.AttrMap(urwid.Text('MEM', align='center'), 'important')
+                            ], 1),
+                            host_pile
+                        ])
+                    )
+                ]),
+
+                urwid.LineBox(urwid.Pile([
+                    urwid.BoxAdapter(urwid.ListBox(LogTextWalker('/tmp/Hyperion/ssh-config')), 10),
+                    urwid.Divider(),
+                    urwid.AttrMap(SimpleButton("Close"), 'titlebar')
+                ]), 'Log')
+            ], 1),
+
+            urwid.Divider(),
+            urwid.Padding(urwid.Divider('#'), left=10, right=10),
+            urwid.Divider(),
+            urwid.LineBox(urwid.BoxAdapter(urwid.ListBox(LogTextWalker('/tmp/Hyperion/ssh-config')), 10), 'Hyperion Log')
+
+        ]
+
+        self.fetch_group_items()
+        self.fetch_components()
+        self.fetch_host_items()
+
+        main_body = self.main_body = urwid.ListBox(urwid.SimpleListWalker(list_box_contents))
         self.layout = urwid.Frame(header=header, body=main_body, footer=menu)
 
-    def refresh_group_status(self):
-        """Refresh the displayed groups (highlighting).
+    def fetch_host_items(self):
+        """Get all hosts to display in the UI.
 
-        :returns: None
+        :return None
         """
 
-        self.group_filler.body = urwid.Columns(self.get_group_items())
+        hosts = []
+        for host in self.cc.host_list:
+            host_object = SimpleButton(host)
+            if self.cc.host_list[host]:
+                host_object = urwid.AttrMap(host_object, 'host', focus_map='reversed')
+            else:
+                host_object = urwid.AttrMap(host_object, 'unavailable_host', focus_map='reversed')
 
-    def get_group_items(self):
-        """Get groups defined in the configuration file and add an 'all' group.
+            hosts.append((urwid.Columns([
+                host_object,
+                urwid.Text('4', align='center'),
+                urwid.Text('100%', align='center'),
+                urwid.Text('100%', align='center')
+            ], 1), ('weight', 1)))
+
+        self.host_pile.contents[:] = hosts
+
+    def fetch_group_items(self):
+        """Make a button for every group defined in the configuration file and add an 'all' group.
 
         :return: None
         """
 
         groups = []
         for g in self.cc.config['groups']:
-            grp = urwid.LineBox(urwid.Text(g['name']))
-            if g['name'] == self.groups[self.selected_group]['name']:
+
+            if not self.selected_group:
+                self.selected_group = g['name']
+
+            grp = SimpleButton(g['name'], self.change_group, g['name'])
+            if g['name'] == self.selected_group:
                 grp = urwid.AttrMap(grp, 'group_selected')
             else:
                 grp = urwid.AttrMap(grp, 'group')
-            groups.append(grp)
+            groups.append((grp, self.group_col.options()))
 
-        all_group = urwid.LineBox(urwid.Text(u'All'))
-        if self.groups[self.selected_group]['name'] == 'All':
+        all_group = SimpleButton(u'All', self.change_group, 'All')
+        if self.selected_group == 'All':
             all_group = urwid.AttrMap(all_group, 'group_selected')
         else:
             all_group = urwid.AttrMap(all_group, 'group')
-        groups.append(all_group)
+        groups.append((all_group, self.group_col.options()))
 
-        return groups
+        self.group_col._set_contents(groups)
 
-    def change_group(self, val):
+    def change_group(self, button, group):
         """Change the currently selected group.
 
-        :param val: Change of the index in the group list
-        :type val: int
+        :param group: Group that got selected
+        :type group: str
         :return: None
         """
 
-        if len(self.groups) > self.selected_group + val > -1:
-            self.selected_group = self.selected_group + val
-            self.group_changed()
+        self.selected_group = group
+        self.fetch_group_items()
+        self.fetch_components()
 
-    def comp_action_cb(self, button, action):
-        """Handle a component action menu button click.
-
-        Does nothing yet except resetting the view, since this state is just a prototype.
-
-        :param button: Clicked button
-        :type button: uriwd.Button
-        :param action: Component menu action name
-        :type action: str
-        :return: None
-        """
-
-        main_loop.widget = self.layout
-
-    def selected_comp(self, comp_button, comp):
-        """Shows component action menu as popup.
-
-        :param comp_button: Button that caused the callback
-        :type comp_button: urwid.Button
-        :param comp: Component belonging to the selected button
-        :type comp: dict
-        :return: None
-        """
-
-        body = [urwid.Text("%s component menu" % comp['name']), urwid.Divider()]
-
-        choices = u'Start Stop Check Log'.split()
-        for c in choices:
-            button = urwid.Button(c)
-            urwid.connect_signal(button, 'click', self.comp_action_cb, c)
-            body.append(urwid.AttrMap(button, None, focus_map='reversed'))
-
-        box = urwid.ListBox(urwid.SimpleFocusListWalker(body))
-        lb = urwid.AttrMap(urwid.LineBox(box), 'popup')
-
-        overlay = urwid.Overlay(lb, self.main_body, align='center', width=('relative', 60),
-                      valign='middle', height=('relative', 60))
-        main_loop.widget = urwid.Frame(overlay)
-
-    def group_changed(self):
+    def fetch_components(self):
         """Reloads components to display and triggers a group status display refresh.
 
         :return: None
         """
 
         group = self.groups[self.selected_group]
-
         comps = []
         if group['name'] != 'All':
             for c in group['components']:
-                button = urwid.Button("%s@%s - Status: %s " % (c['name'], c['host'], "DUMMY"))
-                urwid.connect_signal(button, 'click', self.selected_comp, c)
-                comps.append(urwid.AttrMap(button, None, focus_map='reversed'))
+                comps.append((urwid.Columns([
+                    urwid.AttrMap(SimpleButton('%s@%s' % (c['name'], c['host'])), 'important', focus_map='reversed'),
+                    urwid.Text('status: ???'),
+                    SimpleButton('Start'),
+                    SimpleButton('Stop'),
+                    SimpleButton('Check'),
+                    urwid.CheckBox('Log'),
+                ], 1), ('weight', 1)))
+
         else:
             for grp in self.groups:
-                if grp['name'] != 'All':
-                    for c in grp['components']:
-                        button = urwid.Button("%s@%s - Status: %s " % (c['name'], c['host'], "DUMMY"))
-                        urwid.connect_signal(button, 'click', self.selected_comp, c)
-                        comps.append(urwid.AttrMap(button, None, focus_map='reversed'))
+                group = self.groups[grp]
+                if group['name'] != 'All':
+                    for c in group['components']:
+                        comps.append((urwid.Columns([
+                            urwid.AttrMap(SimpleButton('%s@%s' % (c['name'], c['host'])), 'important',
+                                          focus_map='reversed'),
+                            urwid.Text('status: ???'),
+                            SimpleButton('Start'),
+                            SimpleButton('Stop'),
+                            SimpleButton('Check'),
+                            urwid.CheckBox('Log'),
+                        ], 1), ('weight', 1)))
 
-        self.active_comps[0] = urwid.Pile(comps)
-        self.refresh_group_status()
+        self.components_pile.contents[:] = comps
 
     def handle_input(self, key):
         """Handle user input that was not handled by active urwid components.
@@ -163,11 +312,6 @@ class StateController(object):
 
         if key == 'Q' or key == 'q':
             raise urwid.ExitMainLoop()
-
-        if key == 'p' or key == 'P':
-            self.change_group(-1)
-        if key == 'n' or key == 'N':
-            self.change_group(1)
 
         if key == 'esc':
             main_loop.widget = self.layout
@@ -185,18 +329,19 @@ def main(cc):
 
     palette = [
         ('titlebar', 'dark red', ''),
-        ('popup', 'black', 'dark cyan'),
         ('refresh button', 'dark green,bold', ''),
         ('reversed', 'standout', ''),
         ('quit button', 'dark red', ''),
         ('button', 'black', 'light gray'),
         ('button_select', 'light gray', 'black'),
         ('group', 'black', "white"),
-        ('group_selected', 'white', 'dark blue'),
-        ('getting quote', 'dark blue', ''),
+        ('group_selected', 'white', 'dark cyan'),
         ('headers', 'white,bold', ''),
-        ('change ', 'dark green', ''),
-        ('change negative', 'dark red', '')]
+        ('host', 'dark green', ''),
+        ('unavailable_host', 'dark red', ''),
+        ('important', 'dark blue', 'black', ('standout', 'underline')),
+        ('selected', 'white', 'dark blue'),
+        ('deselected', 'white', 'light gray')]
 
     global main_loop
     main_loop = urwid.MainLoop(cli_menu.layout, palette, unhandled_input=cli_menu.handle_input, pop_ups=True)
