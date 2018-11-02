@@ -14,7 +14,7 @@ setup(
 
     package_data={
         # Include any files found in the 'scripts' subdirectory
-        '': ['bin/*'],
+        '': ['bin/*', 'data/*'],
     },
 
     version=VERSION,

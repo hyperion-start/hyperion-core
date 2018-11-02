@@ -1,9 +1,12 @@
 import logging
+import logging.handlers
 import argparse
 import sys
 from signal import *
-from manager import ControlCenter, SlaveLauncher
+from manager import ControlCenter, SlaveLauncher, ensure_dir, BASE_DIR
 from lib.util.depTree import CircularReferenceException, dep_resolve
+from lib.util.config import TMP_LOG_PATH
+from logging.config import fileConfig
 
 ###########################
 # Optional feature imports
@@ -29,6 +32,9 @@ except ImportError:
     interactive_enabled = False
 else:
     interactive_enabled = True
+
+ensure_dir("%s/any.log" % TMP_LOG_PATH)
+fileConfig('%s/data/default-logger.config' % BASE_DIR)
 
 
 ###################
@@ -148,13 +154,20 @@ def main():
     args = parser.parse_args()
     logger.debug(args)
 
+    root_logger = logging.getLogger()
+
     if args.cmd == 'edit':
         logger.debug("Launching editor mode")
 
     if args.cmd == 'cli':
         clilogger = logging.getLogger('CLI-RESPONSE')
-        clilogger.setLevel(logging.DEBUG)
-        logger.debug("Launching cli mode")
+        clilogger.setLevel(logging.INFO)
+        logger.info("Launching cli mode")
+
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                logger.debug("Setting non file stream handlers to INFO to disable stdout bloating!")
+                handler.setLevel(logging.INFO)
 
         cc = ControlCenter(args.config, args.interactive)
         cc.init()
@@ -162,6 +175,14 @@ def main():
         if args.interactive:
             logger.debug("Chose interactive mode")
             if interactive_enabled:
+
+                remove = []
+                for handler in root_logger.handlers:
+                    if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                        logger.debug("Remove non file stream handlers to disable logging on stdout!")
+                        remove.append(handler)
+                [root_logger.removeHandler(h) for h in remove]
+
                 interactiveCLI.main(cc)
                 cc.cleanup()
             else:

@@ -1011,7 +1011,7 @@ class ControlCenter(AbstractController):
         except exceptions.WindowNotFoundException as e:
             logger.warning(e.message)
             return
-        logger.info("Stopping component '%s' ...")
+        logger.info("Stopping component '%s' ..." % comp_name)
         self.stop_component(comp)
         sleep(2)
         ret = self.check_component(comp)
