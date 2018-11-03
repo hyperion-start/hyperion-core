@@ -25,8 +25,6 @@ if is_py2:
 else:
     import queue as queue
 
-logging.basicConfig(level=logging.WARNING, format=config.FORMAT, datefmt='%I:%M:%S')
-
 BASE_DIR = os.path.dirname(__file__)
 """Path to the directory this file is contained in"""
 
