@@ -5,9 +5,12 @@ class LogTextWalker(urwid.ListWalker):
     """ListWalker-compatible class for lazily reading file contents."""
 
     def __init__(self, name):
+        self.file_name = name
         self.file = open(name)
         self.lines = []
         self.focus = 0
+        self.end = False
+        self.max_pos = 0
 
     def get_focus(self):
         return self._get_at_pos(self.focus)
@@ -29,12 +32,29 @@ class LogTextWalker(urwid.ListWalker):
 
         if not next_line or next_line[-1:] != '\n':
             # no newline on last line of file
-            self.file = None
+            self.end = True
         else:
             # trim newline characters
+            self.end = False
             next_line = next_line[:-1]
 
         self.lines.append(urwid.Text(next_line))
+        return next_line
+
+    def reread_last_line(self):
+        """Read another line from the file and replace last line with it."""
+
+        next_line = self.file.readline()
+
+        if not next_line or next_line[-1:] != '\n':
+            # no newline on last line of file
+            self.end = True
+        else:
+            # trim newline characters
+            self.end = False
+            next_line = next_line[:-1]
+
+        self.lines[-1] = urwid.Text(next_line)
         return next_line
 
     def _get_at_pos(self, pos):
@@ -44,13 +64,23 @@ class LogTextWalker(urwid.ListWalker):
             # line 0 is the start of the file, no more above
             return None, None
 
+        self.max_pos = pos
+
         if len(self.lines) > pos:
             # we have that line so return it
             return self.lines[pos], pos
 
-        if self.file is None:
-            # file is closed, so there are no more lines
-            return None, None
+        if self.end:
+            with open(self.file_name) as f:
+                for i, l in enumerate(f):
+                    pass
+                self.max_pos = i+1
+                logging.debug("file lines %s; pos %s" % (i, pos))
+                if i+1 < pos:
+                    return None, None
+                else:
+                    self.reread_last_line()
+                    return self.lines[-1], pos-1
 
         assert pos == len(self.lines), "out of order request?"
 
@@ -108,13 +138,15 @@ class StateController(object):
         self.cc = cc
         self.selected_group = None
         self.groups = {}
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+        self.event_queue = event_queue
+        self.log_viewer = LogTextWalker('%s/info.log' % config.TMP_LOG_PATH)
+        self.tail_log = True
+        self.last_content_focus = 0
 
         header_text = urwid.Text(u'%s' % cc.config['name'], align='center')
         header = urwid.Pile([urwid.Divider(), urwid.AttrMap(header_text, 'titlebar')])
-        menu = self.menu = urwid.Text([
-            u'Press (', ('refresh button', u'N'), u') for next or (', ('refresh button', u'P'), u') for previous group | ',
-            u'Press (', ('quit button', u'Q'), u') to quit.'
-        ])
 
         for g in self.cc.config['groups']:
             self.groups[g['name']] = g
@@ -186,19 +218,26 @@ class StateController(object):
                     urwid.AttrMap(SimpleButton("Close"), 'titlebar')
                 ]), 'Log')
             ], 1),
+        ]
 
+        menu = self.menu = urwid.Pile([
             urwid.Divider(),
             urwid.Padding(urwid.Divider('#'), left=10, right=10),
             urwid.Divider(),
-            urwid.LineBox(urwid.BoxAdapter(urwid.ListBox(LogTextWalker('/tmp/Hyperion/ssh-config')), 10), 'Hyperion Log')
-
-        ]
+            urwid.LineBox(urwid.BoxAdapter(urwid.ListBox(self.log_viewer), 10), 'Hyperion Log'),
+            urwid.Text([
+                u'Press (', ('refresh button', u'L'), u') to jump into or out of Hyperion log | ',
+                u'Press (', ('quit button', u'Q'), u') to quit.'
+            ])
+        ])
 
         self.fetch_group_items()
         self.fetch_components()
         self.fetch_host_items()
 
-        main_body = self.main_body = urwid.ListBox(urwid.SimpleListWalker(list_box_contents))
+        self.content_walker = urwid.SimpleListWalker(list_box_contents)
+
+        main_body = self.main_body = urwid.ListBox(self.content_walker)
         self.layout = urwid.Frame(header=header, body=main_body, footer=menu)
 
     def fetch_host_items(self):
@@ -307,14 +346,22 @@ class StateController(object):
         :type key: str
         :return: None
         """
-        if key == 'R' or key == 'r':
-            refresh(main_loop, '')
 
         if key == 'Q' or key == 'q':
             raise urwid.ExitMainLoop()
 
         if key == 'esc':
             main_loop.widget = self.layout
+
+        if key == 'L' or key == 'l':
+            if self.tail_log:
+                ignore, pos = self.content_walker.get_focus()
+                self.last_content_focus = pos
+                self.content_walker.set_focus(len(self.content_walker.contents)-1)
+                self.tail_log = False
+            else:
+                self.content_walker.set_focus(self.last_content_focus)
+                self.tail_log = True
 
 
 def main(cc):
@@ -345,20 +392,25 @@ def main(cc):
 
     global main_loop
     main_loop = urwid.MainLoop(cli_menu.layout, palette, unhandled_input=cli_menu.handle_input, pop_ups=True)
-    # main_loop.set_alarm_in(0, refresh)
+    main_loop.set_alarm_in(0, refresh, cli_menu)
     main_loop.run()
 
 
-def refresh(_loop, _data):
-    """Refresh the display and set an automatic trigger for 10 seconds.
+def refresh(_loop, state_controller, _data=None):
+    """Update Hyperion logger and set an automatic trigger for .5 seconds.
 
     :param _loop: Urwid main loop
     :param _data:
+    :param state_controller: Reference to UI manager
+    :type state_controller: StateController
     :return: None
     """
 
-    main_loop.draw_screen()
-    main_loop.set_alarm_in(10, refresh)
+    state_controller.log_viewer._modified()
+    if state_controller.tail_log:
+        state_controller.log_viewer.set_focus(state_controller.log_viewer.max_pos)
+    main_loop.set_alarm_in(.5, refresh, state_controller)
+
 
 
 main_loop = None
