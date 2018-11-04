@@ -152,7 +152,6 @@ class StateController(object):
         self.event_queue = event_queue
         self.log_viewer = LogTextWalker('%s/info.log' % config.TMP_LOG_PATH)
         self.tail_log = True
-        self.last_content_focus = 0
 
         header_text = urwid.Text(u'%s' % cc.config['name'], align='center')
         header = urwid.Pile([urwid.Divider(), urwid.AttrMap(header_text, 'titlebar')])
@@ -364,12 +363,10 @@ class StateController(object):
 
         if key == 'L' or key == 'l':
             if self.tail_log:
-                ignore, pos = self.content_walker.get_focus()
-                self.last_content_focus = pos
-                self.content_walker.set_focus(len(self.content_walker.contents)-1)
+                self.layout.focus_position = 'footer'
                 self.tail_log = False
             else:
-                self.content_walker.set_focus(self.last_content_focus)
+                self.layout.focus_position = 'body'
                 self.tail_log = True
 
 
