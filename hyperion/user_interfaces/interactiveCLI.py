@@ -1,5 +1,13 @@
 import urwid
+import hyperion.lib.util.config as config
 import logging
+import sys
+
+is_py2 = sys.version[0] == '2'
+if is_py2:
+    import Queue as queue
+else:
+    import queue as queue
 
 
 class LogTextWalker(urwid.ListWalker):
@@ -129,7 +137,7 @@ class SimpleButton(urwid.Button):
 class StateController(object):
     """Intermediate interface class that constructs a urwid UI connected to the core application."""
 
-    def __init__(self, cc):
+    def __init__(self, cc, event_queue):
         """Initialize StateController constructing the urwid UI.
 
         :param cc: Reference to core application
@@ -373,7 +381,8 @@ def main(cc):
     :return: None
     """
 
-    cli_menu = StateController(cc)
+    event_queue = queue.Queue()
+    cli_menu = StateController(cc, event_queue)
 
     palette = [
         ('titlebar', 'dark red', ''),
@@ -410,6 +419,11 @@ def refresh(_loop, state_controller, _data=None):
     state_controller.log_viewer._modified()
     if state_controller.tail_log:
         state_controller.log_viewer.set_focus(state_controller.log_viewer.max_pos)
+    event_queue = state_controller.event_queue
+
+    while not event_queue.empty():
+        event = event_queue.get_nowait()
+
     main_loop.set_alarm_in(.5, refresh, state_controller)
 
 
