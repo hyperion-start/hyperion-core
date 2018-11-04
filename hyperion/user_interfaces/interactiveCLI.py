@@ -1,4 +1,5 @@
 import urwid
+import logging
 
 
 class LogTextWalker(urwid.ListWalker):
