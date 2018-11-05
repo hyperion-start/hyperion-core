@@ -112,7 +112,7 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
         """
 
         if self.host_status.get(self.hostname):
-            cmd = 'ssh -F %s %s "ps -p %s > /dev/null"' % (config.CUSTOM_SSH_CONFIG_PATH, self.hostname, self.pid)
+            cmd = 'ssh -F %s %s "ps -p %s" 2> /dev/null 1> /dev/null' % (config.CUSTOM_SSH_CONFIG_PATH, self.hostname, self.pid)
             if call(cmd, shell=True) == 0:
                 return True
             else:
