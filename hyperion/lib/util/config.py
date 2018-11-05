@@ -11,6 +11,7 @@ class CheckState(Enum):
     DEP_FAILED = 4
     UNREACHABLE = 5
     NOT_INSTALLED = 6
+    UNKNOWN = 7
 
 
 class StartState(Enum):
@@ -50,9 +51,33 @@ STATE_DESCRIPTION = {
     CheckState.NOT_INSTALLED: 'HYPERION NOT INSTALLED ON REMOTE',
     CheckState.DEP_FAILED: 'DEPENDENCY FAILED',
     CheckState.STARTED_BY_HAND: 'RUNNING BUT NOT STARTED BY HYPERION',
-    CheckState.STOPPED_BUT_SUCCESSFUL: 'STOPPED BUT CHECK WAS SUCCESSFUL'
+    CheckState.STOPPED_BUT_SUCCESSFUL: 'STOPPED BUT CHECK WAS SUCCESSFUL',
+    CheckState.UNKNOWN: 'UNKNOWN'
+
 }
 """Global string description dictionary for CheckStates"""
+
+SHORT_STATE_DESCRIPTION = {
+    CheckState.RUNNING: 'RUNNING',
+    CheckState.STOPPED: 'STOPPED',
+    CheckState.UNREACHABLE: 'UNREACHABLE',
+    CheckState.NOT_INSTALLED: 'NOT INSTALLED',
+    CheckState.DEP_FAILED: 'DEP FAILED',
+    CheckState.STARTED_BY_HAND: 'STARTED EXTERNALLY',
+    CheckState.STOPPED_BUT_SUCCESSFUL: 'STOPPED (BUT SUCCESSFUL)',
+    CheckState.UNKNOWN: 'UNKNOWN'
+}
+
+URWID_ATTRIBUTE_FOR_STATE = {
+    CheckState.RUNNING: 'running',
+    CheckState.STOPPED: 'stopped',
+    CheckState.UNREACHABLE: 'stopped',
+    CheckState.NOT_INSTALLED: 'stopped',
+    CheckState.DEP_FAILED: 'stopped',
+    CheckState.STARTED_BY_HAND: 'other',
+    CheckState.STOPPED_BUT_SUCCESSFUL: 'other',
+    CheckState.UNKNOWN: 'other'
+}
 
 STATE_CHECK_BUTTON_STYLE = {
     CheckState.RUNNING: 'green',

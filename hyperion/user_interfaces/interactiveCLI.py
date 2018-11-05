@@ -1,7 +1,11 @@
 import urwid
+import threading
 import hyperion.lib.util.config as config
 import logging
 import sys
+from time import sleep
+
+from hyperion.lib.monitoring.threads import *
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -84,7 +88,7 @@ class LogTextWalker(urwid.ListWalker):
                 for i, l in enumerate(f):
                     pass
                 self.max_pos = i+1
-                logging.debug("file lines %s; pos %s" % (i, pos))
+                #logging.debug("file lines %s; pos %s" % (i, pos))
                 if i+1 < pos:
                     return None, None
                 else:
@@ -131,7 +135,19 @@ class SimpleButton(urwid.Button):
             urwid.connect_signal(self, 'click', callback, user_data)
         label = urwid.SelectableIcon(caption, 0)
         label.set_align_mode('center')
-        self._w = urwid.AttrMap(label, None, 'selected')
+        self._w = urwid.AttrMap(label, None, 'simple_button')
+
+
+class UIEvent(object):
+    """Event class for uriwd UI events."""
+
+
+class CheckEvent(UIEvent):
+    """Event class for a component check."""
+
+    def __init__(self, comp_name, status):
+        self.comp_name = comp_name
+        self.status = status
 
 
 class StateController(object):
@@ -152,6 +168,8 @@ class StateController(object):
         self.event_queue = event_queue
         self.log_viewer = LogTextWalker('%s/info.log' % config.TMP_LOG_PATH)
         self.tail_log = True
+        self.states = {}
+        self.host_stats = None
 
         header_text = urwid.Text(u'%s' % cc.config['name'], align='center')
         header = urwid.Pile([urwid.Divider(), urwid.AttrMap(header_text, 'titlebar')])
@@ -199,9 +217,9 @@ class StateController(object):
                 urwid.Pile([
                     urwid.LineBox(urwid.Pile([
                         urwid.Columns([
-                            SimpleButton('Start'),
-                            SimpleButton('Stop'),
-                            SimpleButton('Check')
+                            SimpleButton('Start', self.handle_start_all),
+                            SimpleButton('Stop', self.handle_stop_all),
+                            SimpleButton('Check', self.handle_check_all)
                         ], 1)
                     ]), 'All Components'),
 
@@ -240,6 +258,7 @@ class StateController(object):
         ])
 
         self.fetch_group_items()
+        self.setup_component_states()
         self.fetch_components()
         self.fetch_host_items()
 
@@ -247,6 +266,16 @@ class StateController(object):
 
         main_body = self.main_body = urwid.ListBox(self.content_walker)
         self.layout = urwid.Frame(header=header, body=main_body, footer=menu)
+
+        self.handle_check_all(None)
+
+    def setup_component_states(self):
+        for grp in self.groups:
+            group = self.groups[grp]
+            if group['name'] != 'All':
+                for comp in group['components']:
+                    self.states[comp['name']] = urwid.Text(
+                        "state: %s" % config.SHORT_STATE_DESCRIPTION.get(config.CheckState.UNKNOWN))
 
     def fetch_host_items(self):
         """Get all hosts to display in the UI.
@@ -262,12 +291,13 @@ class StateController(object):
             else:
                 host_object = urwid.AttrMap(host_object, 'unavailable_host', focus_map='reversed')
 
-            hosts.append((urwid.Columns([
+            self.host_stats = urwid.Columns([
                 host_object,
                 urwid.Text('4', align='center'),
                 urwid.Text('100%', align='center'),
                 urwid.Text('100%', align='center')
-            ], 1), ('weight', 1)))
+            ], 1)
+            hosts.append((self.host_stats, ('weight', 1)))
 
         self.host_pile.contents[:] = hosts
 
@@ -321,12 +351,19 @@ class StateController(object):
         comps = []
         if group['name'] != 'All':
             for c in group['components']:
+
+                if c['name'] in self.states:
+                    state = self.states[c['name']]
+                else:
+                    self.states[c['name']] = state = urwid.Text(
+                        "state: %s" % config.SHORT_STATE_DESCRIPTION.get(config.CheckState.UNKNOWN))
+
                 comps.append((urwid.Columns([
                     urwid.AttrMap(SimpleButton('%s@%s' % (c['name'], c['host'])), 'important', focus_map='reversed'),
-                    urwid.Text('status: ???'),
-                    SimpleButton('Start'),
-                    SimpleButton('Stop'),
-                    SimpleButton('Check'),
+                    state,
+                    SimpleButton('Start', self.handle_start, c),
+                    SimpleButton('Stop', self.handle_stop, c),
+                    SimpleButton('Check', self.handle_check, c),
                     urwid.CheckBox('Log'),
                 ], 1), ('weight', 1)))
 
@@ -335,13 +372,20 @@ class StateController(object):
                 group = self.groups[grp]
                 if group['name'] != 'All':
                     for c in group['components']:
+
+                        if c['name'] in self.states:
+                            state = self.states[c['name']]
+                        else:
+                            self.states[c['name']] = state = urwid.Text(
+                                "state: %s" % config.SHORT_STATE_DESCRIPTION.get(config.CheckState.UNKNOWN))
+
                         comps.append((urwid.Columns([
                             urwid.AttrMap(SimpleButton('%s@%s' % (c['name'], c['host'])), 'important',
                                           focus_map='reversed'),
-                            urwid.Text('status: ???'),
-                            SimpleButton('Start'),
-                            SimpleButton('Stop'),
-                            SimpleButton('Check'),
+                            state,
+                            SimpleButton('Start', self.handle_start, c),
+                            SimpleButton('Stop', self.handle_stop, c),
+                            SimpleButton('Check', self.handle_check, c),
                             urwid.CheckBox('Log'),
                         ], 1), ('weight', 1)))
 
@@ -369,6 +413,219 @@ class StateController(object):
                 self.layout.focus_position = 'body'
                 self.tail_log = True
 
+    def handle_start_all(self, button):
+        urwid.AttrMap(button, 'group_selected')
+        self.logger.info("Clicked start all")
+        threading.Thread(
+            target=self.start_all, name='start_all',
+        ).start()
+
+    def start_all(self):
+        control_center = self.cc
+        comps = control_center.get_start_all_list()
+        logger = self.logger
+        event_queue = self.event_queue
+        failed_comps = {}
+
+        #TODO: FIX START ALL (ALSO IN PyQt GUI: DEP FAILED ON NOT DEPENDING COMPONENTS!)
+
+        for comp in comps:
+
+            self.states[comp.comp_name].set_text("state: STARTING...")
+            deps = control_center.get_dep_list(comp.component)
+
+            failed = False
+
+            for dep in deps:
+                if dep.comp_name in failed_comps:
+                    logger.debug("Comp %s failed, because dependency %s failed!" % (comp.comp_name, dep.comp_name))
+                    failed = True
+
+            if not failed:
+                logger.debug("Checking %s" % comp.comp_name)
+                ret = control_center.check_component(comp.component)
+                if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
+                    logger.debug("Dep %s already running" % comp.comp_name)
+                    event_queue.put(CheckEvent(comp.comp_name, ret))
+                else:
+                    tries = 0
+                    logger.debug("Starting dep %s" % comp.comp_name)
+                    control_center.start_component_without_deps(comp.component)
+                    # Component wait time for startup
+                    sleep(control_center.get_component_wait(comp.component))
+                    while True:
+                        sleep(.5)
+                        ret = control_center.check_component(comp.component)
+                        if (ret is config.CheckState.RUNNING or
+                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                            break
+                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
+                                config.CheckState.UNREACHABLE:
+                            logger.debug("Component %s failed, adding it to failed list" % comp.comp_name)
+                            failed_comps[comp.comp_name] = True
+                            break
+                        tries = tries + 1
+                    event_queue.put(CheckEvent(comp.comp_name, ret))
+
+            else:
+                ret = control_center.check_component(comp.component)
+                if ret is not config.CheckState.STOPPED:
+                    event_queue.put(CheckEvent(comp.comp_name, ret))
+                else:
+                    event_queue.put(CheckEvent(comp.comp_name, config.CheckState.DEP_FAILED))
+
+    def handle_start(self, button, comp):
+        self.logger.info("Clicked start %s" % comp['name'])
+        threading.Thread(
+            target=self.start_comp, args=[self.event_queue, comp],
+            name='start_comp_%s' % comp['name'],
+        ).start()
+
+    def start_comp(self, event_queue, comp):
+        """Starts a component with dependencies. To be run in a separate thread.
+
+        :param event_queue: Queue to send events to.
+        :type event_queue: queue.Queue
+        :param comp: Component that is being started
+        :type comp: dict
+        :return: None
+        """
+
+        control_center = self.cc
+        comps = control_center.get_dep_list(comp)
+        check = control_center.check_component(comp)
+        logger = self.logger
+        failed = False
+
+        self.states[comp['name']].set_text("state: STARTING...")
+
+        if (check is not config.CheckState.UNREACHABLE
+                and check is not config.CheckState.STOPPED
+                and check is not config.CheckState.NOT_INSTALLED):
+
+            event_queue.put(CheckEvent(comp['name'], check))
+
+            for dep in comps:
+
+                ret = control_center.check_component(dep.component)
+                event_queue.put(CheckEvent(dep.comp_name, ret))
+            return
+
+        for dep in comps:
+            self.states[dep.comp_name].set_text("state: STARTING...")
+            if not failed:
+                logger.debug("Checking dep %s" % dep.comp_name)
+                ret = control_center.check_component(dep.component)
+                if ret is not config.CheckState.STOPPED:
+                    logger.debug("Dep %s already running" % dep.comp_name)
+                    event_queue.put(CheckEvent(dep.comp_name, ret))
+                else:
+                    tries = 0
+                    logger.debug("Starting dep %s" % dep.comp_name)
+                    control_center.start_component_without_deps(dep.component)
+                    # Component wait time for startup
+                    sleep(control_center.get_component_wait(dep.component))
+                    while True:
+                        sleep(.5)
+                        ret = control_center.check_component(dep.component)
+                        if (ret is config.CheckState.RUNNING or
+                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                            break
+                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
+                                config.CheckState.UNREACHABLE:
+                            failed = True
+                            failed_comp = dep.comp_name
+                            ret = config.CheckState.STOPPED
+                            break
+                        tries = tries + 1
+                    event_queue.put(CheckEvent(dep.comp_name, ret))
+            else:
+                ret = control_center.check_component(dep.component)
+                if ret is not config.CheckState.STOPPED:
+                    event_queue.put(CheckEvent(dep.comp_name, ret))
+                else:
+                    event_queue.put(CheckEvent(dep.comp_name, config.CheckState.DEP_FAILED))
+
+        ret = config.CheckState.DEP_FAILED
+        if not failed:
+            logger.debug("Done starting dependencies. Now starting %s" % comp['name'])
+            control_center.start_component_without_deps(comp)
+
+            # Component wait time for startup
+            logger.debug("Waiting component startup wait time")
+            sleep(control_center.get_component_wait(comp))
+
+            tries = 0
+            logger.debug("Running check to ensure start was successful")
+            while True:
+                sleep(.5)
+                ret = control_center.check_component(comp)
+                if (ret is config.CheckState.RUNNING or
+                    ret is config.CheckState.STOPPED_BUT_SUCCESSFUL or
+                    ret is config.CheckState.UNREACHABLE or
+                    ret is config.CheckState.NOT_INSTALLED) or tries > 9:
+                    break
+                logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
+                tries = tries + 1
+
+        event_queue.put(CheckEvent(comp['name'], ret))
+
+    def handle_stop_all(self, button):
+        for grp in self.groups:
+            group = self.groups[grp]
+            if group['name'] != 'All':
+                for comp in group['components']:
+                    threading.Thread(
+                        target=self.stop_comp, args=[self.event_queue, comp],
+                        name='stop_comp_%s' % comp['name'],
+                    ).start()
+
+    def handle_stop(self, button, comp):
+        self.logger.info("Clicked stop %s" % comp['name'])
+        threading.Thread(
+            target=self.stop_comp, args=[self.event_queue, comp],
+            name='stop_comp_%s' % comp['name'],
+        ).start()
+
+    def stop_comp(self, event_queue, comp):
+        control_center = self.cc
+        logger = self.logger
+
+        self.states[comp['name']].set_text("state: STOPPING...")
+        control_center.stop_component(comp)
+        # Component wait time before check
+        logger.debug("Waiting component wait time")
+        sleep(control_center.get_component_wait(comp))
+        ret = control_center.check_component(comp)
+        event_queue.put(CheckEvent(comp['name'], ret))
+
+    def handle_check_all(self, button):
+        for grp in self.groups:
+            group = self.groups[grp]
+            if group['name'] != 'All':
+                for comp in group['components']:
+                    threading.Thread(
+                        target=self.check_comp, args=[self.event_queue, comp],
+                        name='check_comp_%s' % comp['name'],
+                    ).start()
+
+    def handle_check(self, button, comp):
+        self.logger.info("Clicked check %s" % comp['name'])
+        threading.Thread(
+            target=self.check_comp, args=[self.event_queue, comp],
+            name='check_comp_%s' % comp['name'],
+        ).start()
+
+    def check_comp(self, event_queue, comp):
+        control_center = self.cc
+
+        self.states[comp['name']].set_text("state: CHECKING...")
+        ret = control_center.check_component(comp)
+        event_queue.put(CheckEvent(comp['name'], ret))
+
+    def handle_log(self, button, comp):
+        self.logger.info("Clicked log %s" % comp['name'])
+
 
 def main(cc):
     """Creates a state controller and starts urwid.
@@ -380,22 +637,29 @@ def main(cc):
 
     event_queue = queue.Queue()
     cli_menu = StateController(cc, event_queue)
+    cc.mon_thread.add_subscriber(event_queue)
 
     palette = [
         ('titlebar', 'dark red', ''),
+        ('simple_button', 'light gray,blink', 'black'),
         ('refresh button', 'dark green,bold', ''),
         ('reversed', 'standout', ''),
         ('quit button', 'dark red', ''),
         ('button', 'black', 'light gray'),
         ('button_select', 'light gray', 'black'),
-        ('group', 'black', "white"),
-        ('group_selected', 'white', 'dark cyan'),
+        ('group', 'dark blue', "black"),
+        ('group_selected', 'white', 'black'),
         ('headers', 'white,bold', ''),
         ('host', 'dark green', ''),
         ('unavailable_host', 'dark red', ''),
         ('important', 'dark blue', 'black', ('standout', 'underline')),
         ('selected', 'white', 'dark blue'),
-        ('deselected', 'white', 'light gray')]
+        ('deselected', 'white', 'light gray'),
+        # CheckState stuff
+        ('stopped', 'white', 'dark red'),
+        ('running', 'white', 'dark green'),
+        ('other', 'white', 'brown'),
+        ]
 
     global main_loop
     main_loop = urwid.MainLoop(cli_menu.layout, palette, unhandled_input=cli_menu.handle_input, pop_ups=True)
@@ -414,6 +678,7 @@ def refresh(_loop, state_controller, _data=None):
     """
 
     state_controller.log_viewer._modified()
+    logger = logging.getLogger(__name__)
     if state_controller.tail_log:
         state_controller.log_viewer.set_focus(state_controller.log_viewer.max_pos)
     event_queue = state_controller.event_queue
@@ -421,8 +686,26 @@ def refresh(_loop, state_controller, _data=None):
     while not event_queue.empty():
         event = event_queue.get_nowait()
 
-    main_loop.set_alarm_in(.5, refresh, state_controller)
+        if isinstance(event, CheckEvent):
+            logger.debug("Check event - comp %s; state %s" % (event.comp_name, event.status))
+            state_controller.states[event.comp_name].set_text([
+                "state: ",
+                ('%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(event.status),
+                    "%s" % config.SHORT_STATE_DESCRIPTION.get(event.status)
+                )
+            ])
+        elif isinstance(event, CrashEvent):
+            logger.warning("Component %s crashed!" % event.comp_name)
+            ret = state_controller.cc.check_component(state_controller.cc.get_component_by_name(event.comp_name))
+            state_controller.states[event.comp_name].set_text([
+                "state: ",
+                ('%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(ret), "%s" % config.SHORT_STATE_DESCRIPTION.get(ret))
+            ])
+        elif isinstance(event, DisconnectEvent):
+            logger.warning("Lost connection to host '%s'" % event.hostname)
+            state_controller.fetch_host_items()
 
+    main_loop.set_alarm_in(.2, refresh, state_controller)
 
 
 main_loop = None
