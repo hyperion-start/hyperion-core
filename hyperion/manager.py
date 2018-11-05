@@ -115,7 +115,7 @@ class AbstractController(object):
             with open(filename) as data_file:
                 self.config = load(data_file, Loader)
         except IOError as e:
-            self.logger.critical("No such file '%s' found" % filename)
+            self.logger.critical("No config file at '%s' found" % filename)
             raise e
 
         if 'env' in self.config and self.config.get('env'):
@@ -290,7 +290,7 @@ class AbstractController(object):
         :type window: Window
         :return: None
         """
-        self.logger.debug("Killing window by name %s" % window.name)
+        self.logger.info("Killing window by name %s" % window.name)
         window.cmd("send-keys", "", "C-c")
         window.kill_window()
 
@@ -458,7 +458,7 @@ class ControlCenter(AbstractController):
             # Debug write resulting yaml file
             with open('debug-result.yml', 'w') as outfile:
                 dump(self.config, outfile, default_flow_style=False)
-            self.logger.debug("Loading config was successful")
+            self.logger.info("Loading config was successful")
 
             self.server = Server()
 
@@ -503,7 +503,7 @@ class ControlCenter(AbstractController):
                         if comp['host'] != "localhost" and not self.run_on_localhost(comp):
                             if comp['host'] not in self.host_list:
                                 if self.establish_master_connection(comp['host']):
-                                    self.logger.debug("Master connection to %s established!" % comp['host'])
+                                    self.logger.info("Master connection to %s established!" % comp['host'])
                             if self.host_list.get(comp['host']) is not None:
                                 self.copy_component_to_remote(comp, comp['host'])
                             else:
@@ -546,7 +546,6 @@ class ControlCenter(AbstractController):
                         node.add_edge(self.nodes[dep])
                     else:
                         self.logger.error("Unmet dependency: '%s' for component '%s'!" % (dep, node.comp_name))
-                        self.logger.debug("exit on fail: %s" % exit_on_fail)
                         if exit_on_fail:
                             self.cleanup(status=1)
         self.nodes['master_node'] = master_node
@@ -768,9 +767,10 @@ class ControlCenter(AbstractController):
         self.monitor_queue.put(CancellationJob(0, comp['name']))
 
         if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
-            self.logger.debug("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
+            self.logger.info("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
             self.stop_remote_component(comp)
         else:
+            self.logger.info("Stopping local component '%s'" % comp['name'])
             window = self.find_window(comp['name'])
 
             if window:
@@ -820,7 +820,6 @@ class ControlCenter(AbstractController):
         unres = []
         dep_resolve(node, res, unres)
         for node in res:
-            self.logger.debug("node name '%s' vs. comp name '%s'" % (node.comp_name, comp['name']))
             if node.comp_name != comp['name']:
                 self.logger.debug("Checking and starting %s" % node.comp_name)
                 state = self.check_component(node.component)
@@ -848,11 +847,11 @@ class ControlCenter(AbstractController):
                         tries = tries + 1
                         sleep(.5)
 
-        self.logger.debug("All dependencies satisfied, starting '%s'" % (comp['name']))
+        self.logger.info("All dependencies satisfied, starting '%s'" % (comp['name']))
         state = self.check_component(node.component)
         if (state is config.CheckState.STARTED_BY_HAND or
                 state is config.CheckState.RUNNING):
-            self.logger.debug("Component %s is already running. Skipping start" % comp['name'])
+            self.logger.info("Component %s is already running. Skipping start" % comp['name'])
             return config.StartState.ALREADY_RUNNING
         else:
             self.start_component_without_deps(comp)
@@ -870,11 +869,12 @@ class ControlCenter(AbstractController):
         host = comp['host']
 
         if host != 'localhost' and not self.run_on_localhost(comp):
-            self.logger.debug("Starting remote component '%s' on host '%s'" % (comp_name, host))
+            self.logger.info("Starting remote component '%s' on host '%s'" % (comp_name, host))
             self.start_remote_component(comp)
         else:
             log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, comp_name))
             window = self.find_window(comp_name)
+            self.logger.info("Starting local component '%s'" % comp['name'])
 
             if window:
                 self.logger.debug("Restarting '%s' in old window" % comp_name)
@@ -1239,7 +1239,7 @@ class ControlCenter(AbstractController):
         self.mon_thread.kill()
 
         if full:
-            self.logger.debug("Chose full shutdown. Killing remote and main sessions")
+            self.logger.info("Chose full shutdown. Killing remote and main sessions")
 
             for host in self.host_list:
                 window = self.find_window('ssh-%s' % host)
