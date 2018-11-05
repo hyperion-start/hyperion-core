@@ -170,6 +170,7 @@ class StateController(object):
         self.tail_log = True
         self.states = {}
         self.host_stats = None
+        self.log_hidden = False
 
         header_text = urwid.Text(u'%s' % cc.config['name'], align='center')
         header = urwid.Pile([urwid.Divider(), urwid.AttrMap(header_text, 'titlebar')])
@@ -246,12 +247,19 @@ class StateController(object):
             ], 1),
         ]
 
-        menu = self.menu = urwid.Pile([
+        self.logger_section = urwid.Pile([
             urwid.Divider(),
             urwid.Padding(urwid.Divider('#'), left=10, right=10),
             urwid.Divider(),
             urwid.LineBox(urwid.BoxAdapter(urwid.ListBox(self.log_viewer), 10), 'Hyperion Log'),
+        ])
+
+        self.log_placeholder = urwid.WidgetPlaceholder(self.logger_section)
+
+        menu = urwid.Pile([
+            self.log_placeholder,
             urwid.Text([
+                u'Press (', ('refresh button', u'K'), u') to show or hide Hyperion log | ',
                 u'Press (', ('refresh button', u'L'), u') to jump into or out of Hyperion log | ',
                 u'Press (', ('quit button', u'Q'), u') to quit.'
             ])
@@ -405,13 +413,25 @@ class StateController(object):
         if key == 'esc':
             main_loop.widget = self.layout
 
-        if key == 'L' or key == 'l':
-            if self.tail_log:
-                self.layout.focus_position = 'footer'
-                self.tail_log = False
+        if key == 'K' or key == 'k':
+            if self.log_hidden:
+                self.log_placeholder.original_widget = self.logger_section
+                self.log_hidden = False
             else:
-                self.layout.focus_position = 'body'
-                self.tail_log = True
+                if not self.tail_log:
+                    self.layout.focus_position = 'body'
+                    self.tail_log = True
+                self.log_placeholder.original_widget = urwid.Pile([])
+                self.log_hidden = True
+
+        if key == 'L' or key == 'l':
+            if not self.log_hidden:
+                if self.tail_log:
+                    self.layout.focus_position = 'footer'
+                    self.tail_log = False
+                else:
+                    self.layout.focus_position = 'body'
+                    self.tail_log = True
 
     def handle_start_all(self, button):
         urwid.AttrMap(button, 'group_selected')
@@ -426,8 +446,6 @@ class StateController(object):
         logger = self.logger
         event_queue = self.event_queue
         failed_comps = {}
-
-        #TODO: FIX START ALL (ALSO IN PyQt GUI: DEP FAILED ON NOT DEPENDING COMPONENTS!)
 
         for comp in comps:
 
