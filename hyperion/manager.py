@@ -5,13 +5,11 @@ import logging
 import os
 import sys
 import socket
-import uuid
 import shutil
 from psutil import Process, NoSuchProcess
 from subprocess import call, Popen, PIPE
 from threading import Lock
-from signal import SIGTERM
-from time import sleep, time
+from time import sleep, time, gmtime, strftime
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
 from lib.monitoring.threads import LocalComponentMonitoringJob, RemoteComponentMonitoringJob, \
@@ -38,7 +36,7 @@ SCRIPT_SHOW_SESSION_PATH = ("%s/bin/show_session.sh" % BASE_DIR)
 ###################
 # Logging
 ###################
-def setup_log(window, filepath, comp_name):
+def setup_log(window, filepath, comp_name, start_tee=True):
     """Redirect stdout and stderr of window to file.
 
     Rotate logs and ensure the log directory for component `comp_name` exists, than,
@@ -54,31 +52,30 @@ def setup_log(window, filepath, comp_name):
     :return: None
     """
 
-    clear_log(filepath)
+    clear_log(filepath, comp_name)
     ensure_dir(filepath)
 
-    window.cmd("send-keys", "exec > /dev/tty", "Enter")
-
-    # Reroute stderr to log file
-    window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % filepath, "Enter")
-    # Reroute stdout to log file
-    window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % filepath, "Enter")
-    # Reroute stdin to log file <== causes remote host to logout, disabled for now
-    # window.cmd("send-keys", "exec 0> >(exec tee -i -a '%s')" % file, "Enter")
+    if start_tee:
+        # Reroute stderr to log file
+        window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % filepath, "Enter")
+        # Reroute stdout to log file
+        window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % filepath, "Enter")
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\\t$(date)"' % comp_name), "Enter")
 
 
-def clear_log(file_path):
-    """If found rename the log at file_path to a uuid.
+def clear_log(file_path, comp_name):
+    """If found rename the log at file_path to COMPONENTNAME_DATETIME.log.
 
     :param file_path: log file path
     :type file_path: str
+    :param comp_name: Component name
+    :type comp_name: str
     :return: None
     """
 
     if os.path.isfile(file_path):
         directory = os.path.dirname(file_path)
-        os.rename(file_path, "%s/%s.log" % (directory, uuid.uuid4().hex))
+        os.rename(file_path, "%s/%s-%s.log" % (directory, comp_name, strftime("%Y-%m-%d_%H-%M-%S", gmtime())))
 
 
 def ensure_dir(file_path):
@@ -312,6 +309,7 @@ class AbstractController(object):
         """
 
         comp_name = comp['name']
+        tee_count = 0
 
         pid = self.get_window_pid(window)
         procs = []
@@ -319,11 +317,20 @@ class AbstractController(object):
             procs.extend(Process(entry).children(recursive=True))
 
         for proc in procs:
-            self.logger.debug("Killing leftover child process %s" % proc.name())
-            os.kill(proc.pid, SIGTERM)
+            if proc.name() == 'tee' and proc.is_running():
+                tee_count+=1
+            if proc.name() != 'tee' and proc.is_running():
+                try:
+                    self.logger.debug("Killing leftover child process %s" % proc.name())
+                    proc.terminate()
+                except NoSuchProcess:
+                    pass
 
         self.logger.debug("Rotating log for %s" % comp_name)
-        setup_log(window, log_file, comp_name)
+        if tee_count == 2:
+            setup_log(window, log_file, False)
+        else:
+            setup_log(window, log_file, comp_name)
 
         if self.custom_env_path:
             self.logger.debug("Sourcing custom environment for %s" % comp_name)
@@ -396,7 +403,6 @@ class AbstractController(object):
         """
 
         pid = self.get_window_pid(window)
-        pids = []
 
         procs = []
         for entry in pid:
@@ -1323,6 +1329,9 @@ class SlaveLauncher(AbstractController):
                     self.logger.debug("Shutting down window...")
                     self.kill_window(window)
                     self.logger.debug("... done!")
+                else:
+                    self.logger.debug("Starting '%s' in old window" % self.window_name)
+                    self.start_window(window, self.config, self.log_file)
             elif not self.kill_mode:
                 self.logger.debug("creating window '%s'" % self.window_name)
                 window = self.session.new_window(self.window_name)
