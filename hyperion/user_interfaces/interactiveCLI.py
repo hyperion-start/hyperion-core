@@ -1,8 +1,5 @@
 import urwid
 import threading
-import hyperion.lib.util.config as config
-import logging
-import sys
 from time import sleep
 
 from hyperion.lib.monitoring.threads import *
@@ -14,16 +11,22 @@ else:
     import queue as queue
 
 
-class LogTextWalker(urwid.ListWalker):
-    """ListWalker-compatible class for lazily reading file contents."""
+class LogTextWalker(urwid.SimpleFocusListWalker):
+    """SimpleFocusListWalker-compatible class for reading file contents."""
+
+    def set_modified_callback(self, callback):
+        pass
 
     def __init__(self, name):
+        self.lines = []
+        super(LogTextWalker, self).__init__(self.lines)
+
         self.file_name = name
         self.file = open(name)
-        self.lines = []
         self.focus = 0
         self.end = False
         self.max_pos = 0
+        self.read_file()
 
     def get_focus(self):
         return self._get_at_pos(self.focus)
@@ -38,37 +41,18 @@ class LogTextWalker(urwid.ListWalker):
     def get_prev(self, start_from):
         return self._get_at_pos(start_from - 1)
 
-    def read_next_line(self):
-        """Read another line from the file."""
+    def read_file(self):
 
-        next_line = self.file.readline()
+        while True:
+            next_line = self.file.readline()
 
-        if not next_line or next_line[-1:] != '\n':
-            # no newline on last line of file
-            self.end = True
-        else:
-            # trim newline characters
-            self.end = False
+            if not next_line or next_line[-1:] != '\n':
+                # no newline on last line of file
+                return
+            # Strip '\n' from next line
             next_line = next_line[:-1]
-
-        self.lines.append(urwid.Text(next_line))
-        return next_line
-
-    def reread_last_line(self):
-        """Read another line from the file and replace last line with it."""
-
-        next_line = self.file.readline()
-
-        if not next_line or next_line[-1:] != '\n':
-            # no newline on last line of file
-            self.end = True
-        else:
-            # trim newline characters
-            self.end = False
-            next_line = next_line[:-1]
-
-        self.lines[-1] = urwid.Text(next_line)
-        return next_line
+            self.lines.append(urwid.Text(next_line))
+            self.append(urwid.Text(next_line))
 
     def _get_at_pos(self, pos):
         """Return a widget for the line number passed."""
@@ -77,55 +61,14 @@ class LogTextWalker(urwid.ListWalker):
             # line 0 is the start of the file, no more above
             return None, None
 
-        self.max_pos = pos
-
         if len(self.lines) > pos:
             # we have that line so return it
             return self.lines[pos], pos
 
-        if self.end:
-            with open(self.file_name) as f:
-                for i, l in enumerate(f):
-                    pass
-                self.max_pos = i+1
-                #logging.debug("file lines %s; pos %s" % (i, pos))
-                if i+1 < pos:
-                    return None, None
-                else:
-                    self.reread_last_line()
-                    return self.lines[-1], pos-1
-
         assert pos == len(self.lines), "out of order request?"
 
-        self.read_next_line()
-
-        return self.lines[-1], pos
-
-    def combine_focus_with_prev(self):
-        """Combine the focus edit widget with the one above."""
-
-        above, ignore = self.get_prev(self.focus)
-        if above is None:
-            # already at the top
-            return
-
-        focus = self.lines[self.focus]
-        above.set_edit_pos(len(above.edit_text))
-        above.set_edit_text(above.edit_text + focus.edit_text)
-        del self.lines[self.focus]
-        self.focus -= 1
-
-    def combine_focus_with_next(self):
-        """Combine the focus edit widget with the one below."""
-
-        below, ignore = self.get_next(self.focus)
-        if below is None:
-            # already at bottom
-            return
-
-        focus = self.lines[self.focus]
-        focus.set_edit_text(focus.edit_text + below.edit_text)
-        del self.lines[self.focus+1]
+        # File end
+        return None, None
 
 
 class SimpleButton(urwid.Button):
@@ -695,10 +638,10 @@ def refresh(_loop, state_controller, _data=None):
     :return: None
     """
 
-    state_controller.log_viewer._modified()
     logger = logging.getLogger(__name__)
     if state_controller.tail_log:
-        state_controller.log_viewer.set_focus(state_controller.log_viewer.max_pos)
+        state_controller.log_viewer.read_file()
+        state_controller.log_viewer.set_focus(len(state_controller.log_viewer.lines)-1)
     event_queue = state_controller.event_queue
 
     while not event_queue.empty():
