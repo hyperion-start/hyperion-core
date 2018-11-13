@@ -1,8 +1,10 @@
 import urwid
 import threading
+import re
 from time import sleep
 
 from hyperion.lib.monitoring.threads import *
+
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -51,6 +53,11 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
                 return
             # Strip '\n' from next line
             next_line = next_line[:-1]
+
+            # Remove ANSI escape sequences from tty stdout
+            ansi_escape = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
+            next_line = ansi_escape.sub('', next_line)
+
             self.lines.append(urwid.Text(next_line))
             self.append(urwid.Text(next_line))
 
