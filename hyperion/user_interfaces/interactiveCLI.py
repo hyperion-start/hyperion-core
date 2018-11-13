@@ -2,6 +2,7 @@ import urwid
 import threading
 import re
 from time import sleep
+from os.path import isfile
 
 from hyperion.lib.monitoring.threads import *
 
@@ -122,12 +123,17 @@ class StateController(object):
         self.host_stats = None
         self.log_hidden = False
 
+        self.comp_log_map = {}
+
         header_text = urwid.Text(u'%s' % cc.config['name'], align='center')
         header = urwid.Pile([urwid.Divider(), urwid.AttrMap(header_text, 'titlebar')])
 
         for g in self.cc.config['groups']:
             self.groups[g['name']] = g
         self.groups['All'] = ({'name': 'All'})
+
+        placeholders = []
+        self.comp_log_columns = urwid.Columns(placeholders, min_width=0)
 
         self.radio_button_log_group = []
         group_col = self.group_col = urwid.Columns([], 1)
@@ -189,11 +195,8 @@ class StateController(object):
                     )
                 ]),
 
-                urwid.LineBox(urwid.Pile([
-                    urwid.BoxAdapter(urwid.ListBox(LogTextWalker('/tmp/Hyperion/ssh-config')), 10),
-                    urwid.Divider(),
-                    urwid.AttrMap(SimpleButton("Close"), 'titlebar')
-                ]), 'Log')
+                self.comp_log_columns
+
             ], 1),
         ]
 
@@ -322,7 +325,7 @@ class StateController(object):
                     SimpleButton('Start', self.handle_start, c),
                     SimpleButton('Stop', self.handle_stop, c),
                     SimpleButton('Check', self.handle_check, c),
-                    urwid.CheckBox('Log'),
+                    urwid.CheckBox('Log', on_state_change=self.handle_log, user_data=c),
                 ], 1), ('weight', 1)))
 
         else:
@@ -344,7 +347,7 @@ class StateController(object):
                             SimpleButton('Start', self.handle_start, c),
                             SimpleButton('Stop', self.handle_stop, c),
                             SimpleButton('Check', self.handle_check, c),
-                            urwid.CheckBox('Log'),
+                            urwid.CheckBox('Log', on_state_change=self.handle_log, user_data=c),
                         ], 1), ('weight', 1)))
 
         self.components_pile.contents[:] = comps
@@ -591,8 +594,45 @@ class StateController(object):
         ret = control_center.check_component(comp)
         event_queue.put(CheckEvent(comp['name'], ret))
 
-    def handle_log(self, button, comp):
-        self.logger.info("Clicked log %s" % comp['name'])
+    def handle_log(self, checkbox, state, comp):
+        self.logger.info("Clicked log %s; State is %s" % (comp['name'], state))
+
+        if state:
+
+            local_file_path = '%s/%s/latest.log' % (config.TMP_LOG_PATH, comp['name'])
+
+            if self.cc.run_on_localhost(comp):
+                if isfile(local_file_path):
+
+                    log = self.comp_log_map.get(comp['name'], None)
+                    if log:
+                        self.logger.error("%s log seems to be opened already. This should not happen!")
+                    else:
+                        log = urwid.AttrMap(
+                            urwid.LineBox(urwid.BoxAdapter(
+                                urwid.ListBox(
+                                    LogTextWalker(local_file_path)),
+                                    10
+                                ), '%s Log' % comp['name']
+                            ),
+                            None,
+                            focus_map='simple_button'
+                        )
+                        self.comp_log_map[comp['name']] = log
+                        self.comp_log_columns.contents.append((log, self.comp_log_columns.options()))
+                else:
+                    self.logger.error("Log file '%s' does not exist!" % local_file_path)
+            else:
+                self.logger.warning("Remote log display NIY!")
+
+        # Checkbox set to disabled
+        else:
+            log = self.comp_log_map.get(comp['name'], None)
+            if log:
+                self.comp_log_columns.widget_list.remove(log)
+                self.comp_log_map[comp['name']] = None
+            else:
+                self.logger.error("Log of %s already closed!" % comp['name'])
 
 
 def main(cc):
