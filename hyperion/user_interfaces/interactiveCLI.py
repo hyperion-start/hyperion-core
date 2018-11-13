@@ -20,7 +20,7 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
     def set_modified_callback(self, callback):
         pass
 
-    def __init__(self, name):
+    def __init__(self, name, comp=None):
         self.lines = []
         super(LogTextWalker, self).__init__(self.lines)
 
@@ -28,8 +28,8 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
         self.file = open(name)
         self.focus = 0
         self.end = False
-        self.max_pos = 0
         self.read_file()
+        self.comp = comp
 
     def get_focus(self):
         return self._get_at_pos(self.focus)
@@ -131,9 +131,6 @@ class StateController(object):
         for g in self.cc.config['groups']:
             self.groups[g['name']] = g
         self.groups['All'] = ({'name': 'All'})
-
-        placeholders = []
-        self.comp_log_columns = urwid.Columns(placeholders, min_width=0)
 
         self.radio_button_log_group = []
         group_col = self.group_col = urwid.Columns([], 1)
@@ -329,7 +326,7 @@ class StateController(object):
                     SimpleButton('Start', self.handle_start, c),
                     SimpleButton('Stop', self.handle_stop, c),
                     SimpleButton('Check', self.handle_check, c),
-                    urwid.CheckBox('Log', on_state_change=self.handle_log, user_data=c),
+                    SimpleButton('Toggle Log', self.handle_log, c),
                 ], 1), ('weight', 1)))
 
         else:
@@ -380,6 +377,17 @@ class StateController(object):
                     self.tail_log = True
                 self.log_placeholder.original_widget = urwid.Pile([])
                 self.log_hidden = True
+
+        if key == 'C' or key == 'c':
+            selection, index = self.content_walker.get_focus()
+            if isinstance(selection, urwid.GridFlow):
+                index = self.additional_content_grid.focus_position
+                if index > 0:  # Not 'All Components/Host Stats' Pile in Grid flow
+                    # Grants LogTextWalker
+                    comp_name = self.additional_content_grid[index].body.comp['name']
+                    log = self.comp_log_map[comp_name]
+                    self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
+                    self.comp_log_map[comp_name] = None
 
         if key == 'L' or key == 'l':
             if not self.log_hidden:
@@ -598,45 +606,37 @@ class StateController(object):
         ret = control_center.check_component(comp)
         event_queue.put(CheckEvent(comp['name'], ret))
 
-    def handle_log(self, checkbox, state, comp):
-        self.logger.info("Clicked log %s; State is %s" % (comp['name'], state))
+    def handle_log(self, button, comp):
+        self.logger.info("Clicked log %s" % comp['name'])
 
-        if state:
+        local_file_path = '%s/%s/latest.log' % (config.TMP_LOG_PATH, comp['name'])
 
-            local_file_path = '%s/%s/latest.log' % (config.TMP_LOG_PATH, comp['name'])
+        if self.cc.run_on_localhost(comp):
+            if isfile(local_file_path):
 
-            if self.cc.run_on_localhost(comp):
-                if isfile(local_file_path):
-
-                    log = self.comp_log_map.get(comp['name'], None)
-                    if log:
-                        self.logger.error("%s log seems to be opened already. This should not happen!")
-                    else:
-                        log = urwid.AttrMap(
-                            urwid.LineBox(urwid.BoxAdapter(
-                                urwid.ListBox(
-                                    LogTextWalker(local_file_path)),
-                                    10
-                                ), '%s Log' % comp['name']
-                            ),
-                            None,
-                            focus_map='simple_button'
-                        )
-                        self.comp_log_map[comp['name']] = log
-                        self.additional_content_grid.contents.append((log, self.additional_content_grid.options()))
+                log = self.comp_log_map.get(comp['name'], None)
+                if log:
+                    self.logger.info("Closing '%s' log" % comp['name'])
+                    self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
+                    self.comp_log_map[comp['name']] = None
                 else:
-                    self.logger.error("Log file '%s' does not exist!" % local_file_path)
+                    self.logger.info("Opening '%s' log" % comp['name'])
+                    log = urwid.AttrMap(
+                        urwid.LineBox(urwid.BoxAdapter(
+                            urwid.ListBox(
+                                LogTextWalker(local_file_path, comp)),
+                                10
+                            ), '%s Log' % comp['name']
+                        ),
+                        None,
+                        focus_map='simple_button'
+                    )
+                    self.comp_log_map[comp['name']] = log
+                    self.additional_content_grid.contents.append((log, self.additional_content_grid.options()))
             else:
-                self.logger.warning("Remote log display NIY!")
-
-        # Checkbox set to disabled
+                self.logger.error("Log file '%s' does not exist!" % local_file_path)
         else:
-            log = self.comp_log_map.get(comp['name'], None)
-            if log:
-                self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
-                self.comp_log_map[comp['name']] = None
-            else:
-                self.logger.error("Log of %s already closed!" % comp['name'])
+            self.logger.warning("Remote log display NIY!")
 
 
 def main(cc):
