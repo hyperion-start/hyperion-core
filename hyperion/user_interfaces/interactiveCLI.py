@@ -229,6 +229,32 @@ class StateController(object):
         main_body = self.main_body = urwid.ListBox(self.content_walker)
         self.layout = urwid.Frame(header=header, body=main_body, footer=menu)
 
+        help = [
+            urwid.Divider('='),
+            urwid.Text(('titlebar', u'Help Menu'), "center"),
+            urwid.Divider('='),
+            urwid.Divider(),
+            urwid.Text([u'Navigate through menus by using the ', ('host', u'arrow keys')], "center"),
+            urwid.Divider(),
+            urwid.Text([u'Click buttons with ', ('host', u'Enter'), u', ', ('host', u'Space'),
+                        u' or with your ', ('host', u'Mouse')], "center"),
+            urwid.Divider(),
+            urwid.Text([u'Jump to or out of the application log by pressing ', ('host', u'L')], "center"),
+            urwid.Divider(),
+            urwid.Text([u'Press ', ('host', u'K'), u' to hide or un-hide the application log'], "center"),
+            urwid.Divider(),
+            urwid.Text([u'When focussing a component log press ', ('host', u'C'), u' to close it'], "center"),
+            urwid.Divider(),
+            urwid.Text([u'Press ', ('host', u'H'), u' to show this help and ',
+                        ('host', u'Esc'), u' to dismiss it'], "center"),
+            urwid.Divider(),
+            urwid.Text([u'Press ', ('quit button', u'Q'), u' to close the application'], "center"),
+        ]
+
+        help_box = urwid.AttrMap(urwid.LineBox(urwid.ListBox(urwid.SimpleListWalker(help))), 'popup')
+        self.help_overlay = urwid.Overlay(help_box, self.layout, align='center', width=('relative', 60),
+                                          valign='middle', height=('relative', 60))
+
         self.handle_check_all(None)
 
     def setup_component_states(self):
@@ -397,6 +423,9 @@ class StateController(object):
                 else:
                     self.layout.focus_position = 'body'
                     self.tail_log = True
+
+        if key == 'H' or key == 'h':
+            main_loop.widget = urwid.Frame(self.help_overlay)
 
     def handle_start_all(self, button):
         urwid.AttrMap(button, 'group_selected')
@@ -667,6 +696,7 @@ def main(cc):
         ('important', 'dark blue', 'black', ('standout', 'underline')),
         ('selected', 'white', 'dark blue'),
         ('deselected', 'white', 'light gray'),
+        ('popup', '', 'black'),
         # CheckState stuff
         ('stopped', 'white', 'dark red'),
         ('running', 'white', 'dark green'),
