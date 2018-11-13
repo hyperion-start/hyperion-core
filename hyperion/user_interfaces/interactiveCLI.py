@@ -693,6 +693,25 @@ def refresh(_loop, state_controller, _data=None):
     if state_controller.tail_log:
         state_controller.log_viewer.read_file()
         state_controller.log_viewer.set_focus(len(state_controller.log_viewer.lines)-1)
+
+    # Get selected log, if one is selected
+    selection, index = state_controller.content_walker.get_focus()
+    selected = None
+    if isinstance(selection, urwid.GridFlow):
+        index = state_controller.additional_content_grid.focus_position
+        if index > 0: # Not 'All Components/Host Stats' Pile in Grid flow
+            # Grants LogTextWalker
+            selected = state_controller.additional_content_grid[index].body
+
+    for log_name in state_controller.comp_log_map:
+        widget = state_controller.comp_log_map.get(log_name)
+        if widget:
+            # AttrMap -> LineBox -> BoxAdapter -> ListBox -> LogTextWalker
+            log = widget.original_widget.original_widget.original_widget.body
+            log.read_file()
+            if log is not selected:
+                log.set_focus(len(log.lines)-1)
+
     event_queue = state_controller.event_queue
 
     while not event_queue.empty():
