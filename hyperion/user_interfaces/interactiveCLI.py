@@ -204,7 +204,10 @@ class StateController(object):
             urwid.Divider(),
             urwid.Padding(urwid.Divider('#'), left=10, right=10),
             urwid.Divider(),
-            urwid.LineBox(urwid.BoxAdapter(urwid.ListBox(self.log_viewer), 10), 'Hyperion Log'),
+            urwid.AttrMap(
+                urwid.LineBox(urwid.BoxAdapter(urwid.ListBox(self.log_viewer), 10), 'Hyperion Log'),
+                None,
+                'simple_button'),
         ])
 
         self.log_placeholder = urwid.WidgetPlaceholder(self.logger_section)
