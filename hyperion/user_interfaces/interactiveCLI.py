@@ -161,15 +161,7 @@ class StateController(object):
             ], 1)
         ])
 
-        blank = urwid.Divider()
-        list_box_contents = [
-            blank,
-            urwid.Divider('='),
-            group_col,
-            urwid.Divider('='),
-
-            urwid.Padding(urwid.LineBox(components_pile), left=2, right=2),
-
+        self.additional_content_grid = urwid.GridFlow([
             urwid.Columns([
                 urwid.Pile([
                     urwid.LineBox(urwid.Pile([
@@ -194,10 +186,19 @@ class StateController(object):
                         ])
                     )
                 ]),
-
-                self.comp_log_columns
-
             ], 1),
+        ],
+            80, 3, 1, 'center'
+        )
+
+        blank = urwid.Divider()
+        list_box_contents = [
+            blank,
+            urwid.Divider('='),
+            group_col,
+            urwid.Divider('='),
+            urwid.Padding(urwid.LineBox(components_pile), left=2, right=2),
+            self.additional_content_grid,
         ]
 
         self.logger_section = urwid.Pile([
@@ -622,7 +623,7 @@ class StateController(object):
                             focus_map='simple_button'
                         )
                         self.comp_log_map[comp['name']] = log
-                        self.comp_log_columns.contents.append((log, self.comp_log_columns.options()))
+                        self.additional_content_grid.contents.append((log, self.additional_content_grid.options()))
                 else:
                     self.logger.error("Log file '%s' does not exist!" % local_file_path)
             else:
@@ -632,7 +633,7 @@ class StateController(object):
         else:
             log = self.comp_log_map.get(comp['name'], None)
             if log:
-                self.comp_log_columns.widget_list.remove(log)
+                self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
                 self.comp_log_map[comp['name']] = None
             else:
                 self.logger.error("Log of %s already closed!" % comp['name'])
@@ -670,7 +671,7 @@ def main(cc):
         ('stopped', 'white', 'dark red'),
         ('running', 'white', 'dark green'),
         ('other', 'white', 'brown'),
-        ]
+    ]
 
     global main_loop
     main_loop = urwid.MainLoop(cli_menu.layout, palette, unhandled_input=cli_menu.handle_input, pop_ups=True)
