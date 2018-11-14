@@ -496,7 +496,7 @@ class StateController(object):
                         if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
                                 config.CheckState.UNREACHABLE:
                             logger.debug("Component %s failed, adding it to failed list" % comp.comp_name)
-                            failed_comps[comp.comp_name] = True
+                            failed_comps[comp.comp_name] = ret
                             break
                         tries = tries + 1
                     event_queue.put(CheckEvent(comp.comp_name, ret))
@@ -507,6 +507,52 @@ class StateController(object):
                     event_queue.put(CheckEvent(comp.comp_name, ret))
                 else:
                     event_queue.put(CheckEvent(comp.comp_name, config.CheckState.DEP_FAILED))
+
+        failed = False
+        start_all_popup_content = [
+            urwid.Divider('='),
+            urwid.Text(('titlebar', u'Start All Report'), "center"),
+            urwid.Divider('='),
+        ]
+
+        fail_popup_content = []
+        for comp_name in failed_comps:
+            self.logger.info(comp_name)
+            failed = True
+            fail_popup_content.extend([
+                urwid.Divider(),
+                urwid.Text(u'%s: %s' % (
+                    comp_name,
+                    config.STATE_DESCRIPTION.get(failed_comps.get(comp_name))
+                ))
+            ])
+
+        if failed:
+            start_all_popup_content.extend([
+                urwid.Divider(),
+                urwid.AttrMap(urwid.Text('Starting all components failed!', "center"), 'simple_button'),
+                urwid.Divider()
+            ])
+            start_all_popup_content.extend(fail_popup_content)
+        else:
+            start_all_popup_content.extend([
+                urwid.Divider(),
+                urwid.AttrMap(urwid.Text('Starting all complete!', "center"), 'simple_button'),
+                urwid.Divider()
+            ])
+
+        start_all_box = urwid.AttrMap(
+            urwid.LineBox(
+                urwid.ListBox(urwid.SimpleFocusListWalker(
+                    start_all_popup_content + [SimpleButton('Close', self.dismiss_popup)])
+                )
+            ),
+            'popup'
+        )
+
+        start_all_overlay = urwid.Overlay(start_all_box, self.layout, align='center', width=('relative', 60),
+                                              valign='middle', height=('relative', 60))
+        main_loop.widget = urwid.Frame(start_all_overlay)
 
     def handle_start(self, button, comp):
         self.logger.info("Clicked start %s" % comp['name'])
