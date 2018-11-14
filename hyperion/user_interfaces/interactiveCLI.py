@@ -30,6 +30,7 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
         self.end = False
         self.read_file()
         self.comp = comp
+        self.full_shutdown = False
 
     def get_focus(self):
         return self._get_at_pos(self.focus)
@@ -255,6 +256,27 @@ class StateController(object):
         self.help_overlay = urwid.Overlay(help_box, self.layout, align='center', width=('relative', 60),
                                           valign='middle', height=('relative', 60))
 
+        shutdown_box = urwid.AttrMap(
+            urwid.LineBox(
+                urwid.ListBox(urwid.SimpleFocusListWalker([
+                    urwid.Divider('='),
+                    urwid.Text(('titlebar', u'Shutdown Menu'), "center"),
+                    urwid.Divider('='),
+                    urwid.Divider(),
+                    urwid.Text('Do you want to close all running processes?', "center"),
+                    urwid.Columns([
+                        urwid.AttrMap(SimpleButton('Yes', self.handle_shutdown, True), 'quit button'),
+                        urwid.AttrMap(SimpleButton('No', self.handle_shutdown, False), 'host'),
+                        SimpleButton('Cancel', self.dismiss_popup)
+                    ])
+                ]))
+            ),
+            'popup'
+        )
+
+        self.shutdown_overlay = urwid.Overlay(shutdown_box, self.layout, align='center', width=('relative', 60),
+                                          valign='middle', height=('relative', 60))
+
         self.handle_check_all(None)
 
     def setup_component_states(self):
@@ -388,10 +410,10 @@ class StateController(object):
         """
 
         if key == 'Q' or key == 'q':
-            raise urwid.ExitMainLoop()
+            main_loop.widget = urwid.Frame(self.shutdown_overlay)
 
         if key == 'esc':
-            main_loop.widget = self.layout
+            self.dismiss_popup()
 
         if key == 'K' or key == 'k':
             if self.log_hidden:
@@ -667,6 +689,13 @@ class StateController(object):
         else:
             self.logger.warning("Remote log display NIY!")
 
+    def handle_shutdown(self, button, full=False):
+        self.full_shutdown = full
+        raise urwid.ExitMainLoop()
+
+    def dismiss_popup(self, button=None, user_data=None):
+        main_loop.widget = self.layout
+
 
 def main(cc):
     """Creates a state controller and starts urwid.
@@ -707,6 +736,7 @@ def main(cc):
     main_loop = urwid.MainLoop(cli_menu.layout, palette, unhandled_input=cli_menu.handle_input, pop_ups=True)
     main_loop.set_alarm_in(0, refresh, cli_menu)
     main_loop.run()
+    return cli_menu.full_shutdown
 
 
 def refresh(_loop, state_controller, _data=None):
@@ -743,7 +773,6 @@ def refresh(_loop, state_controller, _data=None):
                 log.set_focus(len(log.lines)-1)
 
     event_queue = state_controller.event_queue
-
     while not event_queue.empty():
         event = event_queue.get_nowait()
 

@@ -183,8 +183,7 @@ def main():
                         remove.append(handler)
                 [root_logger.removeHandler(h) for h in remove]
 
-                interactiveCLI.main(cc)
-                cc.cleanup()
+                cc.cleanup(interactiveCLI.main(cc))
             else:
                 clilogger.error("To use this feature you need urwid! Check the README.md for install instructions")
         elif args.list:
