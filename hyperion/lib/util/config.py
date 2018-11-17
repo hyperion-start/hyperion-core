@@ -82,7 +82,7 @@ URWID_ATTRIBUTE_FOR_STATE = {
 STATE_CHECK_BUTTON_STYLE = {
     CheckState.RUNNING: 'green',
     CheckState.STOPPED: 'red',
-    CheckState.UNREACHABLE: 'HOST UNREACHABLE',
+    CheckState.UNREACHABLE: 'red',
     CheckState.NOT_INSTALLED: 'red',
     CheckState.DEP_FAILED: 'darkred',
     CheckState.STARTED_BY_HAND: 'lightsalmon',
