@@ -506,6 +506,7 @@ class StateController(object):
                 if ret is not config.CheckState.STOPPED:
                     event_queue.put(CheckEvent(comp.comp_name, ret))
                 else:
+                    failed_comps[comp.comp_name] = config.CheckState.DEP_FAILED
                     event_queue.put(CheckEvent(comp.comp_name, config.CheckState.DEP_FAILED))
 
         failed = False
