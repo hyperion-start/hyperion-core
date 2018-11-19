@@ -121,7 +121,7 @@ class AbstractController(object):
         self.session = None
         self.server = None
 
-    def load_config(self, filename="default.yaml"):
+    def _load_config(self, filename="default.yaml"):
         """Load configuration recursively from yaml file.
 
         :param filename: path to the configuration file.
@@ -151,7 +151,7 @@ class AbstractController(object):
     ###################
     # Component Management
     ###################
-    def run_component_check(self, comp):
+    def _run_component_check(self, comp):
         """Runs the component check defined in the component configuration and returns the exit state.
 
         :param comp: Component configuration
@@ -177,7 +177,7 @@ class AbstractController(object):
             self.logger.debug("Check returned false")
             return False
 
-    def check_local_component(self, comp):
+    def _check_local_component(self, comp):
         """Check if a local component is running and return the corresponding CheckState.
 
         :param comp: Component configuration
@@ -189,13 +189,13 @@ class AbstractController(object):
 
         logger.debug("Running component check for %s" % comp['name'])
         check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
-        window = self.find_window(comp['name'])
+        window = self._find_window(comp['name'])
 
         ret = None
         pid = 0
 
         if window:
-            w_pid = self.get_window_pid(window)
+            w_pid = self._get_window_pid(window)
             logger.debug("Found window pid: %s" % w_pid)
 
             # May return more child pids if logging is done via tee (which then was started twice in the window too)
@@ -211,13 +211,13 @@ class AbstractController(object):
 
             if len(pids) < 1:
                 logger.debug("Main process has finished. Running custom check if available")
-                if check_available and self.run_component_check(comp):
+                if check_available and self._run_component_check(comp):
                     logger.debug("Process terminated but check was successful")
                     ret = config.CheckState.STOPPED_BUT_SUCCESSFUL
                 else:
                     logger.debug("Check failed or no check available: returning false")
                     ret = config.CheckState.STOPPED
-            elif check_available and self.run_component_check(comp):
+            elif check_available and self._run_component_check(comp):
                 logger.debug("Check succeeded")
                 pid = pids[0]
                 ret = config.CheckState.RUNNING
@@ -230,7 +230,7 @@ class AbstractController(object):
                 ret = config.CheckState.STOPPED
         else:
             logger.debug("%s window is not running. Running custom check" % comp['name'])
-            if check_available and self.run_component_check(comp):
+            if check_available and self._run_component_check(comp):
                 logger.debug("Component was not started by Hyperion, but the check succeeded")
                 ret = config.CheckState.STARTED_BY_HAND
             else:
@@ -239,7 +239,7 @@ class AbstractController(object):
 
         return pid, ret
 
-    def get_window_pid(self, window):
+    def _get_window_pid(self, window):
         """Returns pid of the tmux window process.
 
         :param window: tmux window
@@ -285,7 +285,7 @@ class AbstractController(object):
         })
         session.kill_session()
 
-    def kill_window(self, window):
+    def _kill_window(self, window):
         """Kill tmux window by reference.
 
         :param window: Window to be killed
@@ -296,7 +296,7 @@ class AbstractController(object):
         window.cmd("send-keys", "", "C-c")
         window.kill_window()
 
-    def start_window(self, window, comp, log_file):
+    def _start_window(self, window, comp, log_file):
         """Execute cmd in window.
 
         Mainly used to run a component start command in its designated window
@@ -313,7 +313,7 @@ class AbstractController(object):
         comp_name = comp['name']
         tee_count = 0
 
-        pid = self.get_window_pid(window)
+        pid = self._get_window_pid(window)
         procs = []
         for entry in pid:
             procs.extend(Process(entry).children(recursive=True))
@@ -337,14 +337,14 @@ class AbstractController(object):
         if self.custom_env_path:
             self.logger.debug("Sourcing custom environment for %s" % comp_name)
             cmd = ". %s" % self.custom_env_path
-            self.wait_until_window_not_busy(window)
+            self._wait_until_window_not_busy(window)
             window.cmd("send-keys", cmd, "Enter")
 
-        self.wait_until_window_not_busy(window)
+        self._wait_until_window_not_busy(window)
         self.logger.debug("Running start command for %s" % comp_name)
         window.cmd("send-keys", comp['cmd'][0]['start'], "Enter")
 
-    def find_window(self, window_name):
+    def _find_window(self, window_name):
         """Return window by name (None if not found).
 
         :param window_name: Window name
@@ -358,7 +358,7 @@ class AbstractController(object):
         })
         return window
 
-    def send_main_session_command(self, cmd):
+    def _send_main_session_command(self, cmd):
         """Send command to the main window of the master session.
 
         `Session.cmd` sends the command to the currently active window of the session, and when issuing commands to the
@@ -370,33 +370,33 @@ class AbstractController(object):
         :return: None
         """
         self.logger.debug("Sending command to master session main window: %s" % cmd)
-        window = self.find_window('Main')
+        window = self._find_window('Main')
 
-        self.wait_until_window_not_busy(window)
+        self._wait_until_window_not_busy(window)
         window.cmd("send-keys", cmd, "Enter")
-        self.wait_until_window_not_busy(window)
+        self._wait_until_window_not_busy(window)
 
-    def wait_until_main_window_not_busy(self):
+    def _wait_until_main_window_not_busy(self):
         """Blocks until main window of the master session has no child process left running.
 
         :return: None
         """
 
-        window = self.find_window('Main')
-        self.wait_until_window_not_busy(window)
+        window = self._find_window('Main')
+        self._wait_until_window_not_busy(window)
 
-    def wait_until_window_not_busy(self, window):
+    def _wait_until_window_not_busy(self, window):
         """Checks whether the passed window is busy executing a process and blocks until it is not busy anymore.
 
         :return: None
         """
 
         self.logger.debug("Waiting until window '%s' has no running child processes left ..." % window.name)
-        while self.is_window_busy(window):
+        while self._is_window_busy(window):
             sleep(0.5)
         self.logger.debug("... window '%s' is not busy anymore" % window.name)
 
-    def is_window_busy(self, window):
+    def _is_window_busy(self, window):
         """Checks whether the window has at least one running child process (excluding tee processes).
 
         :param window: Window to be checked
@@ -404,7 +404,7 @@ class AbstractController(object):
         :rtype: bool
         """
 
-        pid = self.get_window_pid(window)
+        pid = self._get_window_pid(window)
 
         procs = []
         for entry in pid:
@@ -450,7 +450,7 @@ class ControlCenter(AbstractController):
 
         if configfile:
             try:
-                self.load_config(configfile)
+                self._load_config(configfile)
             except IOError:
                 self.cleanup(status=1)
             except exceptions.EnvNotFoundException:
@@ -494,7 +494,7 @@ class ControlCenter(AbstractController):
             self.logger.error(" Config not loaded yet!")
 
         else:
-            self.setup_ssh_config()
+            self._setup_ssh_config()
 
             for group in self.config['groups']:
                 for comp in group['components']:
@@ -504,10 +504,10 @@ class ControlCenter(AbstractController):
                     try:
                         if comp['host'] != "localhost" and not self.run_on_localhost(comp):
                             if comp['host'] not in self.host_list:
-                                if self.establish_master_connection(comp['host']):
+                                if self._establish_master_connection(comp['host']):
                                     self.logger.info("Master connection to %s established!" % comp['host'])
                             if self.host_list.get(comp['host']) is not None:
-                                self.copy_component_to_remote(comp, comp['host'])
+                                self._copy_component_to_remote(comp, comp['host'])
                             else:
                                 self.logger.debug("Not copying because host %s is not reachable: %s" %
                                                   (comp['host'], self.host_list.get(comp['name'])))
@@ -519,7 +519,7 @@ class ControlCenter(AbstractController):
             if self.custom_env_path:
                 self.logger.debug("Sourcing custom environment in main window of master session")
                 cmd = ". %s" % self.custom_env_path
-                self.send_main_session_command(cmd)
+                self._send_main_session_command(cmd)
 
     def set_dependencies(self, exit_on_fail):
         """Parses all components constructing a dependency tree.
@@ -568,7 +568,7 @@ class ControlCenter(AbstractController):
             if exit_on_fail:
                 self.cleanup(status=1)
 
-    def copy_component_to_remote(self, comp, host):
+    def _copy_component_to_remote(self, comp, host):
         """Copies `comp` to `TMP_SLAVE_DIR` on the remote host `host`.
 
         To do so `comp` gets temporarily saved as standalone configfile on the local machine (in `TMP_COMP_DIR`) and
@@ -598,9 +598,9 @@ class ControlCenter(AbstractController):
             cmd = ("ssh -F %s %s 'mkdir -p %s' && scp %s %s:%s/%s.yaml" %
                    (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, tmp_comp_path, host,
                     config.TMP_SLAVE_DIR, comp_name))
-            self.send_main_session_command(cmd)
+            self._send_main_session_command(cmd)
 
-    def copy_env_file(self, host):
+    def _copy_env_file(self, host):
         """Copies a custom environment file to source to the remote host `host` if it was specified in the config.
 
         :param host: Host to copy the file to.
@@ -612,9 +612,9 @@ class ControlCenter(AbstractController):
             self.logger.debug("Copying custom env file to %s" % host)
             cmd = ("ssh -F %s %s 'mkdir -p %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_ENV_PATH))
             cmd = "%s && scp %s %s:%s/" % (cmd, os.path.abspath(self.custom_env_path), host, config.TMP_ENV_PATH)
-            self.send_main_session_command(cmd)
+            self._send_main_session_command(cmd)
 
-    def setup_ssh_config(self):
+    def _setup_ssh_config(self):
         """Creates an ssh configuration that is saved to `CUSTOM_SSH_CONFIG_PATH`.
 
         The user config in `SSH_CONFIG_PATH` is copied to `CUSTOM_SSH_CONFIG_PATH` and then appends the lines enabling
@@ -639,7 +639,7 @@ class ControlCenter(AbstractController):
         except IOError:
             self.logger.error("Could not append to custom ssh config!")
 
-    def establish_master_connection(self, hostname):
+    def _establish_master_connection(self, hostname):
         """Create a master ssh connection to host `hostname` in a dedicated window.
 
         The pid of the ssh session is put into the monitoring thread to have a means to check if the connection still
@@ -665,11 +665,11 @@ class ControlCenter(AbstractController):
             self.host_list_lock.release()
             return False
 
-        window = self.find_window('ssh-%s' % hostname)
+        window = self._find_window('ssh-%s' % hostname)
         if window:
             self.logger.debug("Connecting to '%s' in old window" % hostname)
 
-            if self.is_window_busy(window):
+            if self._is_window_busy(window):
                 self.logger.debug("Old connection still alive. No need to reconnect")
             else:
                 self.logger.debug("Old connection died. Reconnecting to host")
@@ -682,7 +682,7 @@ class ControlCenter(AbstractController):
 
         t_end = time() + config.SSH_CONNECTION_TIMEOUT
 
-        pid = self.get_window_pid(window)
+        pid = self._get_window_pid(window)
         pids = []
 
         while time() < t_end:
@@ -717,14 +717,14 @@ class ControlCenter(AbstractController):
             self.logger.debug("Adding ssh master to monitor queue")
             self.monitor_queue.put(HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock))
             self.logger.debug("Copying env files to remote %s" % hostname)
-            self.copy_env_file(hostname)
+            self._copy_env_file(hostname)
             return True
         else:
             self.logger.debug("SSH process has finished. Connection was not successful. Check if an ssh connection "
                               "is allowed or if the certificate has to be renewed")
             return False
 
-    def reconnect_with_host(self, hostname):
+    def _reconnect_with_host(self, hostname):
         """Re-establish master connection to host `hostname`
 
         :param hostname: Host to connect to
@@ -741,13 +741,13 @@ class ControlCenter(AbstractController):
             proc.kill()
 
         # Start new connection
-        if self.establish_master_connection(hostname):
+        if self._establish_master_connection(hostname):
             # Sync components
             self.logger.debug("Syncinc components to remote host")
             for group in self.config['groups']:
                 for comp in group['components']:
                     if comp['host'] == hostname:
-                        self.copy_component_to_remote(comp, comp['host'])
+                        self._copy_component_to_remote(comp, comp['host'])
             return True
         else:
             return False
@@ -770,18 +770,18 @@ class ControlCenter(AbstractController):
 
         if comp['host'] != 'localhost' and not self.run_on_localhost(comp):
             self.logger.info("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
-            self.stop_remote_component(comp)
+            self._stop_remote_component(comp)
         else:
             self.logger.info("Stopping local component '%s'" % comp['name'])
-            window = self.find_window(comp['name'])
+            window = self._find_window(comp['name'])
 
             if window:
                 self.logger.debug("window '%s' found running" % comp['name'])
                 self.logger.debug("Shutting down window...")
-                self.kill_window(window)
+                self._kill_window(window)
                 self.logger.debug("... done!")
 
-    def stop_remote_component(self, comp):
+    def _stop_remote_component(self, comp):
         """Stops remote component `comp`.
 
         Via ssh Hyperion is executed on the remote host in slave mode with the --kill option.
@@ -800,12 +800,12 @@ class ControlCenter(AbstractController):
 
         cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave --kill'" % (
             config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_name))
-        self.send_main_session_command(cmd)
+        self._send_main_session_command(cmd)
 
     ###################
     # Start
     ###################
-    def start_component(self, comp):
+    def _start_component(self, comp):
         """Invoke dependency based start of component `comp`.
 
         Traverses the path of dependencies and invokes a call to ``start_component_without_deps`` for all found
@@ -872,21 +872,21 @@ class ControlCenter(AbstractController):
 
         if host != 'localhost' and not self.run_on_localhost(comp):
             self.logger.info("Starting remote component '%s' on host '%s'" % (comp_name, host))
-            self.start_remote_component(comp)
+            self._start_remote_component(comp)
         else:
             log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, comp_name))
-            window = self.find_window(comp_name)
+            window = self._find_window(comp_name)
             self.logger.info("Starting local component '%s'" % comp['name'])
 
             if window:
                 self.logger.debug("Restarting '%s' in old window" % comp_name)
-                self.start_window(window, comp, log_file)
+                self._start_window(window, comp, log_file)
             else:
                 self.logger.debug("creating window '%s'" % comp_name)
                 window = self.session.new_window(comp_name)
-                self.start_window(window, comp, log_file)
+                self._start_window(window, comp, log_file)
 
-    def start_remote_component(self, comp):
+    def _start_remote_component(self, comp):
         """Start component 'comp' on remote host.
 
         The remote component is started by invoking Hyperion over ssh in slave mode.
@@ -906,7 +906,7 @@ class ControlCenter(AbstractController):
 
         cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave'" % (
             config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_name))
-        self.send_main_session_command(cmd)
+        self._send_main_session_command(cmd)
 
     ###################
     # Check
@@ -925,7 +925,7 @@ class ControlCenter(AbstractController):
         :rtype: config.CheckState
         """
         if self.run_on_localhost(comp):
-            ret = self.check_local_component(comp)
+            ret = self._check_local_component(comp)
 
             pid = ret[0]
             if pid != 0:
@@ -990,7 +990,7 @@ class ControlCenter(AbstractController):
             return
 
         logger.info("Starting component '%s' ..." % comp_name)
-        ret = self.start_component(comp)
+        ret = self._start_component(comp)
         if ret is config.StartState.STARTED:
             logger.info("Started component '%s'" % comp_name)
             sleep(get_component_wait(comp))
@@ -1127,7 +1127,7 @@ class ControlCenter(AbstractController):
     ###################
     # Host related checks
     ###################
-    def is_localhost(self, hostname):
+    def _is_localhost(self, hostname):
         """Check if 'hostname' resolves to localhost.
 
         :param hostname: Name of host to check
@@ -1156,7 +1156,7 @@ class ControlCenter(AbstractController):
         :rtype: bool
         """
         try:
-            return self.is_localhost(comp['host'])
+            return self._is_localhost(comp['host'])
         except exceptions.HostUnknownException as ex:
             raise ex
 
@@ -1174,7 +1174,7 @@ class ControlCenter(AbstractController):
         """
 
         cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, name)
-        self.send_main_session_command(cmd)
+        self._send_main_session_command(cmd)
 
     def start_local_clone_session(self, comp):
         """Start a local clone session of the master session and open the window of component `comp`.
@@ -1208,7 +1208,7 @@ class ControlCenter(AbstractController):
 
         remote_cmd = ("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_name))
         cmd = "ssh -F %s %s 'bash -s' < %s" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
-        self.send_main_session_command(cmd)
+        self._send_main_session_command(cmd)
 
     ###################
     # Safe shutdown
@@ -1244,13 +1244,13 @@ class ControlCenter(AbstractController):
             self.logger.info("Chose full shutdown. Killing remote and main sessions")
 
             for host in self.host_list:
-                window = self.find_window('ssh-%s' % host)
+                window = self._find_window('ssh-%s' % host)
 
                 if window:
                     self.logger.debug("Killing remote slave session of host %s" % host)
                     self.kill_remote_session_by_name("slave-session", host)
                     self.logger.debug("Close ssh-master window of host %s" % host)
-                    self.kill_window(window)
+                    self._kill_window(window)
 
             self.kill_session_by_name(self.session_name)
         self.logger.info("... Done")
@@ -1300,7 +1300,7 @@ class SlaveLauncher(AbstractController):
 
         if configfile:
             try:
-                self.load_config(configfile)
+                self._load_config(configfile)
             except IOError or exceptions.EnvNotFoundException:
                 # Print fake pid
                 print(0)
@@ -1323,21 +1323,21 @@ class SlaveLauncher(AbstractController):
             self.logger.error(" Init aborted. No session was found!")
         else:
             self.logger.debug(self.config)
-            window = self.find_window(self.window_name)
+            window = self._find_window(self.window_name)
 
             if window:
                 self.logger.debug("window '%s' found running" % self.window_name)
                 if self.kill_mode:
                     self.logger.debug("Shutting down window...")
-                    self.kill_window(window)
+                    self._kill_window(window)
                     self.logger.debug("... done!")
                 else:
                     self.logger.debug("Starting '%s' in old window" % self.window_name)
-                    self.start_window(window, self.config, self.log_file)
+                    self._start_window(window, self.config, self.log_file)
             elif not self.kill_mode:
                 self.logger.debug("creating window '%s'" % self.window_name)
                 window = self.session.new_window(self.window_name)
-                self.start_window(window, self.config, self.log_file)
+                self._start_window(window, self.config, self.log_file)
 
             else:
                 self.logger.debug("There is no component running by the name '%s'. Exiting kill mode" %
@@ -1357,6 +1357,6 @@ class SlaveLauncher(AbstractController):
             self.logger.error("Init aborted. No session was found!")
             exit(config.CheckState.STOPPED.value)
 
-        ret = self.check_local_component(self.config)
+        ret = self._check_local_component(self.config)
         print(ret[0])
         exit(ret[1].value)
