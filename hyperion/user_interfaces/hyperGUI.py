@@ -982,7 +982,7 @@ class StopWorker(QtCore.QObject):
         control_center.stop_component(comp)
         # Component wait time before check
         logger.debug("Waiting component wait time")
-        sleep(control_center.get_component_wait(comp))
+        sleep(manager.get_component_wait(comp))
         logger.debug("Done stopping")
         self.done.emit()
 
@@ -1042,7 +1042,7 @@ class StartWorker(QtCore.QObject):
                     logger.debug("Starting dep %s" % dep.comp_name)
                     control_center.start_component_without_deps(dep.component)
                     # Component wait time for startup
-                    sleep(control_center.get_component_wait(dep.component))
+                    sleep(manager.get_component_wait(dep.component))
                     while True:
                         sleep(.5)
                         ret = control_center.check_component(dep.component)
@@ -1072,7 +1072,7 @@ class StartWorker(QtCore.QObject):
 
             # Component wait time for startup
             logger.debug("Waiting component startup wait time")
-            sleep(control_center.get_component_wait(comp))
+            sleep(manager.get_component_wait(comp))
 
             tries = 0
             logger.debug("Running check to ensure start was successful")
@@ -1127,7 +1127,7 @@ class StartWorker(QtCore.QObject):
                     logger.debug("Starting dep %s" % comp.comp_name)
                     control_center.start_component_without_deps(comp.component)
                     # Component wait time for startup
-                    sleep(control_center.get_component_wait(comp.component))
+                    sleep(manager.get_component_wait(comp.component))
                     while True:
                         sleep(.5)
                         ret = control_center.check_component(comp.component)

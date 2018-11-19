@@ -63,6 +63,24 @@ def setup_log(window, filepath, comp_name, start_tee=True):
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\\t$(date)"' % comp_name), "Enter")
 
 
+def get_component_wait(comp):
+    """Returns time to wait after component start (default of 5 seconds unless overwritten in configuration).
+
+    :param comp: Component configuration
+    :return: Component wait time
+    :rtype: float
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug("Retrieving wait time of component %s" % comp['name'])
+    if 'wait' in comp:
+        logger.debug("Found %s seconds as wait time for %s" % (float(comp['wait']), comp['name']))
+        return float(comp['wait'])
+    else:
+        logger.debug("No wait time for %s found, using default of %s seconds" %
+                          (comp['name'], config.DEFAULT_COMP_WAIT_TIME))
+        return config.DEFAULT_COMP_WAIT_TIME
+
+
 def clear_log(file_path, comp_name):
     """If found rename the log at file_path to COMPONENTNAME_DATETIME.log.
 
@@ -233,22 +251,6 @@ class AbstractController(object):
         r = window.cmd('list-panes',
                        "-F #{pane_pid}")
         return [int(p) for p in r.stdout]
-
-    def get_component_wait(self, comp):
-        """Returns time to wait after component start (default of 5 seconds unless overwritten in configuration).
-
-        :param comp: Component configuration
-        :return: Component wait time
-        :rtype: float
-        """
-        self.logger.debug("Retrieving wait time of component %s" % comp['name'])
-        if 'wait' in comp:
-            self.logger.debug("Found %s seconds as wait time for %s" % (float(comp['wait']), comp['name']))
-            return float(comp['wait'])
-        else:
-            self.logger.debug("No wait time for %s found, using default of %s seconds" %
-                              (comp['name'], config.DEFAULT_COMP_WAIT_TIME))
-            return config.DEFAULT_COMP_WAIT_TIME
 
     def get_component_by_name(self, comp_name):
         """Return component configuration by providing only the name.
@@ -832,7 +834,7 @@ class ControlCenter(AbstractController):
                     self.start_component_without_deps(node.component)
 
                     # Wait component time for startup
-                    sleep(self.get_component_wait(comp))
+                    sleep(get_component_wait(comp))
 
                     tries = 0
                     while True:
@@ -991,7 +993,7 @@ class ControlCenter(AbstractController):
         ret = self.start_component(comp)
         if ret is config.StartState.STARTED:
             logger.info("Started component '%s'" % comp_name)
-            sleep(self.get_component_wait(comp))
+            sleep(get_component_wait(comp))
             ret = self.check_component(comp)
             logger.info("Check returned status: %s" % config.STATE_DESCRIPTION.get(ret))
         elif ret is config.StartState.FAILED:
