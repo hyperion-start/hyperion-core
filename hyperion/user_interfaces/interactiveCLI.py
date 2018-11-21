@@ -553,7 +553,7 @@ class StateController(object):
         )
 
         start_all_overlay = urwid.Overlay(start_all_box, self.layout, align='center', width=('relative', 60),
-                                              valign='middle', height=('relative', 60))
+                                          valign='middle', height=('relative', 60))
         main_loop.widget = urwid.Frame(start_all_overlay)
 
     def handle_start(self, button, comp):
@@ -616,7 +616,6 @@ class StateController(object):
                         if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
                                 config.CheckState.UNREACHABLE:
                             failed = True
-                            failed_comp = dep.comp_name
                             ret = config.CheckState.STOPPED
                             break
                         tries = tries + 1
