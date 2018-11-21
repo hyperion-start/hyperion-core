@@ -5,7 +5,9 @@ import sys
 from signal import *
 from manager import ControlCenter, SlaveLauncher, ensure_dir, BASE_DIR
 from lib.util.depTree import CircularReferenceException, dep_resolve
-from lib.util.config import TMP_LOG_PATH
+from lib.networking.server import Server
+from lib.networking import clientInterface
+from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT
 from logging.config import fileConfig
 
 ###########################
@@ -113,19 +115,28 @@ def main():
                         help="YAML config file. see sample-config.yaml. Default: test.yaml")
     subparsers = parser.add_subparsers(dest="cmd")
 
+    # Create parser for server
+    subparser_server = subparsers.add_parser('server', help="Starts hyperion backend")
+    subparser_server.add_argument('-p', '--port',
+                                  help="Define the tcp port on which the backend will listen for clients. "
+                                       "Default: %s" % DEFAULT_TCP_PORT,
+                                  metavar="PORT",
+                                  type=int,
+                                  default=DEFAULT_TCP_PORT)
+
     # Create parser for the editor command
     subparser_editor = subparsers.add_parser('edit', help="Launches the editor to edit or create new systems and "
                                                           "components")
     # Create parser for the run command
-    subparser_cli = subparsers.add_parser('cli', help="Launches the setup specified by the --config argument and "
-                                                      "executes the given submode")
+    subparser_cli = subparsers.add_parser('execute', help="initialize the configured system with the executing host as "
+                                                          "controlling instance. It offers to run a specific action for"
+                                                          " a single component or a list of components")
 
-    subparser_cli.add_argument('-C', '--component', metavar='COMP', help="single component or list for a component "
+    subparser_cli.add_argument('-C', '--component', metavar='COMP', help="single component or list of components "
                                                                          "specific action", default='all', nargs='+')
 
     comp_mutex = subparser_cli.add_mutually_exclusive_group(required=True)
 
-    comp_mutex.add_argument('-I', '--interactive', help="Start interactive cli mode", action="store_true")
     comp_mutex.add_argument('-l', '--list', help="List all available components", action="store_true")
     comp_mutex.add_argument('-s', '--start', help="start the component", dest='comp_start', action="store_true")
     comp_mutex.add_argument('-k', '--stop', help="Stop the component", dest='comp_stop', action="store_true")
@@ -133,8 +144,22 @@ def main():
     comp_mutex.add_argument('-L', '--log', help="Show the component log", dest='comp_log', action="store_true")
     comp_mutex.add_argument('-T', '--term', help="Show the component term", dest='comp_term', action="store_true")
 
-    subparser_gui = subparsers.add_parser('gui', help="Launches the setup specified by the --config argument and "
-                                                      "start the GUI")
+    subparser_ui = subparsers.add_parser('ui', help="Launches the setup specified by the --config argument and "
+                                                      "start with user interface")
+
+    subparser_ui.add_argument('-p', '--port',
+                              help="Specify port to connect to. Defaults to %s" % DEFAULT_TCP_PORT,
+                              type=int,
+                              default=DEFAULT_TCP_PORT)
+
+    ui_mutex = subparser_ui.add_mutually_exclusive_group(required=False)
+    ui_mutex.add_argument('-H', '--host', help="Specify host to connect to. Defaults to localhost", default='localhost')
+    ui_mutex.add_argument('--no-socket', help="Start in standalone mode without connecting to a running backend",
+                          action="store_true")
+
+    subparser_ui.add_argument('-x', help="Use PyQt gui (requires X server and python-qt4 package)",
+                              dest='x_server',
+                              action="store_true")
 
     # Create parser for validator
     subparser_val = subparsers.add_parser('validate', help="Validate the setup specified by the --config argument")
@@ -156,26 +181,42 @@ def main():
 
     root_logger = logging.getLogger()
 
-    if args.cmd == 'edit':
-        logger.debug("Launching editor mode")
-
-    if args.cmd == 'cli':
-        clilogger = logging.getLogger('CLI-RESPONSE')
-        clilogger.setLevel(logging.INFO)
-        logger.info("Launching cli mode")
-
-        for handler in root_logger.handlers:
-            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-                logger.debug("Setting non file stream handlers to INFO to disable stdout bloating!")
-                handler.setLevel(logging.INFO)
-
-        cc = ControlCenter(args.config, args.interactive)
+    if args.cmd == 'server':
+        logger.debug("Starting backend at port: %s" % args.port)
+        cc = ControlCenter(args.config, False)
         cc.init()
 
-        if args.interactive:
-            logger.debug("Chose interactive mode")
-            if interactive_enabled:
+        s = Server(int(args.port), cc)
 
+    if args.cmd == 'ui':
+        logger.debug("Chose ui mode")
+
+        if args.no_socket:
+            logger.debug("Entering ui in standalone mode")
+            cc = ControlCenter(args.config, False)
+            cc.init()
+        else:
+            logger.debug("Entering ui in socket mode")
+            cc = clientInterface.RemoteControllerInterface(args.host, args.port)
+
+        if args.x_server:
+            # PyQt
+            if gui_enabled:
+                logger.debug("Launching GUI runner mode")
+
+                cc = ControlCenter(args.config, True)
+                ui = hyperGUI.UiMainWindow()
+
+                signal(SIGINT, SIG_DFL)
+
+                cc.init()
+                start_gui(cc, ui)
+            else:
+                logger.error("To use this feature you need PyQt4! Check the README.md for install instructions")
+                sys.exit(1)
+        else:
+            # Urwid
+            if interactive_enabled:
                 remove = []
                 for handler in root_logger.handlers:
                     if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
@@ -185,8 +226,25 @@ def main():
 
                 cc.cleanup(interactiveCLI.main(cc))
             else:
-                clilogger.error("To use this feature you need urwid! Check the README.md for install instructions")
-        elif args.list:
+                logger.error("To use this feature you need urwid! Check the README.md for install instructions")
+
+    if args.cmd == 'edit':
+        logger.debug("Launching editor mode")
+
+    if args.cmd == 'execute':
+        clilogger = logging.getLogger('EXECUTE-RESPONSE')
+        clilogger.setLevel(logging.INFO)
+        logger.info("Launching cli mode")
+
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                logger.debug("Setting non file stream handlers to INFO to disable stdout bloating!")
+                handler.setLevel(logging.INFO)
+
+        cc = ControlCenter(args.config)
+        cc.init()
+
+        if args.list:
             logger.debug("Chose --list option")
             if args.component != 'all':
                 logger.warning("Specifying a component with the -C option is useless in combination with the "
@@ -223,21 +281,6 @@ def main():
                                    "is used!")
                 cc.start_clone_session_and_attach(comps[0])
             cc.cleanup()
-
-    elif args.cmd == 'gui':
-        if gui_enabled:
-            logger.debug("Launching GUI runner mode")
-
-            cc = ControlCenter(args.config, True)
-            ui = hyperGUI.UiMainWindow()
-
-            signal(SIGINT, SIG_DFL)
-
-            cc.init()
-            start_gui(cc, ui)
-        else:
-            logger.error("To use this feature you need PyQt4! Check the README.md for install instructions")
-            sys.exit(1)
 
     elif args.cmd == 'validate':
         logger.debug("Launching validation mode")
