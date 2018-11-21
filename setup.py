@@ -18,7 +18,10 @@ setup(
     },
 
     version=VERSION,
-    install_requires=['libtmux', 'pyyaml', 'psutil'],
+    install_requires=['libtmux',
+                      'pyyaml',
+                      'psutil',
+                      'selectors2;python_version<"3.4"'],
     extras_require={
         'GRAPH': ['graphviz'],
         'INTERACTIVE': ['urwid'],
