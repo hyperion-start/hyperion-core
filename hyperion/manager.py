@@ -981,7 +981,7 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        logger = logging.getLogger('CLI-RESPONSE')
+        logger = logging.getLogger('EXECUTE-RESPONSE')
 
         try:
             comp = self.get_component_by_name(comp_name)
@@ -1011,7 +1011,7 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        logger = logging.getLogger('CLI-RESPONSE')
+        logger = logging.getLogger('EXECUTE-RESPONSE')
         try:
             comp = self.get_component_by_name(comp_name)
         except exceptions.WindowNotFoundException as e:
@@ -1033,7 +1033,7 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        logger = logging.getLogger('CLI-RESPONSE')
+        logger = logging.getLogger('EXECUTE-RESPONSE')
         logger.info("Checking component %s ..." % comp_name)
         try:
             comp = self.get_component_by_name(comp_name)
