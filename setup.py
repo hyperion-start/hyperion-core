@@ -24,7 +24,7 @@ setup(
                       'selectors2;python_version<"3.4"'],
     extras_require={
         'GRAPH': ['graphviz'],
-        'INTERACTIVE': ['urwid'],
+        'I-CLI': ['urwid'],
         'FULL': ['graphviz', 'urwid']
     },
 
