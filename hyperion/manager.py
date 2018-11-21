@@ -724,7 +724,7 @@ class ControlCenter(AbstractController):
                               "is allowed or if the certificate has to be renewed")
             return False
 
-    def _reconnect_with_host(self, hostname):
+    def reconnect_with_host(self, hostname):
         """Re-establish master connection to host `hostname`
 
         :param hostname: Host to connect to
@@ -1127,7 +1127,7 @@ class ControlCenter(AbstractController):
     ###################
     # Host related checks
     ###################
-    def _is_localhost(self, hostname):
+    def is_localhost(self, hostname):
         """Check if 'hostname' resolves to localhost.
 
         :param hostname: Name of host to check
@@ -1156,7 +1156,7 @@ class ControlCenter(AbstractController):
         :rtype: bool
         """
         try:
-            return self._is_localhost(comp['host'])
+            return self.is_localhost(comp['host'])
         except exceptions.HostUnknownException as ex:
             raise ex
 
