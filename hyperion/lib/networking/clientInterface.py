@@ -35,6 +35,8 @@ def recvall(connection, n):
         data += packet
     return data
 
+# TODO: Add set_dependencies function to instantly return dependency lists to ui calls
+
 
 class RemoteControllerInterface(AbstractController):
     def __init__(self, host, port):
@@ -48,10 +50,12 @@ class RemoteControllerInterface(AbstractController):
         self.send_queue = queue.Queue()
         self.mysel = selectors.DefaultSelector()
         self.keep_running = True
+        self.ui_event_queue = None
 
         self.function_mapping = {
-            'get_config_response': self._set_config,
-            'get_host_list_response': self._set_host_list
+            'get_conf_response': self._set_config,
+            'get_host_list_response': self._set_host_list,
+            'check_response': self.register_check_response
         }
 
         server_address = (host, port)
@@ -89,7 +93,7 @@ class RemoteControllerInterface(AbstractController):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def cleanup(self):
+    def cleanup(self, full=False):
         # TODO: signalize to client endpoint (UI) to shut down.
         sys.exit(1)
 
@@ -134,7 +138,7 @@ class RemoteControllerInterface(AbstractController):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def run_component_check(self, comp):
+    def check_component(self, comp):
         self.logger.debug("Serializing component check")
         action = 'check'
         payload = [comp]
@@ -153,6 +157,18 @@ class RemoteControllerInterface(AbstractController):
     def _set_host_list(self, host_list):
         self.host_list = host_list
         self.logger.debug("Updated host list")
+
+    def _provide_check_event(self, CheckState):
+        self.logger.debug("NIY")
+        # Blocking calls for check? Ui check_component expects non-Null return...
+        # TODO: Damn, this means trouble...
+        # self.ui_event_queue.put()
+
+    def register_check_response(self, response):
+        check_state = response[0]
+        comp = response[1]
+        self.logger.debug("Check response event registration NIY")
+        # TODO: Add check response event to registered queue
 
     def loop(self):
         while self.keep_running:

@@ -59,12 +59,18 @@ class Server:
 
         self.function_mapping = {
             'run': self.cc.start_component_without_deps,
-            'check': self.cc.check_component,
+            'check': self._check_handler,
             'stop': self.cc.stop_component,
-            'list_all': self.cc.get_start_all_list,
-            'deps': self.cc.get_dep_list,
             'get_conf': self._send_config,
             'get_host_list': self._send_host_list
+        }
+
+        self.receiver_mapping = {
+            'run': None,
+            'check': 'all',
+            'stop': None,
+            'get_conf': 'single',
+            'get_host_list': 'single'
         }
 
         self.sel.register(server, selectors.EVENT_READ, self.accept)
@@ -125,18 +131,28 @@ class Server:
         self.logger.debug("Action: %s, args: %s" % (action, args))
         func = self.function_mapping.get(action)
         self.logger.debug("Calling function %s" % func)
-        func(connection, *args)
 
-    def _send_config(self, connection):
-        action = 'get_config_response'
-        payload = [self.cc.config]
+        response_type = self.receiver_mapping.get(action)
+        if response_type:
+            ret = func(*args)
+            action = '%s_response' % action
+            message = actionSerializer.serialize_request(action, [ret])
+            if response_type == 'all':
+                for key in self.send_queues:
+                    message_queue = self.send_queues.get(key)
+                    message_queue.put(message)
+            elif response_type == 'single':
+                self.send_queues[connection].put(message)
 
-        message = actionSerializer.serialize_request(action, payload)
-        self.send_queues[connection].put(message)
+        else:
+            func(*args)
 
-    def _send_host_list(self, connection):
-        action = 'get_host_list_response'
-        payload = [self.cc.host_list]
+    def _check_handler(self, comp):
+        check_state = self.cc.check_component(comp)
+        return check_state, comp
 
-        message = actionSerializer.serialize_request(action, payload)
-        self.send_queues[connection].put(message)
+    def _send_config(self):
+        return self.cc.config
+
+    def _send_host_list(self):
+        return self.cc.host_list
