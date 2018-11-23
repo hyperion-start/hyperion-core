@@ -48,20 +48,3 @@ def deserialize(message):
     return action, args
 
 # TODO: These logger outputs need a lower level that DEBUG (TRACE?) which sadly does not exist by default
-
-
-"""
-
-import hyperion.lib.util.actionSerializer as ser
-import struct
-
-action = "start"
-component = {'name': 'testComp', 'host': 'testhost'}
-pick = ser.serialize_request(action, [component, True, 123, False])
-
-
-fmt = '%ds %dx %ds' % (0, 4, len(pick)-4)
-unused, lesser = struct.unpack(fmt, pick)
-des = ser.deserialize(lesser)
-
-"""
