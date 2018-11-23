@@ -915,7 +915,7 @@ class EventManager(QtCore.QObject):
         logger = logging.getLogger(__name__)
 
         event_queue = queue.Queue()
-        control_center.mon_thread.add_subscriber(event_queue)
+        control_center.add_subscriber(event_queue)
 
         while not self.is_ending:
             mon_event = event_queue.get()

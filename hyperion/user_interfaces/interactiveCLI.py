@@ -754,7 +754,7 @@ def main(cc):
 
     event_queue = queue.Queue()
     cli_menu = StateController(cc, event_queue)
-    cc.mon_thread.add_subscriber(event_queue)
+    cc.add_subscriber(event_queue)
 
     palette = [
         ('titlebar', 'dark red', ''),

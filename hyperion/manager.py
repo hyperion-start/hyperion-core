@@ -752,6 +752,15 @@ class ControlCenter(AbstractController):
         else:
             return False
 
+    def add_subscriber(self, subscriber_queue):
+        """Proxy function for uis to subscribe to the monitoring thread messages
+
+        :param subscriber_queue: Event queue of the subscribing ui
+        :type subscriber_queue: queue.Queue
+        :return: None
+        """
+        self.mon_thread.add_subscriber(subscriber_queue)
+
     ###################
     # Stop
     ###################

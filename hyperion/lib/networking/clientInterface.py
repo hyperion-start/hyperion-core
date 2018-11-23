@@ -179,3 +179,8 @@ class RemoteControllerInterface(AbstractController):
                         self.logger.debug("Sending next message in queue to Server")
                         next_msg = self.send_queue.get()
                         self.sock.sendall(next_msg)
+
+    def add_subscriber(self, subscriber_queue):
+        self.ui_event_queue = subscriber_queue
+        # TODO: Generate events out of received messages
+        
