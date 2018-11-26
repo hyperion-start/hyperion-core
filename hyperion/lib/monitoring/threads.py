@@ -284,6 +284,7 @@ class MonitoringThread(Thread):
             cancellations = []
             jobs = []
             already_handleled = {}
+            already_removed = {}
             # Get all enqueued jobs for this iteration
             while not self.job_queue.empty():
                 mon_job = self.job_queue.get()
@@ -292,8 +293,9 @@ class MonitoringThread(Thread):
                 if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_id not in already_handleled:
                     comp_jobs.append(mon_job)
                     already_handleled[mon_job.comp_id] = True
-                if isinstance(mon_job, CancellationJob):
+                if isinstance(mon_job, CancellationJob) and mon_job.comp_id not in already_removed:
                     cancellations.append(mon_job)
+                    already_removed[mon_job.comp_id] = True
 
             # Remove all jobs that received a cancellation from the job list
             remove = []
