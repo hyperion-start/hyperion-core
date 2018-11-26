@@ -16,6 +16,7 @@ from lib.monitoring.threads import LocalComponentMonitoringJob, RemoteComponentM
     HostMonitorJob, MonitoringThread, CancellationJob
 import lib.util.exception as exceptions
 import lib.util.config as config
+import lib.util.events as events
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -128,10 +129,21 @@ class AbstractController(object):
         self.logger.setLevel(logging.DEBUG)
         self.configfile = configfile
         self.custom_env_path = None
+        self.subscribers = []
         self.config = None
         self.session = None
         self.server = None
         self.dev_mode = True
+
+    def _broadcast_event(self, event):
+        """Put a given event in all registered subscriber queues.
+
+        :param event: Event to broadcast
+        :type event: events.BaseEvent
+        :return: None
+        """
+        for subscriber in self.subscribers:
+            subscriber.put(event)
 
     def _load_config(self, filename="default.yaml"):
         """Load configuration recursively from yaml file.
@@ -203,7 +215,6 @@ class AbstractController(object):
         check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
         window = self._find_window(comp['id'])
 
-        ret = None
         pid = 0
 
         if window:
@@ -761,7 +772,7 @@ class ControlCenter(AbstractController):
         # Start new connection
         if self._establish_master_connection(hostname):
             # Sync components
-            self.logger.debug("Syncinc components to remote host")
+            self.logger.debug("Syncing components to remote host")
             for group in self.config['groups']:
                 for comp in group['components']:
                     if comp['host'] == hostname:
@@ -771,13 +782,24 @@ class ControlCenter(AbstractController):
             return False
 
     def add_subscriber(self, subscriber_queue):
-        """Proxy function for uis to subscribe to the monitoring thread messages
+        """Add a queue to the list of subscribers for manager and monitoring thread events.
 
-        :param subscriber_queue: Event queue of the subscribing ui
+        :param subscriber_queue: Event queue of the subscriber
         :type subscriber_queue: queue.Queue
         :return: None
         """
+        self.subscribers.append(subscriber_queue)
         self.mon_thread.add_subscriber(subscriber_queue)
+
+    def remove_subscriber(self, subscriber_queue):
+        """Remove a queue from the list of subscribers for manager and monitoring thread events.
+
+        :param subscriber_queue: Event queue of the subscriber
+        :type subscriber_queue: queue.Queue
+        :return: None
+        """
+        self.subscribers.remove(subscriber_queue)
+        self.mon_thread.remove_subscriber(subscriber_queue)
 
     ###################
     # Stop
@@ -792,7 +814,9 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        self.logger.debug("Removing %s from process monitoring list" % comp['name'])
+        self._broadcast_event(events.StoppingEvent(comp['id']))
+
+        self.logger.debug("Removing %s from process monitoring list" % comp['id'])
         self.monitor_queue.put(CancellationJob(0, comp['id']))
 
         try:
@@ -800,16 +824,15 @@ class ControlCenter(AbstractController):
         except exceptions.HostUnknownException:
             self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
             return
-
         if comp['host'] != 'localhost' and not on_localhost:
-            self.logger.info("Stopping remote component '%s' on host '%s'" % (comp['name'], comp['host']))
+            self.logger.info("Stopping remote component '%s'" % comp['id'])
             self._stop_remote_component(comp)
         else:
-            self.logger.info("Stopping local component '%s'" % comp['name'])
+            self.logger.info("Stopping local component '%s'" % comp['id'])
             window = self._find_window(comp['id'])
 
             if window:
-                self.logger.debug("window '%s' found running" % comp['name'])
+                self.logger.debug("window '%s' found running" % comp['id'])
                 self.logger.debug("Shutting down window...")
                 self._kill_window(window)
                 self.logger.debug("... done!")
@@ -840,7 +863,7 @@ class ControlCenter(AbstractController):
     ###################
     # Start
     ###################
-    def _start_component(self, comp):
+    def start_component(self, comp):
         """Invoke dependency based start of component `comp`.
 
         Traverses the path of dependencies and invokes a call to ``start_component_without_deps`` for all found
@@ -860,6 +883,7 @@ class ControlCenter(AbstractController):
             if node.comp_id != comp['id']:
                 self.logger.debug("Checking and starting %s" % node.comp_id)
                 state = self.check_component(node.component)
+
                 if (state is config.CheckState.STOPPED_BUT_SUCCESSFUL or
                         state is config.CheckState.STARTED_BY_HAND or
                         state is config.CheckState.RUNNING):
@@ -905,8 +929,10 @@ class ControlCenter(AbstractController):
         comp_id = comp['id']
         host = comp['host']
 
+        self._broadcast_event(events.StartingEvent(comp_id))
+
         try:
-           on_localhost = self.run_on_localhost(comp)
+            on_localhost = self.run_on_localhost(comp)
         except exceptions.HostUnknownException:
             self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
             return
@@ -949,6 +975,48 @@ class ControlCenter(AbstractController):
             config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_name))
         self._send_main_session_command(cmd)
 
+    def start_all(self):
+        comps = self.get_start_all_list()
+        logger = self.logger
+        failed_comps = {}
+
+        for comp in comps:
+            deps = self.get_dep_list(comp.component)
+            failed = False
+
+            for dep in deps:
+                if dep.comp_id in failed_comps:
+                    logger.debug("Comp %s failed, because dependency %s failed!" % (comp.comp_id, dep.comp_id))
+                    failed = True
+
+            if not failed:
+                logger.debug("Checking %s" % comp.comp_id)
+                ret = self.check_component(comp.component)
+                if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
+                    logger.debug("Dep %s already running" % comp.comp_id)
+                else:
+                    tries = 0
+                    logger.debug("Starting dep %s" % comp.comp_id)
+                    self.start_component_without_deps(comp.component)
+                    # Component wait time for startup
+                    sleep(get_component_wait(comp.component))
+                    while True:
+                        sleep(.5)
+                        ret = self.check_component(comp.component)
+                        if (ret is config.CheckState.RUNNING or
+                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                            break
+                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
+                                config.CheckState.UNREACHABLE:
+                            logger.debug("Component %s failed, adding it to failed list" % comp.comp_id)
+                            failed_comps[comp.comp_id] = ret
+                            break
+                        tries = tries + 1
+            else:
+                ret = self.check_component(comp.component)
+                if ret is config.CheckState.STOPPED:
+                    self._broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
+
     ###################
     # Check
     ###################
@@ -972,11 +1040,12 @@ class ControlCenter(AbstractController):
                 pid = ret[0]
                 if pid != 0:
                     self.monitor_queue.put(LocalComponentMonitoringJob(pid, comp['id']))
-                return ret[1]
+                ret_val = ret[1]
             else:
                 self.logger.debug("Starting remote check")
                 if self.host_list.get(comp['host']) is not None:
-                    p = Popen(['ssh', '-F', config.CUSTOM_SSH_CONFIG_PATH, comp['host'], 'hyperion --config %s/%s.yaml slave -c' %
+                    p = Popen(['ssh', '-F', config.CUSTOM_SSH_CONFIG_PATH, comp['host'],
+                               'hyperion --config %s/%s.yaml slave -c' %
                                (config.TMP_SLAVE_DIR, comp['id'])], stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
                     while p.poll() is None:
@@ -989,20 +1058,25 @@ class ControlCenter(AbstractController):
 
                     if pid != 0:
                         self.logger.debug("Got remote pid %s for component '%s'" % (pid, comp['id']))
-                        self.monitor_queue.put(RemoteComponentMonitoringJob(pid, comp['id'], comp['host'], self.host_list))
+                        self.monitor_queue.put(RemoteComponentMonitoringJob(pid, comp['id'], comp['host'],
+                                                                            self.host_list))
                     try:
-                        rc = config.CheckState(p.returncode)
-                        return rc
+                        ret_val = config.CheckState(p.returncode)
                     except ValueError:
                         self.logger.error("Hyperion is not installed on host %s!" % comp['host'])
-                        return config.CheckState.NOT_INSTALLED
+                        ret_val = config.CheckState.NOT_INSTALLED
                 else:
                     self.logger.error("Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
                                                                                                        comp['id']))
-                    return config.CheckState.UNREACHABLE
+                    ret_val = config.CheckState.UNREACHABLE
         except exceptions.HostUnknownException:
             self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
-            return config.CheckState.UNREACHABLE
+            ret_val = config.CheckState.UNREACHABLE
+            pass
+
+        # Create queue event for external notification and return for inner purpose
+        self._broadcast_event(events.CheckEvent(comp['id'], ret_val))
+        return ret_val
 
     ###################
     # CLI Functions
@@ -1035,7 +1109,7 @@ class ControlCenter(AbstractController):
             return
 
         logger.info("Starting component '%s' ..." % comp_id)
-        ret = self._start_component(comp)
+        ret = self.start_component(comp)
         if ret is config.StartState.STARTED:
             logger.info("Started component '%s'" % comp_id)
             sleep(get_component_wait(comp))
@@ -1142,7 +1216,8 @@ class ControlCenter(AbstractController):
         else:
             hostname = comp['host']
             try:
-                call("ssh -F %s %s '/bin/bash -s' < \"%s\"" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, cmd), shell=True)
+                call("ssh -F %s %s '/bin/bash -s' < \"%s\"" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, cmd),
+                     shell=True)
             except KeyboardInterrupt:
                 pass
 
