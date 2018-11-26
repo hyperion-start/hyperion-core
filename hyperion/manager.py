@@ -271,7 +271,7 @@ class AbstractController(object):
         :type comp_id: str
         :return: Component configuration
         :rtype: dict
-        :raises exceptions.WindowNotFoundException: If component was not found
+        :raises exceptions.ComponentNotFoundException: If component was not found
         """
         self.logger.debug("Searching for %s in components" % comp_id)
         for group in self.config['groups']:
@@ -796,7 +796,7 @@ class ControlCenter(AbstractController):
         self.monitor_queue.put(CancellationJob(0, comp['id']))
 
         try:
-           on_localhost = self.run_on_localhost(comp)
+            on_localhost = self.run_on_localhost(comp)
         except exceptions.HostUnknownException:
             self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
             return
@@ -1030,7 +1030,7 @@ class ControlCenter(AbstractController):
 
         try:
             comp = self.get_component_by_id(comp_id)
-        except exceptions.WindowNotFoundException as e:
+        except exceptions.ComponentNotFoundException as e:
             logger.warning(e.message)
             return
 
@@ -1059,7 +1059,7 @@ class ControlCenter(AbstractController):
         logger = logging.getLogger('EXECUTE-RESPONSE')
         try:
             comp = self.get_component_by_id(comp_id)
-        except exceptions.WindowNotFoundException as e:
+        except exceptions.ComponentNotFoundException as e:
             logger.warning(e.message)
             return
         logger.info("Stopping component '%s' ..." % comp_id)
@@ -1082,7 +1082,7 @@ class ControlCenter(AbstractController):
         logger.info("Checking component %s ..." % comp_id)
         try:
             comp = self.get_component_by_id(comp_id)
-        except exceptions.WindowNotFoundException as e:
+        except exceptions.ComponentNotFoundException as e:
             logger.warning(e.message)
             return
         ret = self.check_component(comp)
