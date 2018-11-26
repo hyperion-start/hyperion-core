@@ -8,4 +8,4 @@ cmd:
 depends:
   - xeyes@localhost
 
-host: cor-dell
+host: hyperion-vm

@@ -10,4 +10,4 @@ depends:
 
 wait: 3
 
-host: cor-dell
+host: hyperion-vm

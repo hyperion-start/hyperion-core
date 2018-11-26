@@ -7,4 +7,4 @@ cmd:
 depends:
   - roscore@localhost
 
-host: cor-dell
+host: hyperion-vm

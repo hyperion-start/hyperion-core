@@ -7,7 +7,7 @@ cmd:
 
 depends:
   - roscore@localhost
-  - nav@cor-dell
+  - nav@hyperion-vm
 
 wait: 5
 
