@@ -3,9 +3,11 @@ import logging
 import sys
 import time
 import hyperion.lib.util.config as config
+import hyperion.lib.util.events as events
 from os import system
 from subprocess import call
 from psutil import Process, NoSuchProcess
+
 is_py2 = sys.version[0] == '2'
 if is_py2:
     import Queue as Queue
@@ -74,7 +76,7 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
                 return True
         except NoSuchProcess:
             pass
-        return LocalCrashEvent(self.comp_id)
+        return events.CrashEvent(self.comp_id)
 
     def info(self):
         """Generate a status information for the job describing what is being monitored.
@@ -108,7 +110,7 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
         """Runs a check if a remote process is still running.
 
         :return: True if the component is still running or the host is not reachable, otherwise a ``RemoteCrashEvent`` is generated.
-        :rtype: bool or RemoteCrashEvent
+        :rtype: bool or events.CrashEvent
         """
 
         if self.host_status.get(self.hostname):
@@ -116,7 +118,7 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
             if call(cmd, shell=True) == 0:
                 return True
             else:
-                return RemoteCrashEvent(self.comp_id, self.hostname)
+                return events.CrashEvent(self.comp_id, True)
         # Return true because no information can be retrieved. The connection to the host has to be reestablished first.
         return True
 
@@ -162,71 +164,10 @@ class HostMonitorJob(object):
         self.host_status[self.hostname] = None
         self.host_lock.release()
 
-        return DisconnectEvent(self.hostname)
+        return events.DisconnectEvent(self.hostname)
 
     def info(self):
         return "Running ssh host check for %s with pid %s" % (self.hostname, self.pid)
-
-
-class CrashEvent(object):
-    """Superclass to model a component crash.
-
-    Provides the name of the crashed component."""
-
-    def __init__(self, comp_id):
-        """Initializes the crash event assigning the component name
-
-        :param comp_id: Name of the crashed component
-        :type comp_id: str
-        """
-
-        self.comp_id = comp_id
-
-
-class LocalCrashEvent(CrashEvent):
-    """Crash event subclass for local component crashes.
-
-    Provides the name of the crashed component and a short message.
-    """
-
-    def __init__(self, comp_id):
-        """Creates a local crash event class with a component name and generates a short message.
-
-        :param comp_id: Name of the crashed component
-        :type comp_id: str
-        """
-
-        super(LocalCrashEvent, self).__init__(comp_id)
-        self.message = 'Component %s crashed on localhost' % comp_id
-
-
-class RemoteCrashEvent(CrashEvent):
-    """Crash event subclass for remote component crashes.
-
-    Provides the name of the crashed component along with the host it ran on and a short message.
-    """
-
-    def __init__(self, comp_id, hostname):
-        """Creates a remote crash event with a component name and a host generating a short message.
-
-        :param comp_id: Name of the crashed component
-        :type comp_id: str
-        :param hostname: Name of the host the component was running on
-        :type hostname: str
-        """
-
-        super(RemoteCrashEvent, self).__init__(comp_id)
-        self.hostname = hostname
-        self.message = 'Component %s crashed on remote host %s' % (comp_id, hostname)
-
-
-class DisconnectEvent(object):
-    """Class representing a disconnect event for remote hosts."""
-
-    def __init__(self, hostname):
-        """Creates a disconnect event with a hostname and generates a short message."""
-        self.hostname = hostname
-        self.message = 'Lost connection to remote host %s' % hostname
 
 
 class MonitoringThread(Thread):

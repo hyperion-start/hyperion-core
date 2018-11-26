@@ -57,13 +57,18 @@ class StoppingEvent(ComponentEvent):
 
 class CrashEvent(ComponentEvent):
     """Signal that a component crashed."""
-    def __init__(self, comp_id):
+    def __init__(self, comp_id, remote=False):
         """Create crash event for component with id 'comp_id'.
 
         :param comp_id: Id of the component the event belongs to.
         :type comp_id: str
+        :param remote: Whether the component is run on a remote host or not (default: False)
+        :type remote: bool
         """
         ComponentEvent.__init__(self, comp_id)
+        self.host = comp_id.split('@')[1]
+        self.is_remote = remote
+        self.message = "Component '%s' crashed" % comp_id
 
 
 class DisconnectEvent(BaseEvent):
@@ -76,3 +81,4 @@ class DisconnectEvent(BaseEvent):
         """
         BaseEvent.__init__(self)
         self.host_name = host_name
+        self.message = 'Lost connection to remote host %s' % host_name
