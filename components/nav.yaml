@@ -5,6 +5,6 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - roscore
+  - roscore@localhost
 
 host: cor-dell

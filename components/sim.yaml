@@ -6,7 +6,7 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - rviz
+  - rviz@localhost
 
 wait: 3
 

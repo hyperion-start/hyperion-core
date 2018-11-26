@@ -26,10 +26,10 @@ class ActionSerializerTest(unittest.TestCase):
 class DepTreeTest(unittest.TestCase):
 
     def setUp(self):
-        self.comp_a = {'name': 'comp a'}
-        self.comp_b = {'name': 'comp b'}
-        self.comp_c = {'name': 'comp c'}
-        self.comp_d = {'name': 'comp d'}
+        self.comp_a = {'id': 'comp a'}
+        self.comp_b = {'id': 'comp b'}
+        self.comp_c = {'id': 'comp c'}
+        self.comp_d = {'id': 'comp d'}
 
         self.node_a = depTree.Node(self.comp_a)
         self.node_b = depTree.Node(self.comp_b)

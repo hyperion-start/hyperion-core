@@ -97,7 +97,7 @@ class RemoteControllerInterface(AbstractController):
         # TODO: signalize to client endpoint (UI) to shut down.
         sys.exit(1)
 
-    def get_component_by_name(self, comp_name):
+    def get_component_by_id(self, comp_name):
         self.logger.debug("Serializing component fetch")
 
         action = 'get_comp'
@@ -199,4 +199,3 @@ class RemoteControllerInterface(AbstractController):
     def add_subscriber(self, subscriber_queue):
         self.ui_event_queue = subscriber_queue
         # TODO: Generate events out of received messages
-        

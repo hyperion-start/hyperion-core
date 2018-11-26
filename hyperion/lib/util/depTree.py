@@ -14,7 +14,7 @@ class Node(object):
 
         self.component = comp
         self.depends_on = []
-        self.comp_name = comp['name']
+        self.comp_id = comp['id']
 
     def add_edge(self, node):
         """Add a node as dependency.
@@ -44,7 +44,7 @@ def dep_resolve(node, resolved, unresolved):
     for edge in node.depends_on:
         if edge not in resolved:
             if edge in unresolved:
-                raise CircularReferenceException(node.comp_name, edge.comp_name)
+                raise CircularReferenceException(node.comp_id, edge.comp_id)
             dep_resolve(edge, resolved, unresolved)
     resolved.append(node)
     unresolved.remove(node)

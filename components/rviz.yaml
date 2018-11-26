@@ -6,8 +6,8 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - roscore
-  - nav
+  - roscore@localhost
+  - nav@cor-dell
 
 wait: 5
 

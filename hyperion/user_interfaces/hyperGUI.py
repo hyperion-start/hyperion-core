@@ -214,44 +214,44 @@ class UiMainWindow(object):
         """
 
         horizontalLayout_components = QtGui.QHBoxLayout()
-        horizontalLayout_components.setObjectName(_fromUtf8("horizontalLayout_%s" % comp['name']))
+        horizontalLayout_components.setObjectName(_fromUtf8("horizontalLayout_%s" % comp['id']))
 
         comp_label = QtGui.QLabel(scrollAreaWidgetContents)
-        comp_label.setObjectName("comp_label_%s" % comp['name'])
+        comp_label.setObjectName("comp_label_%s" % comp['id'])
 
         spacerItem = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
 
         start_button = BlinkButton('test', scrollAreaWidgetContents)
-        start_button.setObjectName("start_button_%s" % comp['name'])
+        start_button.setObjectName("start_button_%s" % comp['id'])
         start_button.setText("start")
         start_button.clicked.connect(lambda: self.handle_start_button(comp))
 
         stop_button = BlinkButton(scrollAreaWidgetContents)
-        stop_button.setObjectName("stop_button_%s" % comp['name'])
+        stop_button.setObjectName("stop_button_%s" % comp['id'])
         stop_button.setText("stop")
         stop_button.clicked.connect(lambda: self.handle_stop_button(comp))
 
         check_button = BlinkButton(scrollAreaWidgetContents)
-        check_button.setObjectName("check_button_%s" % comp['name'])
+        check_button.setObjectName("check_button_%s" % comp['id'])
         check_button.setText("check")
         check_button.clicked.connect(lambda: self.handle_check_button(comp))
 
         term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
-        term_toggle.setObjectName("term_toggle_%s" % comp['name'])
+        term_toggle.setObjectName("term_toggle_%s" % comp['id'])
         term_toggle.setText("Show Term")
         term_toggle.stateChanged.connect(lambda: self.handle_term_toggle_state_changed(comp, term_toggle.isChecked()))
 
         log_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
-        log_toggle.setObjectName("log_toggle_%s" % comp['name'])
+        log_toggle.setObjectName("log_toggle_%s" % comp['id'])
         log_toggle.setText("logging")
 
         log_button = QtGui.QPushButton(scrollAreaWidgetContents)
-        log_button.setObjectName("log_button_%s" % comp['name'])
+        log_button.setObjectName("log_button_%s" % comp['id'])
         log_button.setText("view log")
         log_button.clicked.connect(lambda: self.handle_log_button(comp))
 
         comp_label.raise_()
-        comp_label.setText(("%s@%s" % (comp['name'], comp['host'])))
+        comp_label.setText(comp['id'])
 
         horizontalLayout_components.addWidget(comp_label)
         horizontalLayout_components.addItem(spacerItem)
@@ -316,17 +316,17 @@ class UiMainWindow(object):
         :return: None
         """
 
-        self.logger.debug("%s show log button pressed" % comp['name'])
+        self.logger.debug("%s show log button pressed" % comp['id'])
 
-        cmd = "tail -n +1 -F %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['name'])
+        cmd = "tail -n +1 -F %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['id'])
 
         if self.control_center.run_on_localhost(comp):
-            subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title', 'log of %s' % comp['name'],
+            subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title', 'log of %s' % comp['id'],
                               '-e', '%s' % cmd], stdout=subprocess.PIPE)
 
         else:
             subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title',
-                              'log of %s on %s' % (comp['name'], comp['host']),
+                              'log of %s on %s' % (comp['id'], comp['host']),
                               '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
                              stdout=subprocess.PIPE)
 
@@ -354,7 +354,7 @@ class UiMainWindow(object):
         deps = self.control_center.get_start_all_list()
         for dep in deps:
             start_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                        "start_button_%s" % dep.comp_name)  # type: QtGui.QPushButton
+                                                        "start_button_%s" % dep.comp_id)  # type: QtGui.QPushButton
             anim = QtCore.QPropertyAnimation(
                 start_button,
                 "color",
@@ -368,7 +368,7 @@ class UiMainWindow(object):
             anim.setEndValue(QtGui.QColor(0, 0, 0))
             anim.start()
 
-            self.animations[("start_%s" % dep.comp_name)] = anim
+            self.animations[("start_%s" % dep.comp_id)] = anim
 
             start_button.setEnabled(False)
 
@@ -407,7 +407,7 @@ class UiMainWindow(object):
         :return: None
         """
 
-        self.logger.debug("%s start button pressed" % comp['name'])
+        self.logger.debug("%s start button pressed" % comp['id'])
 
         start_worker = StartWorker()
         thread = QtCore.QThread()
@@ -421,7 +421,7 @@ class UiMainWindow(object):
         deps = self.control_center.get_dep_list(comp)
         for dep in deps:
             start_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                        "start_button_%s" % dep.comp_name)  # type: QtGui.QPushButton
+                                                        "start_button_%s" % dep.comp_id)  # type: QtGui.QPushButton
             anim = QtCore.QPropertyAnimation(
                 start_button,
                 "color",
@@ -435,12 +435,12 @@ class UiMainWindow(object):
             anim.setEndValue(QtGui.QColor(0, 0, 0))
             anim.start()
 
-            self.animations[("start_%s" % dep.comp_name)] = anim
+            self.animations[("start_%s" % dep.comp_id)] = anim
 
             start_button.setEnabled(False)
 
         start_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                    "start_button_%s" % comp['name'])  # type: QtGui.QPushButton
+                                                    "start_button_%s" % comp['id'])  # type: QtGui.QPushButton
         anim = QtCore.QPropertyAnimation(
             start_button,
             "color",
@@ -456,7 +456,7 @@ class UiMainWindow(object):
         anim.start()
 
         start_worker.done.connect(lambda: self.threads.remove(thread))
-        self.animations[("start_%s" % comp['name'])] = anim
+        self.animations[("start_%s" % comp['id'])] = anim
 
         thread.start()
 
@@ -475,16 +475,16 @@ class UiMainWindow(object):
         :return: None
         """
 
-        self.logger.debug("%s stop button pressed" % comp['name'])
+        self.logger.debug("%s stop button pressed" % comp['id'])
 
-        if comp['name'] in self.terms:
-            term = self.terms[comp['name']]
+        if comp['id'] in self.terms:
+            term = self.terms[comp['id']]
             if term.poll() is None:
-                self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
+                self.logger.debug("Term %s still running. Trying to kill it" % comp['id'])
                 if self.control_center.run_on_localhost(comp):
-                    self.control_center.kill_session_by_name("%s-clone-session" % comp['name'])
+                    self.control_center.kill_session_by_name("%s-clone-session" % comp['id'])
                 else:
-                    self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['name'], comp['host'])
+                    self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['id'], comp['host'])
 
         stop_worker = StopWorker()
         thread = QtCore.QThread()
@@ -495,7 +495,7 @@ class UiMainWindow(object):
         thread.started.connect(partial(stop_worker.run_stop, self.control_center, comp))
 
         stop_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                   "stop_button_%s" % comp['name'])  # type: QtGui.QPushButton
+                                                   "stop_button_%s" % comp['id'])  # type: QtGui.QPushButton
         anim = QtCore.QPropertyAnimation(
             stop_button,
             "color",
@@ -510,12 +510,12 @@ class UiMainWindow(object):
         anim.setEndValue(QtGui.QColor(0, 0, 0))
         anim.start()
 
-        self.animations[("stop_%s" % comp['name'])] = anim
+        self.animations[("stop_%s" % comp['id'])] = anim
 
         thread.start()
         self.threads.append(thread)
 
-        term_toggle = self.centralwidget.findChild(QtGui.QCheckBox, "term_toggle_%s" % comp['name'])
+        term_toggle = self.centralwidget.findChild(QtGui.QCheckBox, "term_toggle_%s" % comp['id'])
         if term_toggle.isChecked():
             term_toggle.setChecked(False)
 
@@ -564,7 +564,7 @@ class UiMainWindow(object):
         :return: None
         """
 
-        self.logger.debug("%s check button pressed" % comp['name'])
+        self.logger.debug("%s check button pressed" % comp['id'])
 
         check_worker = CheckWorkerThread()
         thread = QtCore.QThread()
@@ -575,7 +575,7 @@ class UiMainWindow(object):
         thread.started.connect(partial(check_worker.run_check, self.control_center, comp))
 
         check_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                    "check_button_%s" % comp['name'])  # type: QtGui.QPushButton
+                                                    "check_button_%s" % comp['id'])  # type: QtGui.QPushButton
         anim = QtCore.QPropertyAnimation(
             check_button,
             "color",
@@ -590,7 +590,7 @@ class UiMainWindow(object):
         anim.setEndValue(QtGui.QColor(0, 0, 0))
         anim.start()
 
-        self.animations[("check_%s" % comp['name'])] = anim
+        self.animations[("check_%s" % comp['id'])] = anim
 
         check_worker.check_signal.connect(lambda: self.threads.remove(thread))
         thread.start()
@@ -644,7 +644,7 @@ class UiMainWindow(object):
         :return: None
         """
 
-        self.logger.debug("%s show term set to: %d" % (comp['name'], is_checked))
+        self.logger.debug("%s show term set to: %d" % (comp['id'], is_checked))
 
         if is_checked:
 
@@ -655,9 +655,9 @@ class UiMainWindow(object):
                 # Safety wait to ensure clone session is running
                 sleep(.5)
                 term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH),
-                                         ("%s-clone-session" % comp['name'])], stdout=subprocess.PIPE)
+                                         ("%s-clone-session" % comp['id'])], stdout=subprocess.PIPE)
 
-                self.terms[comp['name']] = term
+                self.terms[comp['id']] = term
             else:
                 self.logger.debug("Starting remote clone session")
                 self.control_center.start_remote_clone_session(comp)
@@ -666,23 +666,23 @@ class UiMainWindow(object):
                 sleep(.5)
                 self.logger.debug("Open xterm with ssh")
                 term = subprocess.Popen([("%s" % SCRIPT_SHOW_TERM_PATH),
-                                         ("%s-clone-session" % comp['name']),
+                                         ("%s-clone-session" % comp['id']),
                                          ("%s" % comp['host'])],
                                         stdout=subprocess.PIPE)
-                self.terms[comp['name']] = term
+                self.terms[comp['id']] = term
 
         else:
             self.logger.debug("Closing xterm")
-            term = self.terms[comp['name']]
+            term = self.terms[comp['id']]
             if term.poll() is None:
-                self.logger.debug("Term %s still running. Trying to kill it" % comp['name'])
+                self.logger.debug("Term %s still running. Trying to kill it" % comp['id'])
 
                 if self.control_center.run_on_localhost(comp):
-                    self.logger.debug("Session '%s' is running locally" % comp['name'])
-                    self.control_center.kill_session_by_name("%s-clone-session" % comp['name'])
+                    self.logger.debug("Session '%s' is running locally" % comp['id'])
+                    self.control_center.kill_session_by_name("%s-clone-session" % comp['id'])
                 else:
-                    self.logger.debug("Session '%s' is running on remote host %s" % (comp['name'], comp['host']))
-                    self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['name'], comp['host'])
+                    self.logger.debug("Session '%s' is running on remote host %s" % (comp['id'], comp['host']))
+                    self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['id'], comp['host'])
             else:
                 self.logger.debug("Term already closed! Command must have crashed. Open log!")
 
@@ -811,12 +811,12 @@ class UiMainWindow(object):
         msg = QtGui.QMessageBox()
         if check_state is config.CheckState.DEP_FAILED:
             msg.setIcon(QtGui.QMessageBox.Warning)
-            msg.setText("Start process of '%s' was interrupted" % comp['name'])
+            msg.setText("Start process of '%s' was interrupted" % comp['id'])
             msg.setInformativeText("Dependency '%s' failed!" % failed_name)
             msg.setWindowTitle("Warning")
             msg.setStandardButtons(QtGui.QMessageBox.Retry | QtGui.QMessageBox.Cancel)
             self.logger.debug("Warning, start process of '%s' was interrupted. Dependency '%s' failed!" %
-                              (comp['name'], failed_name))
+                              (comp['id'], failed_name))
             retval = msg.exec_()
 
             if retval == QtGui.QMessageBox.Retry:
@@ -824,7 +824,7 @@ class UiMainWindow(object):
 
         elif check_state is config.CheckState.STOPPED:
             msg.setIcon(QtGui.QMessageBox.Warning)
-            msg.setText("Failed starting '%s'" % comp['name'])
+            msg.setText("Failed starting '%s'" % comp['id'])
             msg.setWindowTitle("Warning")
             msg.setStandardButtons(QtGui.QMessageBox.Retry | QtGui.QMessageBox.Cancel)
             retval = msg.exec_()
@@ -832,14 +832,14 @@ class UiMainWindow(object):
             if retval == QtGui.QMessageBox.Retry:
                 self.handle_start_button(comp)
         elif start_state is config.StartState.ALREADY_RUNNING:
-            self.logger.debug("Component '%s' already running!" % comp['name'])
+            self.logger.debug("Component '%s' already running!" % comp['id'])
             msg.setIcon(QtGui.QMessageBox.Warning)
-            msg.setText("Component '%s' already running!" % comp['name'])
+            msg.setText("Component '%s' already running!" % comp['id'])
             msg.setWindowTitle("Warning")
             msg.setStandardButtons(QtGui.QMessageBox.Ok)
             msg.exec_()
         else:
-            self.logger.debug("Starting '%s' succeeded without interference" % comp['name'])
+            self.logger.debug("Starting '%s' succeeded without interference" % comp['id'])
             return
 
     @QtCore.pyqtSlot(int, dict, str)
@@ -928,8 +928,8 @@ class EventManager(QtCore.QObject):
                     self.disconnect_signal.emit(mon_event.hostname)
             elif isinstance(mon_event, LocalCrashEvent) or isinstance(mon_event, RemoteCrashEvent):
                 logger.warning("Received crash event from monitoring thread holding message: %s" % mon_event.message)
-                comp = control_center.get_component_by_name(mon_event.comp_name)
-                self.crash_signal.emit((control_center.check_component(comp)).value, mon_event.comp_name, True)
+                comp = control_center.get_component_by_id(mon_event.comp_id)
+                self.crash_signal.emit((control_center.check_component(comp)).value, mon_event.comp_id, True)
         self.done.emit()
 
 
@@ -954,7 +954,7 @@ class CheckWorkerThread(QtCore.QObject):
         :return: None
         """
 
-        self.check_signal.emit((control_center.check_component(comp)).value, comp['name'], True)
+        self.check_signal.emit((control_center.check_component(comp)).value, comp['id'], True)
         self.done.emit()
 
 
@@ -1021,25 +1021,25 @@ class StartWorker(QtCore.QObject):
 
             for dep in comps:
                 ret = control_center.check_component(dep.component)
-                self.intermediate.emit(ret.value, dep.comp_name, True)
+                self.intermediate.emit(ret.value, dep.comp_id, True)
 
-            self.intermediate.emit(check.value, comp['name'], True)
+            self.intermediate.emit(check.value, comp['id'], True)
             self.done.emit(config.StartState.ALREADY_RUNNING.value, comp, failed_comp)
 
             return
 
         for dep in comps:
             if not failed:
-                logger.debug("Checking dep %s" % dep.comp_name)
+                logger.debug("Checking dep %s" % dep.comp_id)
                 ret = control_center.check_component(dep.component)
                 if ret is not config.CheckState.STOPPED or \
                         ret is not config.CheckState.UNREACHABLE or \
                         ret is not config.CheckState.NOT_INSTALLED:
-                    logger.debug("Dep %s already running" % dep.comp_name)
-                    self.intermediate.emit(ret.value, dep.comp_name, True)
+                    logger.debug("Dep %s already running" % dep.comp_id)
+                    self.intermediate.emit(ret.value, dep.comp_id, True)
                 else:
                     tries = 0
-                    logger.debug("Starting dep %s" % dep.comp_name)
+                    logger.debug("Starting dep %s" % dep.comp_id)
                     control_center.start_component_without_deps(dep.component)
                     # Component wait time for startup
                     sleep(manager.get_component_wait(dep.component))
@@ -1052,22 +1052,22 @@ class StartWorker(QtCore.QObject):
                         if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
                                 config.CheckState.UNREACHABLE:
                             failed = True
-                            failed_comp = dep.comp_name
+                            failed_comp = dep.comp_id
                             break
                         tries = tries + 1
-                    self.intermediate.emit(ret.value, dep.comp_name, True)
+                    self.intermediate.emit(ret.value, dep.comp_id, True)
             else:
                 ret = control_center.check_component(dep.component)
                 if (ret is not config.CheckState.STOPPED or
                         ret is not config.CheckState.UNREACHABLE or
                         ret is not config.CheckState.NOT_INSTALLED):
-                    self.intermediate.emit(ret.value, dep.comp_name, True)
+                    self.intermediate.emit(ret.value, dep.comp_id, True)
                 else:
-                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, dep.comp_name, True)
+                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, dep.comp_id, True)
 
         ret = config.CheckState.DEP_FAILED
         if not failed:
-            logger.debug("Done starting dependencies. Now starting %s" % comp['name'])
+            logger.debug("Done starting dependencies. Now starting %s" % comp['id'])
             control_center.start_component_without_deps(comp)
 
             # Component wait time for startup
@@ -1087,7 +1087,7 @@ class StartWorker(QtCore.QObject):
                 logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
                 tries = tries + 1
 
-        self.intermediate.emit(ret.value, comp['name'], True)
+        self.intermediate.emit(ret.value, comp['id'], True)
         self.done.emit(ret.value, comp, failed_comp)
 
     @QtCore.pyqtSlot()
@@ -1112,19 +1112,19 @@ class StartWorker(QtCore.QObject):
             deps = control_center.get_dep_list(comp.component)
 
             for dep in deps:
-                if dep.comp_name in failed_comps:
-                    logger.debug("Comp %s failed, because dependency %s failed!" % (comp.comp_name, dep.comp_name))
+                if dep.comp_id in failed_comps:
+                    logger.debug("Comp %s failed, because dependency %s failed!" % (comp.comp_id, dep.comp_id))
                     failed = True
 
             if not failed:
-                logger.debug("Checking %s" % comp.comp_name)
+                logger.debug("Checking %s" % comp.comp_id)
                 ret = control_center.check_component(comp.component)
                 if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
-                    logger.debug("Dep %s already running" % comp.comp_name)
-                    self.intermediate.emit(ret.value, comp.comp_name, False)
+                    logger.debug("Dep %s already running" % comp.comp_id)
+                    self.intermediate.emit(ret.value, comp.comp_id, False)
                 else:
                     tries = 0
-                    logger.debug("Starting dep %s" % comp.comp_name)
+                    logger.debug("Starting dep %s" % comp.comp_id)
                     control_center.start_component_without_deps(comp.component)
                     # Component wait time for startup
                     sleep(manager.get_component_wait(comp.component))
@@ -1136,18 +1136,18 @@ class StartWorker(QtCore.QObject):
                             break
                         if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
                                 config.CheckState.UNREACHABLE:
-                            failed_comps[comp.comp_name] = ret
+                            failed_comps[comp.comp_id] = ret
                             break
                         tries = tries + 1
-                    logger.info("Sending %s for %s" % (config.STATE_DESCRIPTION.get(ret), comp.comp_name))
-                    self.intermediate.emit(ret.value, comp.comp_name, False)
+                    logger.info("Sending %s for %s" % (config.STATE_DESCRIPTION.get(ret), comp.comp_id))
+                    self.intermediate.emit(ret.value, comp.comp_id, False)
             else:
                 ret = control_center.check_component(comp.component)
                 if ret is not config.CheckState.STOPPED:
-                    self.intermediate.emit(ret.value, comp.comp_name, False)
+                    self.intermediate.emit(ret.value, comp.comp_id, False)
                 else:
-                    failed_comps[comp.comp_name] = config.CheckState.DEP_FAILED
-                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, comp.comp_name, False)
+                    failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
+                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, comp.comp_id, False)
 
         if len(failed_comps) == 0:
             result = config.StartState.STARTED.value

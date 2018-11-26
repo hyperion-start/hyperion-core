@@ -16,16 +16,16 @@ else:
 class ComponentMonitorJob(object):
     """Abstract class that represents a component monitoring job (local or remote)."""
 
-    def __init__(self, pid, comp_name):
+    def __init__(self, pid, comp_id):
         """Initializes component monitoring job.
 
         :param pid: Process id of the component
         :type pid: int
-        :param comp_name: Name of the component
-        :type comp_name: str
+        :param comp_id: Name of the component
+        :type comp_id: str
         """
         self.pid = pid
-        self.comp_name = comp_name
+        self.comp_id = comp_id
 
     def run_check(self):
         """You need to override this function in monitoring subclasses. It is called in the main monitoring thread.
@@ -36,31 +36,31 @@ class ComponentMonitorJob(object):
 
 
 class CancellationJob(ComponentMonitorJob):
-    def __init__(self, pid, comp_name):
+    def __init__(self, pid, comp_id):
         """Creates a cancellation job for a component.
 
         :param pid: Process id of the component
         :type pid: int
-        :param comp_name: Name of the component
-        :type comp_name: str
+        :param comp_id: Name of the component
+        :type comp_id: str
         """
 
-        super(CancellationJob, self).__init__(pid, comp_name)
+        super(CancellationJob, self).__init__(pid, comp_id)
 
 
 class LocalComponentMonitoringJob(ComponentMonitorJob):
     """Class that represents a local component monitoring job."""
 
-    def __init__(self, pid, comp_name):
+    def __init__(self, pid, comp_id):
         """Creates a monitoring job for a local component.
 
         :param pid: Process id of the component
         :type pid: int
-        :param comp_name: Name of the component
-        :type comp_name: str
+        :param comp_id: Name of the component
+        :type comp_id: str
         """
 
-        super(LocalComponentMonitoringJob, self).__init__(pid, comp_name)
+        super(LocalComponentMonitoringJob, self).__init__(pid, comp_id)
 
     def run_check(self):
         """Runs a check if the pid exists and has not finished yet.
@@ -74,7 +74,7 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
                 return True
         except NoSuchProcess:
             pass
-        return LocalCrashEvent(self.comp_name)
+        return LocalCrashEvent(self.comp_id)
 
     def info(self):
         """Generate a status information for the job describing what is being monitored.
@@ -83,24 +83,24 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
         :rtype: str
         """
 
-        return "Running check for local component %s with pid %s" % (self.comp_name, self.pid)
+        return "Running check for local component %s with pid %s" % (self.comp_id, self.pid)
 
 
 class RemoteComponentMonitoringJob(ComponentMonitorJob):
     """Class that represents a remote component monitoring job."""
 
-    def __init__(self, pid, comp_name, hostname, host_status):
+    def __init__(self, pid, comp_id, hostname, host_status):
         """Creates a remote component monitoring job.
 
         :param pid: Process id on the remote machine
         :type pid: int
-        :param comp_name: Name of the monitored component
-        :type comp_name: str
+        :param comp_id: Name of the monitored component
+        :type comp_id: str
         :param hostname: Name of the host running the component
         :type hostname: str
         """
 
-        super(RemoteComponentMonitoringJob, self).__init__(pid, comp_name)
+        super(RemoteComponentMonitoringJob, self).__init__(pid, comp_id)
         self.hostname = hostname
         self.host_status = host_status
 
@@ -116,7 +116,7 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
             if call(cmd, shell=True) == 0:
                 return True
             else:
-                return RemoteCrashEvent(self.comp_name, self.hostname)
+                return RemoteCrashEvent(self.comp_id, self.hostname)
         # Return true because no information can be retrieved. The connection to the host has to be reestablished first.
         return True
 
@@ -127,7 +127,7 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
         :rtype: str
         """
 
-        return "Running check for remote component %s with pid %s on host %s" % (self.comp_name, self.pid,
+        return "Running check for remote component %s with pid %s on host %s" % (self.comp_id, self.pid,
                                                                                  self.hostname)
 
 
@@ -173,14 +173,14 @@ class CrashEvent(object):
 
     Provides the name of the crashed component."""
 
-    def __init__(self, comp_name):
+    def __init__(self, comp_id):
         """Initializes the crash event assigning the component name
 
-        :param comp_name: Name of the crashed component
-        :type comp_name: str
+        :param comp_id: Name of the crashed component
+        :type comp_id: str
         """
 
-        self.comp_name = comp_name
+        self.comp_id = comp_id
 
 
 class LocalCrashEvent(CrashEvent):
@@ -189,15 +189,15 @@ class LocalCrashEvent(CrashEvent):
     Provides the name of the crashed component and a short message.
     """
 
-    def __init__(self, comp_name):
+    def __init__(self, comp_id):
         """Creates a local crash event class with a component name and generates a short message.
 
-        :param comp_name: Name of the crashed component
-        :type comp_name: str
+        :param comp_id: Name of the crashed component
+        :type comp_id: str
         """
 
-        super(LocalCrashEvent, self).__init__(comp_name)
-        self.message = 'Component %s crashed on localhost' % comp_name
+        super(LocalCrashEvent, self).__init__(comp_id)
+        self.message = 'Component %s crashed on localhost' % comp_id
 
 
 class RemoteCrashEvent(CrashEvent):
@@ -206,18 +206,18 @@ class RemoteCrashEvent(CrashEvent):
     Provides the name of the crashed component along with the host it ran on and a short message.
     """
 
-    def __init__(self, comp_name, hostname):
+    def __init__(self, comp_id, hostname):
         """Creates a remote crash event with a component name and a host generating a short message.
 
-        :param comp_name: Name of the crashed component
-        :type comp_name: str
+        :param comp_id: Name of the crashed component
+        :type comp_id: str
         :param hostname: Name of the host the component was running on
         :type hostname: str
         """
 
-        super(RemoteCrashEvent, self).__init__(comp_name)
+        super(RemoteCrashEvent, self).__init__(comp_id)
         self.hostname = hostname
-        self.message = 'Component %s crashed on remote host %s' % (comp_name, hostname)
+        self.message = 'Component %s crashed on remote host %s' % (comp_id, hostname)
 
 
 class DisconnectEvent(object):
@@ -289,9 +289,9 @@ class MonitoringThread(Thread):
                 mon_job = self.job_queue.get()
                 if isinstance(mon_job, HostMonitorJob):
                     jobs.append(mon_job)
-                if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_name not in already_handleled:
+                if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_id not in already_handleled:
                     comp_jobs.append(mon_job)
-                    already_handleled[mon_job.comp_name] = True
+                    already_handleled[mon_job.comp_id] = True
                 if isinstance(mon_job, CancellationJob):
                     cancellations.append(mon_job)
 
@@ -299,7 +299,7 @@ class MonitoringThread(Thread):
             remove = []
             for mon_job in cancellations:
                 for comp_job in comp_jobs:
-                    if mon_job.comp_name is comp_job.comp_name:
+                    if mon_job.comp_id is comp_job.comp_id:
                         remove.append(comp_job)
             [comp_jobs.remove(job) for job in remove]
 

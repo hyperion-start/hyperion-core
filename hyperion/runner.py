@@ -9,6 +9,7 @@ from lib.networking.server import Server
 from lib.networking import clientInterface
 from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT
 from logging.config import fileConfig
+from lib.util.exception import *
 
 ###########################
 # Optional feature imports
@@ -183,7 +184,7 @@ def main():
 
     if args.cmd == 'server':
         logger.debug("Starting backend at port: %s" % args.port)
-        cc = ControlCenter(args.config, False)
+        cc = ControlCenter(args.config, True)
         cc.init()
 
         s = Server(int(args.port), cc)
@@ -193,7 +194,7 @@ def main():
 
         if args.no_socket:
             logger.debug("Entering ui in standalone mode")
-            cc = ControlCenter(args.config, False)
+            cc = ControlCenter(args.config, True)
             cc.init()
         else:
             logger.debug("Entering ui in socket mode")
@@ -204,16 +205,13 @@ def main():
             if gui_enabled:
                 logger.debug("Launching GUI runner mode")
 
-                cc = ControlCenter(args.config, True)
                 ui = hyperGUI.UiMainWindow()
-
                 signal(SIGINT, SIG_DFL)
 
-                cc.init()
                 start_gui(cc, ui)
             else:
                 logger.error("To use this feature you need PyQt4! Check the README.md for install instructions")
-                sys.exit(1)
+                cc.cleanup(True, 1)
         else:
             # Urwid
             if interactive_enabled:
@@ -286,14 +284,21 @@ def main():
         logger.debug("Launching validation mode")
         cc = ControlCenter(args.config)
         if args.visual:
-            cc.set_dependencies(False)
+            try:
+                cc.set_dependencies()
+            except UnmetDependenciesException or CircularReferenceException:
+                pass
+
             if graph_enabled:
                 draw_graph(cc)
             else:
                 logger.error("This feature requires graphviz. To use it install hyperion with the GRAPH option "
                              "(pip install -e .['GRAPH'])")
         else:
-            cc.set_dependencies(True)
+            try:
+                cc.set_dependencies()
+            except UnmetDependenciesException or CircularReferenceException:
+                cc.cleanup(status=1)
         cc.cleanup()
 
     elif args.cmd == 'slave':

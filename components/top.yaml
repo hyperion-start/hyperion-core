@@ -6,6 +6,6 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - xeyes
+  - xeyes@localhost
 
 host: cor-dell
