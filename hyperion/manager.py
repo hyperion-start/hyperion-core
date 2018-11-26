@@ -109,6 +109,17 @@ def ensure_dir(file_path):
         os.makedirs(directory)
 
 
+def dump_config(conf):
+    """Dumps configuration in a file called conf-result.yaml.
+
+    :param conf: Configuration read from one or more yaml files
+    :type conf: dict
+    :return: None
+    """
+    with open('conf-result.yml', 'w') as outfile:
+        dump(conf, outfile, default_flow_style=False)
+
+
 class AbstractController(object):
     """Abstract controller class that defines basic controller variables and methods."""
 
@@ -120,6 +131,7 @@ class AbstractController(object):
         self.config = None
         self.session = None
         self.server = None
+        self.dev_mode = True
 
     def _load_config(self, filename="default.yaml"):
         """Load configuration recursively from yaml file.
@@ -457,9 +469,6 @@ class ControlCenter(AbstractController):
                 self.cleanup(status=1)
             self.session_name = self.config["name"]
 
-            # Debug write resulting yaml file
-            with open('debug-result.yml', 'w') as outfile:
-                dump(self.config, outfile, default_flow_style=False)
             self.logger.info("Loading config was successful")
 
             self.server = Server()
