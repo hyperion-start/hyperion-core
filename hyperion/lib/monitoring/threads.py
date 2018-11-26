@@ -266,8 +266,19 @@ class MonitoringThread(Thread):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug("Added subscriber")
+        logger.debug("Adding subscriber")
         self.subscribed_queues.append(queue)
+
+    def remove_subscriber(self, queue):
+        """Remove a subscriber from the list of queues to send notifications to.
+
+        :param queue: Unsubscribing queue that will get no notifications by this thread anymore
+        :type queue: Queue.Queue
+        :return: None
+        """
+        logger = logging.getLogger(__name__)
+        logger.debug("Removing subscriber")
+        self.subscribed_queues.remove(queue)
 
     def run(self):
         """Starts the monitoring thread.
