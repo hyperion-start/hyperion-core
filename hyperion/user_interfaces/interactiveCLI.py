@@ -5,6 +5,7 @@ from time import sleep
 from os.path import isfile
 import hyperion.manager
 import hyperion.lib.util.exception as exceptions
+import hyperion.lib.util.events as events
 
 from hyperion.lib.monitoring.threads import *
 
@@ -90,18 +91,6 @@ class SimpleButton(urwid.Button):
         label = urwid.SelectableIcon(caption, 0)
         label.set_align_mode('center')
         self._w = urwid.AttrMap(label, None, 'simple_button')
-
-
-class UIEvent(object):
-    """Event class for uriwd UI events."""
-
-
-class CheckEvent(UIEvent):
-    """Event class for a component check."""
-
-    def __init__(self, comp_id, status):
-        self.comp_id = comp_id
-        self.status = status
 
 
 class StateController(object):
@@ -279,8 +268,6 @@ class StateController(object):
         self.shutdown_overlay = urwid.Overlay(shutdown_box, self.layout, align='center', width=('relative', 60),
                                           valign='middle', height=('relative', 60))
 
-        self.handle_check_all(None)
-
     def setup_component_states(self):
         for grp in self.groups:
             group = self.groups[grp]
@@ -455,202 +442,15 @@ class StateController(object):
         urwid.AttrMap(button, 'group_selected')
         self.logger.info("Clicked start all")
         threading.Thread(
-            target=self.start_all, name='start_all',
+            target=self.cc.start_all, name='start_all',
         ).start()
-
-    def start_all(self):
-        control_center = self.cc
-        comps = control_center.get_start_all_list()
-        logger = self.logger
-        event_queue = self.event_queue
-        failed_comps = {}
-
-        for comp in comps:
-
-            self.states[comp.comp_id].set_text("state: STARTING...")
-            deps = control_center.get_dep_list(comp.component)
-
-            failed = False
-
-            for dep in deps:
-                if dep.comp_id in failed_comps:
-                    logger.debug("Comp %s failed, because dependency %s failed!" % (comp.comp_id, dep.comp_id))
-                    failed = True
-
-            if not failed:
-                logger.debug("Checking %s" % comp.comp_id)
-                ret = control_center.check_component(comp.component)
-                if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
-                    logger.debug("Dep %s already running" % comp.comp_id)
-                    event_queue.put(CheckEvent(comp.comp_id, ret))
-                else:
-                    tries = 0
-                    logger.debug("Starting dep %s" % comp.comp_id)
-                    control_center.start_component_without_deps(comp.component)
-                    # Component wait time for startup
-                    sleep(hyperion.manager.get_component_wait(comp.component))
-                    while True:
-                        sleep(.5)
-                        ret = control_center.check_component(comp.component)
-                        if (ret is config.CheckState.RUNNING or
-                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
-                            break
-                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
-                                config.CheckState.UNREACHABLE:
-                            logger.debug("Component %s failed, adding it to failed list" % comp.comp_id)
-                            failed_comps[comp.comp_id] = ret
-                            break
-                        tries = tries + 1
-                    event_queue.put(CheckEvent(comp.comp_id, ret))
-
-            else:
-                ret = control_center.check_component(comp.component)
-                if ret is not config.CheckState.STOPPED:
-                    event_queue.put(CheckEvent(comp.comp_id, ret))
-                else:
-                    failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
-                    event_queue.put(CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
-
-        failed = False
-        start_all_popup_content = [
-            urwid.Divider('='),
-            urwid.Text(('titlebar', u'Start All Report'), "center"),
-            urwid.Divider('='),
-        ]
-
-        fail_popup_content = []
-        for comp_name in failed_comps:
-            self.logger.info(comp_name)
-            failed = True
-            fail_popup_content.extend([
-                urwid.Divider(),
-                urwid.Text(u'%s: %s' % (
-                    comp_name,
-                    config.STATE_DESCRIPTION.get(failed_comps.get(comp_name))
-                ))
-            ])
-
-        if failed:
-            start_all_popup_content.extend([
-                urwid.Divider(),
-                urwid.AttrMap(urwid.Text('Starting all components failed!', "center"), 'simple_button'),
-                urwid.Divider()
-            ])
-            start_all_popup_content.extend(fail_popup_content)
-        else:
-            start_all_popup_content.extend([
-                urwid.Divider(),
-                urwid.AttrMap(urwid.Text('Starting all complete!', "center"), 'simple_button'),
-                urwid.Divider()
-            ])
-
-        start_all_box = urwid.AttrMap(
-            urwid.LineBox(
-                urwid.ListBox(urwid.SimpleFocusListWalker(
-                    start_all_popup_content + [SimpleButton('Close', self.dismiss_popup)])
-                )
-            ),
-            'popup'
-        )
-
-        start_all_overlay = urwid.Overlay(start_all_box, self.layout, align='center', width=('relative', 60),
-                                          valign='middle', height=('relative', 60))
-        main_loop.widget = urwid.Frame(start_all_overlay)
 
     def handle_start(self, button, comp):
         self.logger.info("Clicked start %s" % comp['id'])
         threading.Thread(
-            target=self.start_comp, args=[self.event_queue, comp],
+            target=self.cc.start_component, args=[comp],
             name='start_comp_%s' % comp['id'],
         ).start()
-
-    def start_comp(self, event_queue, comp):
-        """Starts a component with dependencies. To be run in a separate thread.
-
-        :param event_queue: Queue to send events to.
-        :type event_queue: queue.Queue
-        :param comp: Component that is being started
-        :type comp: dict
-        :return: None
-        """
-
-        control_center = self.cc
-        comps = control_center.get_dep_list(comp)
-        check = control_center.check_component(comp)
-        logger = self.logger
-        failed = False
-
-        self.states[comp['id']].set_text("state: STARTING...")
-
-        if (check is not config.CheckState.UNREACHABLE
-                and check is not config.CheckState.STOPPED
-                and check is not config.CheckState.NOT_INSTALLED):
-
-            event_queue.put(CheckEvent(comp['id'], check))
-
-            for dep in comps:
-
-                ret = control_center.check_component(dep.component)
-                event_queue.put(CheckEvent(dep.comp_id, ret))
-            return
-
-        for dep in comps:
-            self.states[dep.comp_id].set_text("state: STARTING...")
-            if not failed:
-                logger.debug("Checking dep %s" % dep.comp_id)
-                ret = control_center.check_component(dep.component)
-                if ret is not config.CheckState.STOPPED:
-                    logger.debug("Dep %s already running" % dep.comp_id)
-                    event_queue.put(CheckEvent(dep.comp_id, ret))
-                else:
-                    tries = 0
-                    logger.debug("Starting dep %s" % dep.comp_id)
-                    control_center.start_component_without_deps(dep.component)
-                    # Component wait time for startup
-                    sleep(hyperion.manager.get_component_wait(dep.component))
-                    while True:
-                        sleep(.5)
-                        ret = control_center.check_component(dep.component)
-                        if (ret is config.CheckState.RUNNING or
-                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
-                            break
-                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
-                                config.CheckState.UNREACHABLE:
-                            failed = True
-                            ret = config.CheckState.STOPPED
-                            break
-                        tries = tries + 1
-                    event_queue.put(CheckEvent(dep.comp_id, ret))
-            else:
-                ret = control_center.check_component(dep.component)
-                if ret is not config.CheckState.STOPPED:
-                    event_queue.put(CheckEvent(dep.comp_id, ret))
-                else:
-                    event_queue.put(CheckEvent(dep.comp_id, config.CheckState.DEP_FAILED))
-
-        ret = config.CheckState.DEP_FAILED
-        if not failed:
-            logger.debug("Done starting dependencies. Now starting %s" % comp['id'])
-            control_center.start_component_without_deps(comp)
-
-            # Component wait time for startup
-            logger.debug("Waiting component startup wait time")
-            sleep(hyperion.manager.get_component_wait(comp))
-
-            tries = 0
-            logger.debug("Running check to ensure start was successful")
-            while True:
-                sleep(.5)
-                ret = control_center.check_component(comp)
-                if (ret is config.CheckState.RUNNING or
-                    ret is config.CheckState.STOPPED_BUT_SUCCESSFUL or
-                    ret is config.CheckState.UNREACHABLE or
-                    ret is config.CheckState.NOT_INSTALLED) or tries > 9:
-                    break
-                logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
-                tries = tries + 1
-
-        event_queue.put(CheckEvent(comp['id'], ret))
 
     def handle_stop_all(self, button):
         for grp in self.groups:
@@ -658,28 +458,26 @@ class StateController(object):
             if group['name'] != 'All':
                 for comp in group['components']:
                     threading.Thread(
-                        target=self.stop_comp, args=[self.event_queue, comp],
+                        target=self.handle_stop, args=[None, comp],
                         name='stop_comp_%s' % comp['id'],
                     ).start()
 
     def handle_stop(self, button, comp):
         self.logger.info("Clicked stop %s" % comp['id'])
         threading.Thread(
-            target=self.stop_comp, args=[self.event_queue, comp],
+            target=self.stop_component, args=[comp],
             name='stop_comp_%s' % comp['id'],
         ).start()
 
-    def stop_comp(self, event_queue, comp):
-        control_center = self.cc
-        logger = self.logger
+    def stop_component(self, comp):
+        """Stop component and run a component check right afterwards to update the ui status.
 
-        self.states[comp['id']].set_text("state: STOPPING...")
-        control_center.stop_component(comp)
-        # Component wait time before check
-        logger.debug("Waiting component wait time")
-        sleep(hyperion.manager.get_component_wait(comp))
-        ret = control_center.check_component(comp)
-        event_queue.put(CheckEvent(comp['id'], ret))
+        :param comp: Component that will be stopped
+        :type comp: dict
+        :return: None
+        """
+        self.cc.stop_component(comp)
+        self.cc.check_component(comp)
 
     def handle_check_all(self, button):
         for grp in self.groups:
@@ -687,23 +485,16 @@ class StateController(object):
             if group['name'] != 'All':
                 for comp in group['components']:
                     threading.Thread(
-                        target=self.check_comp, args=[self.event_queue, comp],
+                        target=self.handle_check, args=[None, comp],
                         name='check_comp_%s' % comp['id'],
                     ).start()
 
     def handle_check(self, button, comp):
         self.logger.info("Clicked check %s" % comp['id'])
         threading.Thread(
-            target=self.check_comp, args=[self.event_queue, comp],
+            target=self.cc.check_component, args=[comp],
             name='check_comp_%s' % comp['id'],
         ).start()
-
-    def check_comp(self, event_queue, comp):
-        control_center = self.cc
-
-        self.states[comp['id']].set_text("state: CHECKING...")
-        ret = control_center.check_component(comp)
-        event_queue.put(CheckEvent(comp['id'], ret))
 
     def handle_log(self, button, comp):
         self.logger.info("Clicked log %s" % comp['id'])
@@ -750,6 +541,58 @@ class StateController(object):
     def dismiss_popup(self, button=None, user_data=None):
         main_loop.widget = self.layout
 
+    def start_report_popup(self, event):
+        """Generate and display a start report popup.
+
+        :param event: Start report event containing information about failed components
+        :type event: events.StartReportEvent
+        :return: None
+        """
+        failed = False
+        start_all_popup_content = [
+            urwid.Divider('='),
+            urwid.Text(('titlebar', u'Start %s Report' % event.component), "center"),
+            urwid.Divider('='),
+        ]
+
+        fail_popup_content = []
+        for comp_name in event.failed_comps:
+            failed = True
+            fail_popup_content.extend([
+                urwid.Divider(),
+                urwid.Text(u'%s: %s' % (
+                    comp_name,
+                    config.STATE_DESCRIPTION.get(event.failed_comps.get(comp_name))
+                ))
+            ])
+
+        if failed:
+            start_all_popup_content.extend([
+                urwid.Divider(),
+                urwid.AttrMap(urwid.Text('Starting %s failed!' % event.component, "center"), 'simple_button'),
+                urwid.Divider()
+            ])
+            start_all_popup_content.extend(fail_popup_content)
+        else:
+            start_all_popup_content.extend([
+                urwid.Divider(),
+                urwid.AttrMap(urwid.Text('Starting %s complete!' % event.component, "center"), 'simple_button'),
+                urwid.Divider()
+            ])
+
+        start_all_box = urwid.AttrMap(
+            urwid.LineBox(
+                urwid.ListBox(urwid.SimpleFocusListWalker(
+                    start_all_popup_content + [SimpleButton('Close', self.dismiss_popup)])
+                )
+            ),
+            'popup'
+        )
+
+        start_all_overlay = urwid.Overlay(start_all_box, self.layout, align='center', width=('relative', 60),
+                                          valign='middle', height=('relative', 60))
+        main_loop.widget = urwid.Frame(start_all_overlay)
+
 
 def main(cc):
     """Creates a state controller and starts urwid.
@@ -789,6 +632,7 @@ def main(cc):
     global main_loop
     main_loop = urwid.MainLoop(cli_menu.layout, palette, unhandled_input=cli_menu.handle_input, pop_ups=True)
     main_loop.set_alarm_in(0, refresh, cli_menu)
+    cli_menu.handle_check_all(None)
     main_loop.run()
     return cli_menu.full_shutdown
 
@@ -830,24 +674,42 @@ def refresh(_loop, state_controller, _data=None):
     while not event_queue.empty():
         event = event_queue.get_nowait()
 
-        if isinstance(event, CheckEvent):
-            logger.debug("Check event - comp %s; state %s" % (event.comp_id, event.status))
+        if isinstance(event, events.CheckEvent):
+            logger.debug("Check event - comp %s; state %s" % (event.comp_id, event.check_state))
             state_controller.states[event.comp_id].set_text([
                 "state: ",
-                ('%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(event.status),
-                    "%s" % config.SHORT_STATE_DESCRIPTION.get(event.status)
+                (
+                    '%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(event.check_state),
+                    "%s" % config.SHORT_STATE_DESCRIPTION.get(event.check_state)
                 )
             ])
-        elif isinstance(event, CrashEvent):
+        elif isinstance(event, events.StartingEvent):
+            logger.debug("Got starting event - comp %s" % event.comp_id)
+            state_controller.states[event.comp_id].set_text([
+                "state: STARTING..."
+            ])
+        elif isinstance(event, events.StoppingEvent):
+            logger.debug("Got stopping event - comp %s" % event.comp_id)
+            state_controller.states[event.comp_id].set_text([
+                "state: STOPPING..."
+            ])
+        elif isinstance(event, events.CrashEvent):
+            logger.debug("Got crash event - comp %s" % event.comp_id)
             logger.warning("Component %s crashed!" % event.comp_id)
             ret = state_controller.cc.check_component(state_controller.cc.get_component_by_id(event.comp_id))
             state_controller.states[event.comp_id].set_text([
                 "state: ",
                 ('%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(ret), "%s" % config.SHORT_STATE_DESCRIPTION.get(ret))
             ])
-        elif isinstance(event, DisconnectEvent):
-            logger.warning("Lost connection to host '%s'" % event.hostname)
+        elif isinstance(event, events.DisconnectEvent):
+            logger.debug("Got disconnect event - comp %s" % event.host_name)
+            logger.warning("Lost connection to host '%s'" % event.host_name)
             state_controller.fetch_host_items()
+        elif isinstance(event, events.StartReportEvent):
+            logger.debug("Got start report event!")
+            state_controller.start_report_popup(event)
+        else:
+            logger.debug("Got unrecognized event of type: %s" % type(event))
 
     main_loop.set_alarm_in(.2, refresh, state_controller)
 
