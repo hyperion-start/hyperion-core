@@ -874,7 +874,7 @@ class ControlCenter(AbstractController):
         :return: Information on the start process
         :rtype: config.StartState
         """
-
+        failed_comps = {}
         node = self.nodes.get(comp['id'])
         res = []
         unres = []
@@ -893,30 +893,47 @@ class ControlCenter(AbstractController):
                     self.start_component_without_deps(node.component)
 
                     # Wait component time for startup
-                    sleep(get_component_wait(comp))
+                    sleep(get_component_wait(node.component))
 
                     tries = 0
                     while True:
                         self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_id,
                                                                                      config.STATE_DESCRIPTION.get(state)))
                         state = self.check_component(node.component)
-                        if (state is not config.CheckState.RUNNING or
-                                state is not config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                        if (state is config.CheckState.RUNNING or
+                                state is config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                            self.logger.debug("Dep '%s' success")
                             break
-                        if tries > 10:
-                            return config.StartState.FAILED
+                        if tries > 3:
+                            self._broadcast_event(events.CheckEvent(comp['id'], config.CheckState.DEP_FAILED))
+                            failed_comps[node.comp_id] = state
+                            failed_comps[comp['id']] = config.CheckState.DEP_FAILED
+                            break
                         tries = tries + 1
                         sleep(.5)
 
-        self.logger.info("All dependencies satisfied, starting '%s'" % (comp['id']))
         state = self.check_component(node.component)
         if (state is config.CheckState.STARTED_BY_HAND or
                 state is config.CheckState.RUNNING):
-            self.logger.info("Component %s is already running. Skipping start" % comp['id'])
+            self.logger.warn("Component %s is already running. Skipping start" % comp['id'])
             return config.StartState.ALREADY_RUNNING
         else:
-            self.start_component_without_deps(comp)
-        return config.StartState.STARTED
+            if len(failed_comps) > 0:
+                self.logger.warn("At least one dependency failed and the component is not running. Aborting start")
+                failed_comps[comp['id']] = config.CheckState.DEP_FAILED
+                self._broadcast_event(events.StartReportEvent(comp['id'], failed_comps))
+                return config.StartState.FAILED
+            else:
+                self.logger.info("All dependencies satisfied, starting '%s'" % (comp['id']))
+                self.start_component_without_deps(comp)
+                sleep(get_component_wait(comp))
+                ret = self.check_component(comp)
+            if (ret is not config.CheckState.RUNNING and
+                    ret is not config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                self.logger.warn("All dependencies satisfied, but start failed: %s!" % config.STATE_DESCRIPTION.get(ret))
+                self._broadcast_event(events.StartReportEvent(comp['id'], {comp['id']: ret}))
+                return config.StartState.FAILED
+            return config.StartState.STARTED
 
     def start_component_without_deps(self, comp):
         """Chooses which lower level start function to use depending on whether the component is run on a remote host or not.
@@ -1016,6 +1033,8 @@ class ControlCenter(AbstractController):
                 ret = self.check_component(comp.component)
                 if ret is config.CheckState.STOPPED:
                     self._broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
+                    failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
+        self._broadcast_event(events.StartReportEvent('All components', failed_comps))
 
     ###################
     # Check

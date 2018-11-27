@@ -82,3 +82,18 @@ class DisconnectEvent(BaseEvent):
         BaseEvent.__init__(self)
         self.host_name = host_name
         self.message = 'Lost connection to remote host %s' % host_name
+
+
+class StartReportEvent(BaseEvent):
+    """Inform about the result of a component start."""
+    def __init__(self, component, failed_comps):
+        """Create start report event.
+
+        :param component: Component that will be started (or 'all' if start all was selected)
+        :type component: str
+        :param failed_comps: Failed component with their status
+        :type failed_comps: dict
+        """
+        super(StartReportEvent, self).__init__()
+        self.component = component
+        self.failed_comps = failed_comps
