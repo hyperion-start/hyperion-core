@@ -696,10 +696,10 @@ def refresh(_loop, state_controller, _data=None):
         elif isinstance(event, events.CrashEvent):
             logger.debug("Got crash event - comp %s" % event.comp_id)
             logger.warning("Component %s crashed!" % event.comp_id)
-            ret = state_controller.cc.check_component(state_controller.cc.get_component_by_id(event.comp_id))
+            state_controller.cc.check_component(state_controller.cc.get_component_by_id(event.comp_id))
             state_controller.states[event.comp_id].set_text([
                 "state: ",
-                ('%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(ret), "%s" % config.SHORT_STATE_DESCRIPTION.get(ret))
+                ('darkred', "CRASHED")
             ])
         elif isinstance(event, events.DisconnectEvent):
             logger.debug("Got disconnect event - comp %s" % event.host_name)
