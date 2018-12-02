@@ -58,8 +58,8 @@ class Server:
         server.listen(5)
 
         self.function_mapping = {
-            'run': self.cc.start_component_without_deps,
-            'check': self._check_handler,
+            'run': self.cc.start_component,
+            'check': self.cc.check_component,
             'stop': self.cc.stop_component,
             'get_conf': self._send_config,
             'get_host_list': self._send_host_list
