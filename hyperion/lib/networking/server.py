@@ -50,7 +50,7 @@ class Server:
         self.logger = logging.getLogger(__name__)
         self.send_queues = {}
 
-        server_address = ('localhost', port)
+        server_address = ('', port)
         self.logger.debug("Starting server on localhost:%s" % port)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setblocking(False)
