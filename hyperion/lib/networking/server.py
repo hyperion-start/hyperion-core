@@ -147,12 +147,14 @@ class Server:
         else:
             func(*args)
 
-    def _check_handler(self, comp):
-        check_state = self.cc.check_component(comp)
-        return check_state, comp
-
     def _send_config(self):
         return self.cc.config
 
     def _send_host_list(self):
-        return self.cc.host_list
+        lst = {}
+        for key, val in self.cc.host_list.items():
+            if val:
+                lst[key] = True
+            else:
+                lst[key] = False
+        return lst
