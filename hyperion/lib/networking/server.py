@@ -49,6 +49,8 @@ class Server:
         self.cc = cc  # type: hyperion.ControlCenter
         self.logger = logging.getLogger(__name__)
         self.send_queues = {}
+        self.event_queue = queue.Queue()
+        self.cc.add_subscriber(self.event_queue)
 
         server_address = ('', port)
         self.logger.debug("Starting server on localhost:%s" % port)
@@ -58,16 +60,18 @@ class Server:
         server.listen(5)
 
         self.function_mapping = {
-            'run': self.cc.start_component,
-            'check': self.cc.check_component,
-            'stop': self.cc.stop_component,
+            'start': self._start_component_wrapper,
+            'check': self._check_component_wrapper,
+            'stop': self._stop_component_wrapper,
             'get_conf': self._send_config,
-            'get_host_list': self._send_host_list
+            'get_host_list': self._send_host_list,
+            'quit': self.cc.cleanup,
+            'unsubscribe': None
         }
 
         self.receiver_mapping = {
             'run': None,
-            'check': 'all',
+            'check': None,
             'stop': None,
             'get_conf': 'single',
             'get_host_list': 'single'
@@ -87,6 +91,7 @@ class Server:
                         self.read(connection)
                     if mask & selectors.EVENT_WRITE:
                         self.write(connection)
+            self._process_events()
             time.sleep(0.3)
 
         print('shutting down')
@@ -95,29 +100,34 @@ class Server:
     def write(self, connection):
         """Callback for write events"""
         send_queue = self.send_queues.get(connection)
-        if not send_queue.empty():
+        if send_queue and not send_queue.empty():
             # Messages available
             next_msg = send_queue.get()
             connection.sendall(next_msg)
-            logging.debug("Sending message to %s" % connection)
 
     def read(self, connection):
         """Callback for read events"""
-        raw_msglen = connection.recv(4)
-        if raw_msglen:
-            # A readable client socket has data
-            msglen = struct.unpack('>I', raw_msglen)[0]
-            data = recvall(connection, msglen)
-            self.logger.debug("Received message")
-            action, args = actionSerializer.deserialize(data)
-            self.interpret_message(action, args, connection)
-        else:
-            # Interpret empty result as closed connection
-            print('  closing')
+        try:
+            raw_msglen = connection.recv(4)
+            if raw_msglen:
+                # A readable client socket has data
+                msglen = struct.unpack('>I', raw_msglen)[0]
+                data = recvall(connection, msglen)
+                self.logger.debug("Received message")
+                action, args = actionSerializer.deserialize(data)
+                self.interpret_message(action, args, connection)
+            else:
+                # Handle uncontrolled connection loss
+                self.send_queues.pop(connection)
+                self.sel.unregister(connection)
+                self.logger.debug("Connection to client %s was lost!" % connection)
+                connection.close()
+        except socket.error as e:
+            self.logger.error("Something went wrong while receiving a message. Check debug for more information")
+            self.logger.debug("Socket excpetion: %s" % e)
+            self.send_queues.pop(connection)
             self.sel.unregister(connection)
             connection.close()
-            # Tell the main loop to stop
-            self.keep_running = False
 
     def accept(self, sock, mask):
         "Callback for new connections"
@@ -130,11 +140,21 @@ class Server:
     def interpret_message(self, action, args, connection):
         self.logger.debug("Action: %s, args: %s" % (action, args))
         func = self.function_mapping.get(action)
-        self.logger.debug("Calling function %s" % func)
+
+        if action == 'unsubscribe':
+            self.send_queues.pop(connection)
+            self.sel.unregister(connection)
+            self.logger.debug("Client %s unsubscribed" % connection)
+            connection.close()
+            return
 
         response_type = self.receiver_mapping.get(action)
         if response_type:
-            ret = func(*args)
+            try:
+                ret = func(*args)
+            except TypeError:
+                self.logger.error("Ignoring unrecognized action '%s'" % action)
+                return
             action = '%s_response' % action
             message = actionSerializer.serialize_request(action, [ret])
             if response_type == 'all':
@@ -145,7 +165,40 @@ class Server:
                 self.send_queues[connection].put(message)
 
         else:
-            func(*args)
+            try:
+                func(*args)
+            except TypeError:
+                self.logger.error("Ignoring unrecognized action '%s'" % action)
+                return
+
+    def _process_events(self):
+        """Process events enqueued by the manager and send them to connected clients if necessary.
+
+        :return: None
+        """
+        while not self.event_queue.empty():
+            event = self.event_queue.get_nowait()
+            self.logger.debug("Forwarding event: %s" % event)
+            message = actionSerializer.serialize_request('queue_event', [event])
+            for key in self.send_queues:
+                message_queue = self.send_queues.get(key)
+                message_queue.put(message)
+
+    def _start_component_wrapper(self, comp_id):
+        comp = self.cc.get_component_by_id(comp_id)
+        self.cc.start_component(comp)
+
+    def _check_component_wrapper(self, comp_id):
+        comp = self.cc.get_component_by_id(comp_id)
+        self.cc.check_component(comp)
+
+    def _stop_component_wrapper(self, comp_id):
+        comp = self.cc.get_component_by_id(comp_id)
+        self.cc.stop_component(comp)
+
+    def _shutdown(self):
+        self.keep_running = False
+        self.cc.cleanup(True)
 
     def _send_config(self):
         return self.cc.config

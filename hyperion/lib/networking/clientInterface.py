@@ -6,6 +6,7 @@ import sys
 import struct
 import threading
 import hyperion.lib.util.actionSerializer as actionSerializer
+import hyperion.lib.util.exception as exceptions
 from hyperion.manager import AbstractController
 
 is_py2 = sys.version[0] == '2'
@@ -35,8 +36,6 @@ def recvall(connection, n):
         data += packet
     return data
 
-# TODO: Add set_dependencies function to instantly return dependency lists to ui calls
-
 
 class RemoteControllerInterface(AbstractController):
     def __init__(self, host, port):
@@ -55,7 +54,7 @@ class RemoteControllerInterface(AbstractController):
         self.function_mapping = {
             'get_conf_response': self._set_config,
             'get_host_list_response': self._set_host_list,
-            'check_response': self.register_check_response
+            'queue_event': self._forward_event
         }
 
         server_address = (host, port)
@@ -94,25 +93,22 @@ class RemoteControllerInterface(AbstractController):
         self.send_queue.put(message)
 
     def cleanup(self, full=False):
-        # TODO: signalize to client endpoint (UI) to shut down.
-        sys.exit(1)
-
-    def get_component_by_id(self, comp_name):
-        self.logger.debug("Serializing component fetch")
-
-        action = 'get_comp'
-        payload = [comp_name]
-
-        message = actionSerializer.serialize_request(action, payload)
+        if full:
+            action = 'quit'
+            message = actionSerializer.serialize_request(action, [full])
+        else:
+            action = 'unsubscribe'
+            message = actionSerializer.serialize_request(action, [])
         self.send_queue.put(message)
+        self.keep_running = False
 
-    def get_dep_list(self, comp):
-        self.logger.debug("Serializing component dep list")
-        action = 'dep_list'
-        payload = [comp]
-
-        message = actionSerializer.serialize_request(action, payload)
-        self.send_queue.put(message)
+    def get_component_by_id(self, comp_id):
+        for group in self.config['groups']:
+            for comp in group['components']:
+                if comp['id'] == comp_id:
+                    self.logger.debug("Component '%s' found" % comp_id)
+                    return comp
+        raise exceptions.ComponentNotFoundException(comp_id)
 
     def kill_session_by_name(self, session_name):
         self.logger.debug("Serializing kill session by name")
@@ -122,10 +118,10 @@ class RemoteControllerInterface(AbstractController):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def start_component_without_deps(self, comp):
+    def start_component(self, comp):
         self.logger.debug("Serializing component start")
         action = 'start'
-        payload = [comp]
+        payload = [comp['id']]
 
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
@@ -133,7 +129,7 @@ class RemoteControllerInterface(AbstractController):
     def stop_component(self, comp):
         self.logger.debug("Serializing component stop")
         action = 'stop'
-        payload = [comp]
+        payload = [comp['id']]
 
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
@@ -141,7 +137,7 @@ class RemoteControllerInterface(AbstractController):
     def check_component(self, comp):
         self.logger.debug("Serializing component check")
         action = 'check'
-        payload = [comp]
+        payload = [comp['id']]
 
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
@@ -164,14 +160,12 @@ class RemoteControllerInterface(AbstractController):
         # TODO: Damn, this means trouble...
         # self.ui_event_queue.put()
 
-    def register_check_response(self, response):
-        check_state = response[0]
-        comp = response[1]
-        self.logger.debug("Check response event registration NIY")
-        # TODO: Add check response event to registered queue
+    def _forward_event(self, event):
+        self.ui_event_queue.put(event)
 
     def loop(self):
-        while self.keep_running:
+        # Keep alive until shutdown is requested and no messages are left to send
+        while self.keep_running or not self.send_queue.empty():
             for key, mask in self.mysel.select(timeout=1):
                 connection = key.fileobj
 
@@ -189,6 +183,10 @@ class RemoteControllerInterface(AbstractController):
                     # Interpret empty result as closed connection
                     else:
                         self.keep_running = False
+                        # Reset queue for shutdown condition
+                        self.send_queue = queue.Queue()
+                        self.logger.critical("Connection to server was lost!")
+                        # TODO: Add event to signalize connection loss to server
 
                 if mask & selectors.EVENT_WRITE:
                     if not self.send_queue.empty():  # Server is ready to read, check if we have messages to send
@@ -197,5 +195,10 @@ class RemoteControllerInterface(AbstractController):
                         self.sock.sendall(next_msg)
 
     def add_subscriber(self, subscriber_queue):
+        """Set reference to ui event queue.
+
+        :param subscriber_queue: Event queue of the used ui
+        :type subscriber_queue: queue.Queue
+        :return: None
+        """
         self.ui_event_queue = subscriber_queue
-        # TODO: Generate events out of received messages
