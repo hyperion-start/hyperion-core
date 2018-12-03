@@ -3,6 +3,7 @@ import time
 import logging
 import sys
 import struct
+import threading
 import hyperion.manager
 import hyperion.lib.util.depTree
 import hyperion.lib.util.actionSerializer as actionSerializer
@@ -114,7 +115,12 @@ class Server:
                 data = recvall(connection, msglen)
                 self.logger.debug("Received message")
                 action, args = actionSerializer.deserialize(data)
-                self.interpret_message(action, args, connection)
+                worker = threading.Thread(target=self.interpret_message, args=(action, args, connection))
+                worker.start()
+
+                if action == 'quit':
+                    worker.join()
+                    sys.exit(0)
             else:
                 # Handle uncontrolled connection loss
                 self.send_queues.pop(connection)
