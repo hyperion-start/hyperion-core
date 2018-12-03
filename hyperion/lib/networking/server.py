@@ -7,6 +7,7 @@ import hyperion.manager
 import hyperion.lib.util.depTree
 import hyperion.lib.util.actionSerializer as actionSerializer
 import hyperion.lib.util.config as config
+import hyperion.lib.util.exception as exceptions
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -185,16 +186,25 @@ class Server:
                 message_queue.put(message)
 
     def _start_component_wrapper(self, comp_id):
-        comp = self.cc.get_component_by_id(comp_id)
-        self.cc.start_component(comp)
+        try:
+            comp = self.cc.get_component_by_id(comp_id)
+            self.cc.start_component(comp)
+        except exceptions.ComponentNotFoundException as e:
+            self.logger.error(e.message)
 
     def _check_component_wrapper(self, comp_id):
-        comp = self.cc.get_component_by_id(comp_id)
-        self.cc.check_component(comp)
+        try:
+            comp = self.cc.get_component_by_id(comp_id)
+            self.cc.check_component(comp)
+        except exceptions.ComponentNotFoundException as e:
+            self.logger.error(e.message)
 
     def _stop_component_wrapper(self, comp_id):
-        comp = self.cc.get_component_by_id(comp_id)
-        self.cc.stop_component(comp)
+        try:
+            comp = self.cc.get_component_by_id(comp_id)
+            self.cc.stop_component(comp)
+        except exceptions.ComponentNotFoundException as e:
+            self.logger.error(e.message)
 
     def _shutdown(self):
         self.keep_running = False
