@@ -1,4 +1,4 @@
-from config import CheckState
+import config
 
 
 class BaseEvent(object):
@@ -32,6 +32,9 @@ class CheckEvent(ComponentEvent):
         ComponentEvent.__init__(self, comp_id)
         self.check_state = check_state
 
+    def __str__(self):
+        return str("CheckEvent - %s: %s" % (self.comp_id, config.STATE_DESCRIPTION.get(self.check_state)))
+
 
 class StartingEvent(ComponentEvent):
     """Signal that a start of a certain component will be attempted."""
@@ -43,6 +46,9 @@ class StartingEvent(ComponentEvent):
         """
         ComponentEvent.__init__(self, comp_id)
 
+    def __str__(self):
+        return str("StartingEvent - %s" % self.comp_id)
+
 
 class StoppingEvent(ComponentEvent):
     """Signal that a stop of a certain component will be attempted."""
@@ -53,6 +59,9 @@ class StoppingEvent(ComponentEvent):
         :type comp_id: str
         """
         ComponentEvent.__init__(self, comp_id)
+
+    def __str__(self):
+        return str("StoppingEvent - %s" % self.comp_id)
 
 
 class CrashEvent(ComponentEvent):
@@ -70,6 +79,9 @@ class CrashEvent(ComponentEvent):
         self.is_remote = remote
         self.message = "Component '%s' crashed" % comp_id
 
+    def __str__(self):
+        return str("CrashEvent - %s" % self.comp_id)
+
 
 class DisconnectEvent(BaseEvent):
     """Signal that connection to host 'host_name' was lost."""
@@ -82,6 +94,9 @@ class DisconnectEvent(BaseEvent):
         BaseEvent.__init__(self)
         self.host_name = host_name
         self.message = 'Lost connection to remote host %s' % host_name
+
+    def __str__(self):
+        return str("DisconnectEvent - %s" % self.host_name)
 
 
 class StartReportEvent(BaseEvent):
@@ -97,3 +112,6 @@ class StartReportEvent(BaseEvent):
         super(StartReportEvent, self).__init__()
         self.component = component
         self.failed_comps = failed_comps
+
+    def __str__(self):
+        return str("StartReportEvent - %s" % self.component)
