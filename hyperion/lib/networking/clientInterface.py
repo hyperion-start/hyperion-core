@@ -161,7 +161,8 @@ class RemoteControllerInterface(AbstractController):
         self.logger.debug("Updated host list")
 
     def _forward_event(self, event):
-        self.ui_event_queue.put(event)
+        if self.ui_event_queue:
+            self.ui_event_queue.put(event)
 
     def loop(self):
         # Keep alive until shutdown is requested and no messages are left to send
