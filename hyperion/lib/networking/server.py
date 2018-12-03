@@ -5,6 +5,7 @@ import sys
 import struct
 import threading
 import hyperion.manager
+from signal import *
 import hyperion.lib.util.depTree
 import hyperion.lib.util.actionSerializer as actionSerializer
 import hyperion.lib.util.config as config
@@ -53,6 +54,8 @@ class Server:
         self.send_queues = {}
         self.event_queue = queue.Queue()
         self.cc.add_subscriber(self.event_queue)
+
+        signal(SIGINT, self._handle_sigint)
 
         server_address = ('', port)
         self.logger.debug("Starting server on localhost:%s" % port)
@@ -225,3 +228,7 @@ class Server:
             else:
                 lst[key] = False
         return lst
+
+    def _handle_sigint(self, signum, frame):
+        self.cc.cleanup(True)
+        self.keep_running = False
