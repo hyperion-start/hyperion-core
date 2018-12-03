@@ -708,6 +708,9 @@ def refresh(_loop, state_controller, _data=None):
         elif isinstance(event, events.StartReportEvent):
             logger.debug("Got start report event!")
             state_controller.start_report_popup(event)
+        elif isinstance(event, events.ServerDisconnectEvent):
+            logger.critical("Got server disconnect event!")
+            state_controller.handle_shutdown(None, False)
         else:
             logger.debug("Got unrecognized event of type: %s" % type(event))
 
