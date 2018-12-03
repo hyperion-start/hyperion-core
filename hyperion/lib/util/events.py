@@ -115,3 +115,9 @@ class StartReportEvent(BaseEvent):
 
     def __str__(self):
         return str("StartReportEvent - %s" % self.component)
+
+
+class ServerDisconnectEvent(BaseEvent):
+    """Inform the ui about a server connection loss"""
+    def __init__(self):
+        super(ServerDisconnectEvent, self).__init__()

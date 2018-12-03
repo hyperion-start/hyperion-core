@@ -8,6 +8,7 @@ import threading
 import hyperion.lib.util.actionSerializer as actionSerializer
 import hyperion.lib.util.exception as exceptions
 from hyperion.manager import AbstractController
+from hyperion.lib.util.events import ServerDisconnectEvent
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -185,7 +186,7 @@ class RemoteControllerInterface(AbstractController):
                         # Reset queue for shutdown condition
                         self.send_queue = queue.Queue()
                         self.logger.critical("Connection to server was lost!")
-                        # TODO: Add event to signalize connection loss to server
+                        self.ui_event_queue.put(ServerDisconnectEvent())
 
                 if mask & selectors.EVENT_WRITE:
                     if not self.send_queue.empty():  # Server is ready to read, check if we have messages to send
