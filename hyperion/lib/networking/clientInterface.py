@@ -159,12 +159,6 @@ class RemoteControllerInterface(AbstractController):
         self.host_list = host_list
         self.logger.debug("Updated host list")
 
-    def _provide_check_event(self, CheckState):
-        self.logger.debug("NIY")
-        # Blocking calls for check? Ui check_component expects non-Null return...
-        # TODO: Damn, this means trouble...
-        # self.ui_event_queue.put()
-
     def _forward_event(self, event):
         self.ui_event_queue.put(event)
 
