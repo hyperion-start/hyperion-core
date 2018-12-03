@@ -385,7 +385,7 @@ class StateController(object):
                             SimpleButton('Start', self.handle_start, c),
                             SimpleButton('Stop', self.handle_stop, c),
                             SimpleButton('Check', self.handle_check, c),
-                            urwid.CheckBox('Log', on_state_change=self.handle_log, user_data=c),
+                            SimpleButton('Toggle Log', self.handle_log, c),
                         ], 1), ('weight', 1)))
 
         self.components_pile.contents[:] = comps
