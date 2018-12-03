@@ -118,6 +118,11 @@ class RemoteControllerInterface(AbstractController):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
+    def start_all(self):
+        action = 'start_all'
+        message = actionSerializer.serialize_request(action, [])
+        self.send_queue.put(message)
+
     def start_component(self, comp):
         self.logger.debug("Serializing component start")
         action = 'start'

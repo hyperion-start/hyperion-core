@@ -61,6 +61,7 @@ class Server:
         server.listen(5)
 
         self.function_mapping = {
+            'start_all': self.cc.start_all,
             'start': self._start_component_wrapper,
             'check': self._check_component_wrapper,
             'stop': self._stop_component_wrapper,
@@ -71,9 +72,6 @@ class Server:
         }
 
         self.receiver_mapping = {
-            'run': None,
-            'check': None,
-            'stop': None,
             'get_conf': 'single',
             'get_host_list': 'single'
         }
