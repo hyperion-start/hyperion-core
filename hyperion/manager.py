@@ -993,6 +993,10 @@ class ControlCenter(AbstractController):
         self._send_main_session_command(cmd)
 
     def start_all(self):
+        """Start all components ordered by dependecy.
+
+        :return: None
+        """
         comps = self.get_start_all_list()
         logger = self.logger
         failed_comps = {}
@@ -1035,6 +1039,20 @@ class ControlCenter(AbstractController):
                     self._broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
                     failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
         self._broadcast_event(events.StartReportEvent('All components', failed_comps))
+
+    def stop_all(self):
+        """Stop all components ordered by dependency and run checks afterwards
+
+        :return: None
+        """
+        comps = self.get_start_all_list()
+        comps = list(reversed(comps))
+
+        for comp in comps:
+            self.stop_component(comp.component)
+
+        for comp in comps:
+            self.check_component(comp.component)
 
     ###################
     # Check

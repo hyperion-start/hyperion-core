@@ -68,6 +68,7 @@ class Server:
             'start_all': self.cc.start_all,
             'start': self._start_component_wrapper,
             'check': self._check_component_wrapper,
+            'stop_all': self.cc.stop_all,
             'stop': self._stop_component_wrapper,
             'get_conf': self._send_config,
             'get_host_list': self._send_host_list,
