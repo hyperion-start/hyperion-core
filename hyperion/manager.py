@@ -980,16 +980,16 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        comp_name = comp['name']
+        comp_id = comp['id']
         host = comp['host']
         # invoke Hyperion in slave mode on each remote host
 
         if not self.host_list[host]:
-            self.logger.error("Hot %s is not reachable. Can not start component %s" % (host, comp_name))
+            self.logger.error("Hot %s is not reachable. Can not start component %s" % (host, comp_id))
             return
 
         cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave'" % (
-            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_name))
+            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_id))
         self._send_main_session_command(cmd)
 
     def start_all(self):
