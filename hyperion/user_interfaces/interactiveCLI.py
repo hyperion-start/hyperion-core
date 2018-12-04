@@ -453,14 +453,11 @@ class StateController(object):
         ).start()
 
     def handle_stop_all(self, button):
-        for grp in self.groups:
-            group = self.groups[grp]
-            if group['name'] != 'All':
-                for comp in group['components']:
-                    threading.Thread(
-                        target=self.handle_stop, args=[None, comp],
-                        name='stop_comp_%s' % comp['id'],
-                    ).start()
+        self.logger.info("Clicked stop all")
+        threading.Thread(
+            target=self.cc.stop_all, args=[],
+            name='stop_comp_all',
+        ).start()
 
     def handle_stop(self, button, comp):
         self.logger.info("Clicked stop %s" % comp['id'])
