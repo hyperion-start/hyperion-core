@@ -64,8 +64,9 @@ class RemoteControllerInterface(AbstractController):
         try:
             sock.connect(server_address)
         except socket.error:
-            self.logger.error("Master session does not seem to be running. Quitting remote client")
+            self.logger.critical("Master session does not seem to be running. Quitting remote client")
             self.cleanup()
+            sys.exit(1)
         sock.setblocking(False)
 
         # Set up the selector to watch for when the socket is ready
