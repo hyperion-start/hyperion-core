@@ -849,15 +849,15 @@ class ControlCenter(AbstractController):
         :return: None
         """
 
-        comp_name = comp['name']
+        comp_id = comp['id']
         host = comp['host']
         # invoke Hyperion in slave kill mode on remote host
         if not self.host_list[host]:
-            self.logger.error("Host %s is unreachable. Can not stop component %s" % (host, comp_name))
+            self.logger.error("Host %s is unreachable. Can not stop component %s" % (host, comp_id))
             return
 
         cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave --kill'" % (
-            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_name))
+            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_id))
         self._send_main_session_command(cmd)
 
     ###################
@@ -902,7 +902,7 @@ class ControlCenter(AbstractController):
                         state = self.check_component(node.component)
                         if (state is config.CheckState.RUNNING or
                                 state is config.CheckState.STOPPED_BUT_SUCCESSFUL):
-                            self.logger.debug("Dep '%s' success")
+                            self.logger.debug("Dep '%s' success" % node.comp_id)
                             break
                         if tries > 3:
                             self._broadcast_event(events.CheckEvent(comp['id'], config.CheckState.DEP_FAILED))
