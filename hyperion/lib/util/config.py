@@ -40,7 +40,7 @@ CUSTOM_SSH_CONFIG_PATH = "/tmp/Hyperion/ssh-config"
 SSH_CONNECTION_TIMEOUT = 4
 """How many Seconds to wait before an SSH connection attempt fails"""
 
-FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]:\t%(message)s"
+FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]: %(message)s"
 """Logger output formatting"""
 
 DEFAULT_COMP_WAIT_TIME = 3.0
