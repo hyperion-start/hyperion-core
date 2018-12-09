@@ -443,6 +443,48 @@ class AbstractController(object):
 
         return False
 
+    ####################
+    # SSH Stuff
+    ####################
+    def _setup_ssh_config(self):
+        """Creates an ssh configuration that is saved to `CUSTOM_SSH_CONFIG_PATH`.
+
+        The user config in `SSH_CONFIG_PATH` is copied to `CUSTOM_SSH_CONFIG_PATH` and then appends the lines enabling
+        master connections for all hosts to it. This is done in order to use the master connection feature without
+        tempering with the users standard configuration.
+
+        :return: None
+        """
+        try:
+            self.logger.debug("Trying to copy ssh config from %s to %s" % (config.SSH_CONFIG_PATH,
+                                                                           config.CUSTOM_SSH_CONFIG_PATH))
+            ensure_dir(config.CUSTOM_SSH_CONFIG_PATH)
+            ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH)
+            shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
+        except IOError:
+            self.logger.critical("Could not copy ssh config! Make sure you have a config in your users .ssh folder!")
+            self.cleanup(True, 1)
+
+        try:
+            conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
+            conf.write("Host *\n    ControlMaster yes\n    ControlPath ~/.ssh/controlmasters/%C")
+        except IOError:
+            self.logger.error("Could not append to custom ssh config!")
+
+    ####################
+    # Do override in subclass
+    ####################
+    def cleanup(self, full, exit_status):
+        """Cleanup function to override in subclasses.
+
+        :param full: Full shutdown
+        :type full: bool
+        :param exit_status: Exit status for the application
+        :type exit_status: int
+        :return: None
+        """
+        raise NotImplementedError
+
 
 class ControlCenter(AbstractController):
     """Controller class that is able to handle a master session."""
@@ -642,144 +684,6 @@ class ControlCenter(AbstractController):
             cmd = ("ssh -F %s %s 'mkdir -p %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_ENV_PATH))
             cmd = "%s && scp %s %s:%s/" % (cmd, os.path.abspath(self.custom_env_path), host, config.TMP_ENV_PATH)
             self._send_main_session_command(cmd)
-
-    def _setup_ssh_config(self):
-        """Creates an ssh configuration that is saved to `CUSTOM_SSH_CONFIG_PATH`.
-
-        The user config in `SSH_CONFIG_PATH` is copied to `CUSTOM_SSH_CONFIG_PATH` and then appends the lines enabling
-        master connections for all hosts to it. This is done in order to use the master connection feature without
-        tempering with the users standard configuration.
-
-        :return: None
-        """
-        try:
-            self.logger.debug("Trying to copy ssh config from %s to %s" % (config.SSH_CONFIG_PATH,
-                                                                           config.CUSTOM_SSH_CONFIG_PATH))
-            ensure_dir(config.CUSTOM_SSH_CONFIG_PATH)
-            ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH)
-            shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
-        except IOError:
-            self.logger.critical("Could not copy ssh config! Make sure you have a config in your users .ssh folder!")
-            self.cleanup(True, 1)
-
-        try:
-            conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
-            conf.write("Host *\n    ControlMaster yes\n    ControlPath ~/.ssh/controlmasters/%C")
-        except IOError:
-            self.logger.error("Could not append to custom ssh config!")
-
-    def _establish_master_connection(self, hostname):
-        """Create a master ssh connection to host `hostname` in a dedicated window.
-
-        The pid of the ssh session is put into the monitoring thread to have a means to check if the connection still
-        exists. Also `host` is added to the list of known hosts with its current status.
-
-        :param hostname: Host to establish a connection with
-        :type hostname: str
-        :return: Whether establishing the connection was successful or not
-        :rtype: bool
-        """
-
-        self.logger.debug("Establishing master connection to host %s" % hostname)
-
-        cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
-                                                                      hostname, config.SSH_CONNECTION_TIMEOUT)
-
-        is_up = True if os.system('ping -w2 -c 1 %s > /dev/null' % hostname) is 0 else False
-        if not is_up:
-            self.logger.error("Host %s is not reachable!" % hostname)
-
-            self.host_list_lock.acquire()
-            self.host_list[hostname] = None
-            self.host_list_lock.release()
-            return False
-
-        window = self._find_window('ssh-%s' % hostname)
-        if window:
-            self.logger.debug("Connecting to '%s' in old window" % hostname)
-
-            if self._is_window_busy(window):
-                self.logger.debug("Old connection still alive. No need to reconnect")
-            else:
-                self.logger.debug("Old connection died. Reconnecting to host")
-                window.cmd("send-keys", cmd, "Enter")
-
-        else:
-            self.logger.debug("Connecting to '%s' in new window" % hostname)
-            window = self.session.new_window('ssh-%s' % hostname)
-            window.cmd("send-keys", cmd, "Enter")
-
-        t_end = time() + config.SSH_CONNECTION_TIMEOUT
-
-        pid = self._get_window_pid(window)
-        pids = []
-
-        while time() < t_end:
-            procs = []
-            for entry in pid:
-                procs.extend(Process(entry).children(recursive=True))
-
-            for p in procs:
-                try:
-                    if p.name() == 'ssh':
-                        pids.append(p.pid)
-                except NoSuchProcess:
-                    pass
-            if len(pids) > 0:
-                break
-
-        if len(pids) < 1:
-            self.host_list_lock.acquire()
-            self.host_list[hostname] = None
-            self.host_list_lock.release()
-            return False
-
-        ssh_proc = Process(pids[0])
-        # Add host to known list with process to poll from
-        self.host_list_lock.acquire()
-        self.host_list[hostname] = ssh_proc
-        self.host_list_lock.release()
-
-        self.logger.debug("Testing if connection was successful")
-        if ssh_proc.is_running():
-            self.logger.debug("SSH process still running. Connection was successful")
-            self.logger.debug("Adding ssh master to monitor queue")
-            self.monitor_queue.put(HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock))
-            self.logger.debug("Copying env files to remote %s" % hostname)
-            self._copy_env_file(hostname)
-            return True
-        else:
-            self.logger.debug("SSH process has finished. Connection was not successful. Check if an ssh connection "
-                              "is allowed or if the certificate has to be renewed")
-            return False
-
-    def reconnect_with_host(self, hostname):
-        """Re-establish master connection to host `hostname`
-
-        :param hostname: Host to connect to
-        :type hostname: str
-        :return: Whether establishing the connection was successful or not
-        :rtype: bool
-        """
-
-        # Check if really necessary
-        self.logger.debug("Reconnecting with %s" % hostname)
-        proc = self.host_list.get(hostname)
-        if proc is not None:
-            self.logger.debug("Killing off leftover process")
-            proc.kill()
-
-        # Start new connection
-        if self._establish_master_connection(hostname):
-            # Sync components
-            self.logger.debug("Syncing components to remote host")
-            for group in self.config['groups']:
-                for comp in group['components']:
-                    if comp['host'] == hostname:
-                        self._copy_component_to_remote(comp, comp['host'])
-            return True
-        else:
-            return False
 
     def add_subscriber(self, subscriber_queue):
         """Add a queue to the list of subscribers for manager and monitoring thread events.
@@ -1292,6 +1196,122 @@ class ControlCenter(AbstractController):
         res.remove(node)
 
         return res
+
+    ###################
+    # SSH stuff
+    ###################
+    def _establish_master_connection(self, hostname):
+        """Create a master ssh connection to host `hostname` in a dedicated window.
+
+        The pid of the ssh session is put into the monitoring thread to have a means to check if the connection still
+        exists. Also `host` is added to the list of known hosts with its current status.
+
+        :param hostname: Host to establish a connection with
+        :type hostname: str
+        :return: Whether establishing the connection was successful or not
+        :rtype: bool
+        """
+
+        self.logger.debug("Establishing master connection to host %s" % hostname)
+
+        cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
+                                                                      hostname, config.SSH_CONNECTION_TIMEOUT)
+
+        is_up = True if os.system('ping -w2 -c 1 %s > /dev/null' % hostname) is 0 else False
+        if not is_up:
+            self.logger.error("Host %s is not reachable!" % hostname)
+
+            self.host_list_lock.acquire()
+            self.host_list[hostname] = None
+            self.host_list_lock.release()
+            return False
+
+        window = self._find_window('ssh-%s' % hostname)
+        if window:
+            self.logger.debug("Connecting to '%s' in old window" % hostname)
+
+            if self._is_window_busy(window):
+                self.logger.debug("Old connection still alive. No need to reconnect")
+            else:
+                self.logger.debug("Old connection died. Reconnecting to host")
+                window.cmd("send-keys", cmd, "Enter")
+
+        else:
+            self.logger.debug("Connecting to '%s' in new window" % hostname)
+            window = self.session.new_window('ssh-%s' % hostname)
+            window.cmd("send-keys", cmd, "Enter")
+
+        t_end = time() + config.SSH_CONNECTION_TIMEOUT
+
+        pid = self._get_window_pid(window)
+        pids = []
+
+        while time() < t_end:
+            procs = []
+            for entry in pid:
+                procs.extend(Process(entry).children(recursive=True))
+
+            for p in procs:
+                try:
+                    if p.name() == 'ssh':
+                        pids.append(p.pid)
+                except NoSuchProcess:
+                    pass
+            if len(pids) > 0:
+                break
+
+        if len(pids) < 1:
+            self.host_list_lock.acquire()
+            self.host_list[hostname] = None
+            self.host_list_lock.release()
+            return False
+
+        ssh_proc = Process(pids[0])
+        # Add host to known list with process to poll from
+        self.host_list_lock.acquire()
+        self.host_list[hostname] = ssh_proc
+        self.host_list_lock.release()
+
+        self.logger.debug("Testing if connection was successful")
+        if ssh_proc.is_running():
+            self.logger.debug("SSH process still running. Connection was successful")
+            self.logger.debug("Adding ssh master to monitor queue")
+            self.monitor_queue.put(HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock))
+            self.logger.debug("Copying env files to remote %s" % hostname)
+            self._copy_env_file(hostname)
+            return True
+        else:
+            self.logger.debug("SSH process has finished. Connection was not successful. Check if an ssh connection "
+                              "is allowed or if the certificate has to be renewed")
+            return False
+
+    def reconnect_with_host(self, hostname):
+        """Re-establish master connection to host `hostname`
+
+        :param hostname: Host to connect to
+        :type hostname: str
+        :return: Whether establishing the connection was successful or not
+        :rtype: bool
+        """
+        # Check if really necessary
+        self.logger.debug("Reconnecting with %s" % hostname)
+        proc = self.host_list.get(hostname)
+        if proc is not None:
+            self.logger.debug("Killing off leftover process")
+            proc.kill()
+
+        # Start new connection
+        if self._establish_master_connection(hostname):
+            self._broadcast_event(events.ReconnectEvent(hostname))
+            # Sync components
+            self.logger.debug("Syncing components to remote host")
+            for group in self.config['groups']:
+                for comp in group['components']:
+                    if comp['host'] == hostname:
+                        self._copy_component_to_remote(comp, comp['host'])
+            return True
+        else:
+            return False
 
     ###################
     # Host related checks
