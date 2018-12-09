@@ -7,7 +7,7 @@ from manager import ControlCenter, SlaveLauncher, ensure_dir, BASE_DIR
 from lib.util.depTree import CircularReferenceException, dep_resolve
 from lib.networking.server import Server
 from lib.networking import clientInterface
-from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT
+from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, FORMAT
 from logging.config import fileConfig
 from lib.util.exception import *
 
@@ -181,8 +181,13 @@ def main():
     logger.debug(args)
 
     root_logger = logging.getLogger()
+    log_formatter = logging.Formatter(FORMAT)
 
     if args.cmd == 'server':
+        handler = logging.handlers.RotatingFileHandler("%s/server.debug" % TMP_LOG_PATH, 'w')
+        handler.setFormatter(log_formatter)
+        root_logger.addHandler(handler)
+
         logger.debug("Starting backend at port: %s" % args.port)
         cc = ControlCenter(args.config, True)
         cc.init()
@@ -193,10 +198,16 @@ def main():
         logger.debug("Chose ui mode")
 
         if args.no_socket:
+            handler = logging.handlers.RotatingFileHandler("%s/standalone.debug" % TMP_LOG_PATH, 'w')
+            handler.setFormatter(log_formatter)
+            root_logger.addHandler(handler)
             logger.debug("Entering ui in standalone mode")
             cc = ControlCenter(args.config, True)
             cc.init()
         else:
+            handler = logging.handlers.RotatingFileHandler("%s/client.debug" % TMP_LOG_PATH, 'w')
+            handler.setFormatter(log_formatter)
+            root_logger.addHandler(handler)
             logger.debug("Entering ui in socket mode")
             cc = clientInterface.RemoteControllerInterface(args.host, args.port)
 
@@ -302,6 +313,9 @@ def main():
         cc.cleanup()
 
     elif args.cmd == 'slave':
+        handler = logging.handlers.RotatingFileHandler("%s/slave.debug" % TMP_LOG_PATH, 'w')
+        handler.setFormatter(log_formatter)
+        root_logger.addHandler(handler)
         logger.debug("Launching slave mode")
         sl = SlaveLauncher(args.config, args.kill, args.check)
 
