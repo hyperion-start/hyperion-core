@@ -1,7 +1,6 @@
 import urwid
 import threading
 import re
-from time import sleep
 from os.path import isfile
 import hyperion.manager
 import hyperion.lib.util.exception as exceptions
@@ -109,7 +108,7 @@ class StateController(object):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.event_queue = event_queue
-        self.log_viewer = LogTextWalker('%s/info.log' % config.TMP_LOG_PATH)
+        self.log_viewer = LogTextWalker('%s/client.debug' % config.TMP_LOG_PATH)
         self.tail_log = True
         self.states = {}
         self.host_stats = None
@@ -281,10 +280,9 @@ class StateController(object):
 
         :return None
         """
-
         hosts = []
         for host in self.cc.host_list:
-            host_object = SimpleButton(host)
+            host_object = SimpleButton(host, self.handle_host_clicked, user_data=host)
             if self.cc.host_list[host]:
                 host_object = urwid.AttrMap(host_object, 'host', focus_map='reversed')
             else:
@@ -305,7 +303,6 @@ class StateController(object):
 
         :return: None
         """
-
         groups = []
         for g in self.cc.config['groups']:
 
@@ -466,6 +463,17 @@ class StateController(object):
             name='stop_comp_%s' % comp['id'],
         ).start()
 
+    def handle_host_clicked(self, button, host):
+        self.logger.info("Clicked host '%s'" % host)
+        if self.cc.host_list[host]:
+            self.logger.debug("Showing non-component log NIY")
+            # TODO show server or slave log
+        elif not self.cc.is_localhost(host):
+            threading.Thread(
+                target=self.cc.reconnect_with_host, args=[host],
+                name='reconnect_%s' % host,
+            ).start()
+
     def stop_component(self, comp):
         """Stop component and run a component check right afterwards to update the ui status.
 
@@ -495,11 +503,10 @@ class StateController(object):
 
     def handle_log(self, button, comp):
         self.logger.info("Clicked log %s" % comp['id'])
-
         local_file_path = '%s/%s/latest.log' % (config.TMP_LOG_PATH, comp['id'])
 
         try:
-           on_localhost = self.cc.run_on_localhost(comp)
+            on_localhost = self.cc.run_on_localhost(comp)
         except exceptions.HostUnknownException:
             self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
             return
@@ -529,7 +536,27 @@ class StateController(object):
             else:
                 self.logger.error("Log file '%s' does not exist!" % local_file_path)
         else:
-            self.logger.warning("Remote log display NIY!")
+            self.logger.info("Opening remote log '%s'" % comp['id'])
+            log = self.comp_log_map.get(comp['id'], None)
+            if log:
+                self.logger.info("Closing '%s' log" % comp['id'])
+                self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
+                self.comp_log_map[comp['id']] = None
+            else:
+                self.logger.info("Opening '%s' log" % comp['id'])
+                log = urwid.AttrMap(
+                    urwid.LineBox(urwid.BoxAdapter(
+                        urwid.ListBox(
+                            LogTextWalker('%s/debug.log' % config.TMP_LOG_PATH, comp)),
+                            10
+                        ), '%s Log' % comp['id']
+                    ),
+                    None,
+                    focus_map='simple_button'
+                )
+                self.comp_log_map[comp['id']] = log
+                #self.comp_log_map[comp['id']] = True
+                self.additional_content_grid.contents.append((log, self.additional_content_grid.options()))
 
     def handle_shutdown(self, button, full=False):
         self.full_shutdown = full
@@ -701,6 +728,10 @@ def refresh(_loop, state_controller, _data=None):
         elif isinstance(event, events.DisconnectEvent):
             logger.debug("Got disconnect event - comp %s" % event.host_name)
             logger.warning("Lost connection to host '%s'" % event.host_name)
+            state_controller.fetch_host_items()
+        elif isinstance(event, events.ReconnectEvent):
+            logger.debug("Got reconnect event - comp %s" % event.host_name)
+            logger.warning("Connection to host '%s' established" % event.host_name)
             state_controller.fetch_host_items()
         elif isinstance(event, events.StartReportEvent):
             logger.debug("Got start report event!")
