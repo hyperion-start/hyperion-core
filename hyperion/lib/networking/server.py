@@ -8,7 +8,6 @@ import hyperion.manager
 from signal import *
 import hyperion.lib.util.depTree
 import hyperion.lib.util.actionSerializer as actionSerializer
-import hyperion.lib.util.config as config
 import hyperion.lib.util.exception as exceptions
 
 is_py2 = sys.version[0] == '2'
@@ -61,7 +60,16 @@ class Server:
         self.logger.debug("Starting server on localhost:%s" % port)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setblocking(False)
-        server.bind(server_address)
+        try:
+            server.bind(server_address)
+        except socket.error as e:
+            if e.errno == 98:
+                self.logger.critical("Server adress is already in use! Try waiting a few seconds if you are sure there"
+                                     " is no other instance running")
+                self.keep_running = False
+            else:
+                self.logger.critical("Error while trying to bind server adress: %s" % e)
+                self.keep_running = False
         server.listen(5)
 
         self.function_mapping = {
@@ -129,7 +137,7 @@ class Server:
                 # Handle uncontrolled connection loss
                 self.send_queues.pop(connection)
                 self.sel.unregister(connection)
-                self.logger.debug("Connection to client %s was lost!" % connection)
+                self.logger.debug("Connection to client %s was lost!" % connection.getpeername()[0])
                 connection.close()
         except socket.error as e:
             self.logger.error("Something went wrong while receiving a message. Check debug for more information")
@@ -153,7 +161,7 @@ class Server:
         if action == 'unsubscribe':
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
-            self.logger.debug("Client %s unsubscribed" % connection)
+            self.logger.debug("Client %s unsubscribed" % connection.getpeername()[0])
             connection.close()
             return
 
@@ -231,5 +239,5 @@ class Server:
         return lst
 
     def _handle_sigint(self, signum, frame):
-        self.cc.cleanup(True)
         self.keep_running = False
+        self.cc.cleanup(True)
