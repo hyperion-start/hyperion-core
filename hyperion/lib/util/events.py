@@ -99,6 +99,22 @@ class DisconnectEvent(BaseEvent):
         return str("DisconnectEvent - %s" % self.host_name)
 
 
+class ReconnectEvent(BaseEvent):
+    """Signal reconnection to host 'host_name'."""
+    def __init__(self, host_name):
+        """Create reconnect event for host 'host_name'
+
+        :param host_name: Name of the remote host
+        :type host_name: str
+        """
+        BaseEvent.__init__(self)
+        self.host_name = host_name
+        self.message = 'Lost connection to remote host %s' % host_name
+
+    def __str__(self):
+        return str("DisconnectEvent - %s" % self.host_name)
+
+
 class StartReportEvent(BaseEvent):
     """Inform about the result of a component start."""
     def __init__(self, component, failed_comps):
@@ -118,6 +134,6 @@ class StartReportEvent(BaseEvent):
 
 
 class ServerDisconnectEvent(BaseEvent):
-    """Inform the ui about a server connection loss"""
+    """Inform the ui about a server connection loss."""
     def __init__(self):
         super(ServerDisconnectEvent, self).__init__()
