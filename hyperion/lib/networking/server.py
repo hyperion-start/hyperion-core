@@ -81,6 +81,7 @@ class Server:
             'get_conf': self._send_config,
             'get_host_list': self._send_host_list,
             'quit': self.cc.cleanup,
+            'reconnect_with_host': self.cc.reconnect_with_host,
             'unsubscribe': None
         }
 
