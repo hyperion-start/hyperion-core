@@ -43,25 +43,65 @@ def recvall(connection, n):
     return data
 
 
-class Server:
-    def __init__(self, port, cc):
-        self.port = port
+class BaseServer:
+    """Base class for servers."""
+    def __init__(self):
+        self.port = None
         self.sel = selectors.DefaultSelector()
         self.keep_running = True
-        self.cc = cc  # type: hyperion.ControlCenter
         self.logger = logging.getLogger(__name__)
         self.send_queues = {}
         self.event_queue = queue.Queue()
-        self.cc.add_subscriber(self.event_queue)
-
         signal(SIGINT, self._handle_sigint)
 
+    def accept(self, sock, mask):
+        """Callback for new connections"""
+        new_connection, addr = sock.accept()
+        self.logger.debug('accept({})'.format(addr))
+        new_connection.setblocking(False)
+        self.send_queues[new_connection] = queue.Queue()
+        self.sel.register(new_connection, selectors.EVENT_READ | selectors.EVENT_WRITE)
+
+    def interpret_message(self, action, args, connection):
+        raise NotImplementedError
+
+    def write(self, connection):
+        """Callback for write events"""
+        send_queue = self.send_queues.get(connection)
+        if send_queue and not send_queue.empty() and self.keep_running:
+            # Messages available
+            next_msg = send_queue.get()
+            try:
+                connection.sendall(next_msg)
+            except socket.error as err:
+                self.logger.error("Error while writing message to socket: %s" % err)
+
+    def read(self, connection):
+        raise NotImplementedError
+
+    def _handle_sigint(self, signum, frame):
+        self.logger.debug("Received C-c")
+        self._quit()
+
+    def _quit(self):
+        self.send_queues = {}
+
+        self.keep_running = False
+
+
+class Server(BaseServer):
+    def __init__(self, port, cc):
+        BaseServer.__init__(self)
+        self.port = port
+        self.cc = cc  # type: hyperion.ControlCenter
+        self.cc.add_subscriber(self.event_queue)
+
         server_address = ('', port)
-        self.logger.debug("Starting server on localhost:%s" % port)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setblocking(False)
         try:
             server.bind(server_address)
+            self.logger.debug("Starting server on localhost:%s" % server.getsockname()[1])
         except socket.error as e:
             if e.errno == 98:
                 self.logger.critical("Server adress is already in use! Try waiting a few seconds if you are sure there"
@@ -95,7 +135,7 @@ class Server:
         while self.keep_running:
             for key, mask in self.sel.select(timeout=1):
                 connection = key.fileobj
-                if key.data:
+                if key.data and self.keep_running:
                     callback = key.data
                     callback(connection, mask)
 
@@ -109,14 +149,6 @@ class Server:
 
         print('shutting down')
         self.sel.close()
-
-    def write(self, connection):
-        """Callback for write events"""
-        send_queue = self.send_queues.get(connection)
-        if send_queue and not send_queue.empty():
-            # Messages available
-            next_msg = send_queue.get()
-            connection.sendall(next_msg)
 
     def read(self, connection):
         """Callback for read events"""
@@ -133,7 +165,7 @@ class Server:
 
                 if action == 'quit':
                     worker.join()
-                    sys.exit(0)
+                    self._quit()
             else:
                 # Handle uncontrolled connection loss
                 self.send_queues.pop(connection)
@@ -146,14 +178,6 @@ class Server:
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
             connection.close()
-
-    def accept(self, sock, mask):
-        "Callback for new connections"
-        new_connection, addr = sock.accept()
-        print('accept({})'.format(addr))
-        new_connection.setblocking(False)
-        self.send_queues[new_connection] = queue.Queue()
-        self.sel.register(new_connection, selectors.EVENT_READ | selectors.EVENT_WRITE)
 
     def interpret_message(self, action, args, connection):
         self.logger.debug("Action: %s, args: %s" % (action, args))
@@ -223,10 +247,6 @@ class Server:
         except exceptions.ComponentNotFoundException as e:
             self.logger.error(e.message)
 
-    def _shutdown(self):
-        self.keep_running = False
-        self.cc.cleanup(True)
-
     def _send_config(self):
         return self.cc.config
 
@@ -238,7 +258,3 @@ class Server:
             else:
                 lst[key] = False
         return lst
-
-    def _handle_sigint(self, signum, frame):
-        self.keep_running = False
-        self.cc.cleanup(True)
