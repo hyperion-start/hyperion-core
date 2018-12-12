@@ -29,6 +29,8 @@ def serialize_request(action, payload):
 def deserialize(message):
     """Deserialize an answer from an AbstractController derivate recieved as tcp message over socket.
 
+    If the message does not hold an action type it is treated as socket log record.
+
     :param message: Recevied message
     :type message: str
     :return: Tuple of action and argument list
@@ -41,10 +43,12 @@ def deserialize(message):
     # logger.debug("Decoding message: %s" % unpickled)
     args = []
     action = unpickled.get('action')
-
-    for index in range(len(unpickled)-1):
-        args.append(unpickled.get('arg_%s' % index))
-    # logger.debug("Got action: %s and args: %s" % (action, args))
-    return action, args
+    if action:
+        for index in range(len(unpickled)-1):
+            args.append(unpickled.get('arg_%s' % index))
+        # logger.debug("Got action: %s and args: %s" % (action, args))
+        return action, args
+    else:
+        return None, unpickled
 
 # TODO: These logger outputs need a lower level that DEBUG (TRACE?) which sadly does not exist by default

@@ -66,3 +66,10 @@ class HostUnknownException(Exception):
 
     def __init__(self, message):
         self.message = message
+
+
+class SlaveNotReachableException(Exception):
+    """Exception to be thrown when a slave is not reachable."""
+
+    def __init__(self, message):
+        self.message = message

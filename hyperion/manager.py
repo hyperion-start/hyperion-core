@@ -9,11 +9,10 @@ import shutil
 from psutil import Process, NoSuchProcess
 from subprocess import call, Popen, PIPE
 from threading import Lock
-from time import sleep, time, gmtime, strftime
+from time import sleep, time, strftime
 from lib.util.setupParser import Loader
 from lib.util.depTree import Node, dep_resolve
-from lib.monitoring.threads import LocalComponentMonitoringJob, RemoteComponentMonitoringJob, \
-    HostMonitorJob, MonitoringThread, CancellationJob
+from lib.monitoring.threads import LocalComponentMonitoringJob, HostMonitorJob, MonitoringThread, CancellationJob
 import lib.util.exception as exceptions
 import lib.util.config as config
 import lib.util.events as events
@@ -82,19 +81,18 @@ def get_component_wait(comp):
         return config.DEFAULT_COMP_WAIT_TIME
 
 
-def clear_log(file_path, comp_id):
-    """If found rename the log at file_path to COMPONENTNAME_DATETIME.log.
+def clear_log(file_path, log_name):
+    """If found rename the log at file_path to e.g. COMPONENTNAME_TIME.log or 'server_TIME.log'.
 
     :param file_path: log file path
     :type file_path: str
-    :param comp_id: Component id (name@host)
-    :type comp_id: str
+    :param log_name: Name prefix of the log (current time will be appended)
+    :type log_name: str
     :return: None
     """
-
     if os.path.isfile(file_path):
         directory = os.path.dirname(file_path)
-        os.rename(file_path, "%s/%s-%s.log" % (directory, comp_id, strftime("%Y-%m-%d_%H-%M-%S", gmtime())))
+        os.rename(file_path, "%s/%s_%s.log" % (directory, log_name, strftime("%H-%M-%S")))
 
 
 def ensure_dir(file_path):
@@ -125,9 +123,10 @@ class AbstractController(object):
     """Abstract controller class that defines basic controller variables and methods."""
 
     def __init__(self, configfile):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
         self.configfile = configfile
+        self.monitor_queue = queue.Queue()
         self.custom_env_path = None
         self.subscribers = []
         self.config = None
@@ -135,7 +134,7 @@ class AbstractController(object):
         self.server = None
         self.dev_mode = True
 
-    def _broadcast_event(self, event):
+    def broadcast_event(self, event):
         """Put a given event in all registered subscriber queues.
 
         :param event: Event to broadcast
@@ -201,6 +200,145 @@ class AbstractController(object):
             self.logger.debug("Check returned false")
             return False
 
+    def _get_window_pid(self, window):
+        """Returns pid of the tmux window process.
+
+        :param window: tmux window
+        :type window: Window
+        :return: pid of the window as list
+        :rtype: list of int
+        """
+        self.logger.debug("Fetching pids of window %s" % window.name)
+        r = window.cmd('list-panes',
+                       "-F #{pane_pid}")
+        return [int(p) for p in r.stdout]
+
+    def get_component_by_id(self, comp_id):
+        """Return component configuration by providing only the name.
+
+        :param comp_id: Component name
+        :type comp_id: str
+        :return: Component configuration
+        :rtype: dict
+        :raises exceptions.ComponentNotFoundException: If component was not found
+        """
+        self.logger.debug("Searching for %s in components" % comp_id)
+        for group in self.config['groups']:
+            for comp in group['components']:
+                if comp['id'] == comp_id:
+                    self.logger.debug("Component '%s' found" % comp_id)
+                    return comp
+        raise exceptions.ComponentNotFoundException(comp_id)
+
+    ###################
+    # start
+    ###################
+    def start_component_without_deps(self, comp):
+        """Chooses which lower level start function to use depending on whether the component is run on a remote host or not.
+
+        :param comp: Component to start
+        :type comp: dict
+        :return: None
+        """
+        comp_id = comp['id']
+        host = comp['host']
+
+        self.broadcast_event(events.StartingEvent(comp_id))
+
+        try:
+            on_localhost = self.run_on_localhost(comp)
+        except exceptions.HostUnknownException:
+            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
+            return
+
+        if host != 'localhost' and not on_localhost:
+            self.logger.info("Starting remote component '%s' on host '%s'" % (comp_id, host))
+            self._start_remote_component(comp)
+        else:
+            log_file = ("%s/localhost/component/%s/latest.log" % (config.TMP_LOG_PATH, comp_id))
+            window = self._find_window(comp_id)
+            self.logger.info("Starting local component '%s'" % comp['id'])
+
+            if window:
+                self.logger.debug("Restarting '%s' in old window" % comp_id)
+                self._start_window(window, comp, log_file)
+            else:
+                self.logger.debug("creating window '%s'" % comp_id)
+                window = self.session.new_window(comp_id)
+                self._start_window(window, comp, log_file)
+
+    ###################
+    # Stop
+    ###################
+    def stop_component(self, comp):
+        """Stop component `comp`.
+
+        Invokes the lower level stop function depending on whether the component is run locally or on a remote host.
+
+        :param comp: Component to stop
+        :type comp: dict
+        :return: None
+        """
+
+        self.broadcast_event(events.StoppingEvent(comp['id']))
+
+        self.logger.debug("Removing %s from process monitoring list" % comp['id'])
+        self.monitor_queue.put(CancellationJob(0, comp['id']))
+
+        try:
+            on_localhost = self.run_on_localhost(comp)
+        except exceptions.HostUnknownException:
+            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
+            return
+        if comp['host'] != 'localhost' and not on_localhost:
+            self.logger.info("Stopping remote component '%s'" % comp['id'])
+            self._stop_remote_component(comp)
+        else:
+            self.logger.info("Stopping local component '%s'" % comp['id'])
+            window = self._find_window(comp['id'])
+
+            if window:
+                self.logger.debug("window '%s' found running" % comp['id'])
+                self.logger.debug("Shutting down window...")
+                self._kill_window(window)
+                self.logger.debug("... done!")
+            else:
+                self.logger.warning("Component '%s' seems to already be stopped" % comp['id'])
+
+    ###################
+    # Check
+    ###################
+    def check_component(self, comp):
+        """Runs component check for `comp` and returns status.
+
+        If `comp` is run locally the call is redirected to ``check_local_component``, if `comp` is run on a remote
+        host the call is redirected to ``check_remote_component``.
+
+        :param comp: Component to check
+        :type comp: dict
+        :return: State of the component
+        :rtype: config.CheckState
+        """
+        try:
+            if self.run_on_localhost(comp):
+                ret = self._check_local_component(comp)
+
+                pid = ret[0]
+                if pid != 0:
+                    self.monitor_queue.put(LocalComponentMonitoringJob(pid, comp['id']))
+                ret_val = ret[1]
+            else:
+                ret_val = self._check_remote_component(comp)
+
+        except exceptions.HostUnknownException:
+            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
+            ret_val = config.CheckState.UNREACHABLE
+            pass
+
+        # Create queue event for external notification and return for inner purpose
+        self.broadcast_event(events.CheckEvent(comp['id'], ret_val))
+        return ret_val
+
     def _check_local_component(self, comp):
         """Check if a local component is running and return the corresponding CheckState.
 
@@ -262,35 +400,41 @@ class AbstractController(object):
 
         return pid, ret
 
-    def _get_window_pid(self, window):
-        """Returns pid of the tmux window process.
+    ###################
+    # Host related checks
+    ###################
+    def is_localhost(self, hostname):
+        """Check if 'hostname' resolves to localhost.
 
-        :param window: tmux window
-        :type window: Window
-        :return: pid of the window as list
-        :rtype: list of int
+        :param hostname: Name of host to check
+        :type hostname: str
+        :return: Whether 'host' resolves to localhost or not
+        :rtype: bool
         """
-        self.logger.debug("Fetching pids of window %s" % window.name)
-        r = window.cmd('list-panes',
-                       "-F #{pane_pid}")
-        return [int(p) for p in r.stdout]
 
-    def get_component_by_id(self, comp_id):
-        """Return component configuration by providing only the name.
+        try:
+            hn_out = socket.gethostbyname('%s' % hostname)
+            if hn_out == '127.0.0.1' or hn_out == '127.0.1.1' or hn_out == '::1':
+                self.logger.debug("Host '%s' is localhost" % hostname)
+                return True
+            else:
+                self.logger.debug("Host '%s' is not localhost" % hostname)
+                return False
+        except socket.gaierror:
+            raise exceptions.HostUnknownException("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
 
-        :param comp_id: Component name
-        :type comp_id: str
-        :return: Component configuration
-        :rtype: dict
-        :raises exceptions.ComponentNotFoundException: If component was not found
+    def run_on_localhost(self, comp):
+        """Check if component 'comp' is run on localhost or not.
+
+        :param comp: Component to check
+        :type comp: dict
+        :return: Whether component is run on localhost or not
+        :rtype: bool
         """
-        self.logger.debug("Searching for %s in components" % comp_id)
-        for group in self.config['groups']:
-            for comp in group['components']:
-                if comp['id'] == comp_id:
-                    self.logger.debug("Component '%s' found" % comp_id)
-                    return comp
-        raise exceptions.ComponentNotFoundException(comp_id)
+        try:
+            return self.is_localhost(comp['host'])
+        except exceptions.HostUnknownException as ex:
+            raise ex
 
     ###################
     # TMUX
@@ -342,14 +486,14 @@ class AbstractController(object):
             procs.extend(Process(entry).children(recursive=True))
 
         for proc in procs:
-            if proc.name() == 'tee' and proc.is_running():
-                tee_count+=1
-            if proc.name() != 'tee' and proc.is_running():
-                try:
+            try:
+                if proc.name() == 'tee' and proc.is_running():
+                    tee_count+=1
+                if proc.name() != 'tee' and proc.is_running():
                     self.logger.debug("Killing leftover child process %s" % proc.name())
                     proc.terminate()
-                except NoSuchProcess:
-                    pass
+            except NoSuchProcess:
+                pass
 
         self.logger.debug("Rotating log for %s" % comp_id)
         if tee_count == 2:
@@ -485,11 +629,35 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
+    def add_subscriber(self, subscriber):
+        raise NotImplementedError
+
+    def start_all(self):
+        raise NotImplementedError
+
+    def start_component(self, comp):
+        raise NotImplementedError
+
+    def _start_remote_component(self, comp):
+        raise NotImplementedError
+
+    def stop_all(self):
+        raise NotImplementedError
+
+    def _stop_remote_component(self, comp):
+        raise NotImplementedError
+
+    def _check_remote_component(self, comp):
+        raise NotImplementedError
+
+    def reconnect_with_host(self, hostname):
+        raise NotImplementedError
+
 
 class ControlCenter(AbstractController):
     """Controller class that is able to handle a master session."""
 
-    def __init__(self, configfile=None, monitor_enabled=False):
+    def __init__(self, configfile=None, monitor_enabled=False, slave_server=None):
         """Sets up the ControlCenter
 
         Initializes an empty node dict, an empty host_list dict, creates a queue for monitor jobs and a monitoring
@@ -500,9 +668,11 @@ class ControlCenter(AbstractController):
         :type configfile: str
         :param monitor_enabled: Whether the monitoring thread should be launched or not
         :type monitor_enabled: bool
+        :param slave_server: Socket server managing connection to slaves
+        :type slave_server: hyperion.lib.networking.server.SlaveManagementServer
         """
-
         super(ControlCenter, self).__init__(configfile)
+        self.slave_server = slave_server
         self.nodes = {}
         self.host_list = {
             '%s' % socket.gethostname(): True
@@ -558,22 +728,18 @@ class ControlCenter(AbstractController):
         else:
             self._setup_ssh_config()
 
+            # Set id for each component
             for group in self.config['groups']:
                 for comp in group['components']:
-                    self.logger.debug("Checking component '%s' in group '%s' on host '%s'" %
-                                      (comp['name'], group['name'], comp['host']))
                     comp['id'] = "%s@%s" % (comp['name'], comp['host'])
 
+            for group in self.config['groups']:
+                for comp in group['components']:
                     try:
                         if comp['host'] != "localhost" and not self.run_on_localhost(comp):
                             if comp['host'] not in self.host_list:
                                 if self._establish_master_connection(comp['host']):
                                     self.logger.info("Master connection to %s established!" % comp['host'])
-                            if self.host_list.get(comp['host']) is not None:
-                                self._copy_component_to_remote(comp, comp['host'])
-                            else:
-                                self.logger.debug("Not copying because host %s is not reachable: %s" %
-                                                  (comp['host'], self.host_list.get(comp['name'])))
                     except exceptions.HostUnknownException as ex:
                         self.logger.error(ex.message)
 
@@ -590,6 +756,30 @@ class ControlCenter(AbstractController):
                 self.logger.debug("Sourcing custom environment in main window of master session")
                 cmd = ". %s" % self.custom_env_path
                 self._send_main_session_command(cmd)
+
+            if self.slave_server:
+                self.slave_server.start()
+            else:
+                self.logger.critical("Slave server is None!")
+
+            self.logger.debug("Starting slave on connected remote hosts")
+            for host in self.host_list:
+                if host and not self.is_localhost(host):
+                    self._start_remote_slave(host)
+
+    def _start_remote_slave(self, hostname):
+        """Start slave manager on host 'hostname'.
+
+        :param hostname: Host to start the slave manager on.
+        :return: None
+        """
+        window = self._find_window('ssh-%s' % hostname)
+        config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config['name'])
+
+        if window:
+            self.slave_server.start_slave(hostname, config_path, self.config['name'], window)
+        else:
+            self.logger.error("No connection to remote '%s' - can not start slave manager" % hostname)
 
     def set_dependencies(self):
         """Parses all components constructing a dependency tree.
@@ -639,36 +829,28 @@ class ControlCenter(AbstractController):
         if unmet_deps:
             raise exceptions.UnmetDependenciesException()
 
-    def _copy_component_to_remote(self, comp, host):
-        """Copies `comp` to `TMP_SLAVE_DIR` on the remote host `host`.
+    def _copy_config_to_remote(self, host):
+        """Copy the configuration to a remote machine.
 
-        To do so `comp` gets temporarily saved as standalone configfile on the local machine (in `TMP_COMP_DIR`) and
-        then scpd to `TMP_SLAVE_DIR` on `host` (after ensuring the containing directory exists via mkdir -p invocation
-        over ssh in the main window of the master session).
-
-        :param comp: Component to copy
-        :type comp: dict
-        :param host: Host to copy the component to
+        :param host: Host to copy to
         :type host: str
         :return: None
         """
+        self.logger.debug("Dumping config to tmp")
+        tmp_conf_path = ('%s/%s.yaml' % (config.TMP_CONF_DIR, self.config['name']))
+        ensure_dir(tmp_conf_path)
 
-        comp_id = comp['id']
+        with open(tmp_conf_path, 'w') as outfile:
+            clone = self.config.copy()
+            if self.custom_env_path:
+                clone['env'] = "%s/%s" % (config.TMP_ENV_PATH, os.path.basename(self.custom_env_path))
 
-        self.logger.debug("Saving component to tmp")
-        tmp_comp_path = ('%s/%s.yaml' % (config.TMP_COMP_DIR, comp_id))
-        ensure_dir(tmp_comp_path)
+            dump(clone, outfile, default_flow_style=False)
 
-        if self.custom_env_path:
-            comp['env'] = "%s/%s" % (config.TMP_ENV_PATH, os.path.basename(self.custom_env_path))
-
-        with open(tmp_comp_path, 'w') as outfile:
-            dump(comp, outfile, default_flow_style=False)
-
-            self.logger.debug('Copying component "%s" to remote host "%s"' % (comp_id, host))
+            self.logger.debug('Copying config to remote host "%s"' % host)
             cmd = ("ssh -F %s %s 'mkdir -p %s' && scp %s %s:%s/%s.yaml" %
-                   (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, tmp_comp_path, host,
-                    config.TMP_SLAVE_DIR, comp_id))
+                   (config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, tmp_conf_path, host,
+                    config.TMP_SLAVE_DIR, self.config['name']))
             self._send_main_session_command(cmd)
 
     def _copy_env_file(self, host):
@@ -708,61 +890,33 @@ class ControlCenter(AbstractController):
     ###################
     # Stop
     ###################
-    def stop_component(self, comp):
-        """Stop component `comp`.
-
-        Invokes the lower level stop function depending on whether the component is run locally or on a remote host.
-
-        :param comp: Component to stop
-        :type comp: dict
-        :return: None
-        """
-
-        self._broadcast_event(events.StoppingEvent(comp['id']))
-
-        self.logger.debug("Removing %s from process monitoring list" % comp['id'])
-        self.monitor_queue.put(CancellationJob(0, comp['id']))
-
-        try:
-            on_localhost = self.run_on_localhost(comp)
-        except exceptions.HostUnknownException:
-            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
-            return
-        if comp['host'] != 'localhost' and not on_localhost:
-            self.logger.info("Stopping remote component '%s'" % comp['id'])
-            self._stop_remote_component(comp)
-        else:
-            self.logger.info("Stopping local component '%s'" % comp['id'])
-            window = self._find_window(comp['id'])
-
-            if window:
-                self.logger.debug("window '%s' found running" % comp['id'])
-                self.logger.debug("Shutting down window...")
-                self._kill_window(window)
-                self.logger.debug("... done!")
-            else:
-                self.logger.warning("Component '%s' seems to already be stopped" % comp['id'])
-
     def _stop_remote_component(self, comp):
         """Stops remote component `comp`.
 
-        Via ssh Hyperion is executed on the remote host in slave mode with the --kill option.
-
         :param comp: Component to stop
         :type comp: dict
         :return: None
         """
-
         comp_id = comp['id']
         host = comp['host']
-        # invoke Hyperion in slave kill mode on remote host
-        if not self.host_list[host]:
-            self.logger.error("Host %s is unreachable. Can not stop component %s" % (host, comp_id))
-            return
 
-        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave --kill'" % (
-            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_id))
-        self._send_main_session_command(cmd)
+        self.logger.debug("Stopping remote component '%s'" % comp_id)
+        if self.host_list.get(comp['host']) is not None:
+            if self.slave_server:
+                try:
+                    self.logger.debug("Issuing stop command to slave server")
+                    self.slave_server.stop_component(comp_id, host)
+                except exceptions.SlaveNotReachableException as ex:
+                    self.logger.debug(ex.message)
+            else:
+                self.logger.error(
+                    "Host %s is reachable but slave is not - hyperion seems not to be installed" % comp['host'])
+                self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.NOT_INSTALLED))
+        else:
+            self.logger.error(
+                "Host %s is unreachable. Can not stop component %s!" % (comp['host'],
+                                                                         comp['id']))
+            self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.UNREACHABLE))
 
     ###################
     # Start
@@ -809,7 +963,7 @@ class ControlCenter(AbstractController):
                             self.logger.debug("Dep '%s' success" % node.comp_id)
                             break
                         if tries > 3:
-                            self._broadcast_event(events.CheckEvent(comp['id'], config.CheckState.DEP_FAILED))
+                            self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.DEP_FAILED))
                             failed_comps[node.comp_id] = state
                             failed_comps[comp['id']] = config.CheckState.DEP_FAILED
                             break
@@ -825,7 +979,7 @@ class ControlCenter(AbstractController):
             if len(failed_comps) > 0:
                 self.logger.warn("At least one dependency failed and the component is not running. Aborting start")
                 failed_comps[comp['id']] = config.CheckState.DEP_FAILED
-                self._broadcast_event(events.StartReportEvent(comp['id'], failed_comps))
+                self.broadcast_event(events.StartReportEvent(comp['id'], failed_comps))
                 return config.StartState.FAILED
             else:
                 self.logger.info("All dependencies satisfied, starting '%s'" % (comp['id']))
@@ -835,66 +989,37 @@ class ControlCenter(AbstractController):
             if (ret is not config.CheckState.RUNNING and
                     ret is not config.CheckState.STOPPED_BUT_SUCCESSFUL):
                 self.logger.warn("All dependencies satisfied, but start failed: %s!" % config.STATE_DESCRIPTION.get(ret))
-                self._broadcast_event(events.StartReportEvent(comp['id'], {comp['id']: ret}))
+                self.broadcast_event(events.StartReportEvent(comp['id'], {comp['id']: ret}))
                 return config.StartState.FAILED
             return config.StartState.STARTED
 
-    def start_component_without_deps(self, comp):
-        """Chooses which lower level start function to use depending on whether the component is run on a remote host or not.
-
-        :param comp: Component to start
-        :type comp: dict
-        :return: None
-        """
-
-        comp_id = comp['id']
-        host = comp['host']
-
-        self._broadcast_event(events.StartingEvent(comp_id))
-
-        try:
-            on_localhost = self.run_on_localhost(comp)
-        except exceptions.HostUnknownException:
-            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
-            return
-
-        if host != 'localhost' and not on_localhost:
-            self.logger.info("Starting remote component '%s' on host '%s'" % (comp_id, host))
-            self._start_remote_component(comp)
-        else:
-            log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, comp_id))
-            window = self._find_window(comp_id)
-            self.logger.info("Starting local component '%s'" % comp['id'])
-
-            if window:
-                self.logger.debug("Restarting '%s' in old window" % comp_id)
-                self._start_window(window, comp, log_file)
-            else:
-                self.logger.debug("creating window '%s'" % comp_id)
-                window = self.session.new_window(comp_id)
-                self._start_window(window, comp, log_file)
-
     def _start_remote_component(self, comp):
-        """Start component 'comp' on remote host.
-
-        The remote component is started by invoking Hyperion over ssh in slave mode.
+        """Issue start component 'comp' to slave manager on remote host.
 
         :param comp: Component to start
         :type comp: dict
         :return: None
         """
-
         comp_id = comp['id']
         host = comp['host']
-        # invoke Hyperion in slave mode on each remote host
 
-        if not self.host_list[host]:
-            self.logger.error("Hot %s is not reachable. Can not start component %s" % (host, comp_id))
-            return
-
-        cmd = ("ssh -F %s %s 'hyperion --config %s/%s.yaml slave'" % (
-            config.CUSTOM_SSH_CONFIG_PATH, host, config.TMP_SLAVE_DIR, comp_id))
-        self._send_main_session_command(cmd)
+        self.logger.debug("Starting remote component '%s'" % comp_id)
+        if self.host_list.get(comp['host']) is not None:
+            if self.slave_server:
+                try:
+                    self.logger.debug("Issuing start command to slave server")
+                    self.slave_server.start_component(comp_id, host)
+                except exceptions.SlaveNotReachableException as ex:
+                    self.logger.debug(ex.message)
+            else:
+                self.logger.error(
+                    "Host %s is reachable but slave is not - hyperion seems not to be installed" % comp['host'])
+                self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.NOT_INSTALLED))
+        else:
+            self.logger.error(
+                "Host %s is unreachable. Can not start component %s!" % (comp['host'],
+                                                                                 comp['id']))
+            self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.UNREACHABLE))
 
     def start_all(self):
         """Start all components ordered by dependecy.
@@ -940,9 +1065,9 @@ class ControlCenter(AbstractController):
             else:
                 ret = self.check_component(comp.component)
                 if ret is config.CheckState.STOPPED:
-                    self._broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
+                    self.broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
                     failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
-        self._broadcast_event(events.StartReportEvent('All components', failed_comps))
+        self.broadcast_event(events.StartReportEvent('All components', failed_comps))
 
     def stop_all(self):
         """Stop all components ordered by dependency and run checks afterwards
@@ -961,62 +1086,37 @@ class ControlCenter(AbstractController):
     ###################
     # Check
     ###################
-    def check_component(self, comp):
-        """Runs component check for `comp` and returns status.
-
-        If `comp` is run locally the call is redirected to ``check_local_component``. If the `comp` is run on a remote
-        host the function checks, if the host is reachable and on success issues an ssh command over the master
-        connection which starts Hyperion in slave mode with the check option. The return value of the call is then
-        interpreted for further processing.
+    def _check_remote_component(self, comp):
+        """Forwards component check to slave manager.
 
         :param comp: Component to check
         :type comp: dict
         :return: State of the component
         :rtype: config.CheckState
         """
-        try:
-            if self.run_on_localhost(comp):
-                ret = self._check_local_component(comp)
-
-                pid = ret[0]
-                if pid != 0:
-                    self.monitor_queue.put(LocalComponentMonitoringJob(pid, comp['id']))
-                ret_val = ret[1]
+        self.logger.debug("Starting remote check")
+        if self.host_list.get(comp['host']) is not None:
+            self.logger.debug("Remote '%s' is connected" % comp['host'])
+            if self.slave_server:
+                self.logger.debug("Slave server is running")
+                try:
+                    self.logger.debug("Issuing command to slave server")
+                    ret_val = self.slave_server.check_component(comp['id'], comp['host'], get_component_wait(comp))
+                    self.logger.debug("Slave responded %s" % ret_val)
+                except exceptions.SlaveNotReachableException as ex:
+                    self.logger.debug(ex.message)
+                    ret_val = config.CheckState.NOT_INSTALLED
             else:
-                self.logger.debug("Starting remote check")
-                if self.host_list.get(comp['host']) is not None:
-                    p = Popen(['ssh', '-F', config.CUSTOM_SSH_CONFIG_PATH, comp['host'],
-                               'hyperion --config %s/%s.yaml slave -c' %
-                               (config.TMP_SLAVE_DIR, comp['id'])], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+                ret_val = config.CheckState.UNREACHABLE
 
-                    while p.poll() is None:
-                        sleep(.5)
-                    try:
-                        pid = int(p.stdout.readlines()[-1])
-                    except IndexError:
-                        self.logger.error("Something went wrong on the remote host while checking!")
-                        pid = 0
-
-                    if pid != 0:
-                        self.logger.debug("Got remote pid %s for component '%s'" % (pid, comp['id']))
-                        self.monitor_queue.put(RemoteComponentMonitoringJob(pid, comp['id'], comp['host'],
-                                                                            self.host_list))
-                    try:
-                        ret_val = config.CheckState(p.returncode)
-                    except ValueError:
-                        self.logger.error("Hyperion is not installed on host %s!" % comp['host'])
-                        ret_val = config.CheckState.NOT_INSTALLED
-                else:
-                    self.logger.error("Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
-                                                                                                       comp['id']))
-                    ret_val = config.CheckState.UNREACHABLE
-        except exceptions.HostUnknownException:
-            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
+        else:
+            self.logger.error(
+                "Host %s is unreachable. Can not run check for component %s!" % (comp['host'],
+                                                                                 comp['id']))
             ret_val = config.CheckState.UNREACHABLE
-            pass
 
         # Create queue event for external notification and return for inner purpose
-        self._broadcast_event(events.CheckEvent(comp['id'], ret_val))
+        self.broadcast_event(events.CheckEvent(comp['id'], ret_val))
         return ret_val
 
     ###################
@@ -1138,15 +1238,15 @@ class ControlCenter(AbstractController):
         :type comp_id: str
         :return: None
         """
-
-        cmd = '/bin/bash -c "tail -n +1 -F %s/%s/latest.log"' % (config.TMP_LOG_PATH, comp_id)
+        host = comp_id.split('@')[1]
+        cmd = '/bin/bash -c "tail -n +1 -F %s/%s/component/%s/latest.log"' % (config.TMP_LOG_PATH, host, comp_id)
 
         comp = self.get_component_by_id(comp_id)
 
         try:
            on_localhost = self.run_on_localhost(comp)
         except exceptions.HostUnknownException:
-            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
+            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % host)
             return
 
         if on_localhost:
@@ -1155,9 +1255,8 @@ class ControlCenter(AbstractController):
             except KeyboardInterrupt:
                 pass
         else:
-            hostname = comp['host']
             try:
-                call("ssh -F %s %s '/bin/bash -s' < \"%s\"" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, cmd),
+                call("ssh -F %s %s '/bin/bash -s' < \"%s\"" % (config.CUSTOM_SSH_CONFIG_PATH, host, cmd),
                      shell=True)
             except KeyboardInterrupt:
                 pass
@@ -1279,6 +1378,7 @@ class ControlCenter(AbstractController):
             self.monitor_queue.put(HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock))
             self.logger.debug("Copying env files to remote %s" % hostname)
             self._copy_env_file(hostname)
+            self._copy_config_to_remote(hostname)
             return True
         else:
             self.logger.debug("SSH process has finished. Connection was not successful. Check if an ssh connection "
@@ -1302,52 +1402,10 @@ class ControlCenter(AbstractController):
 
         # Start new connection
         if self._establish_master_connection(hostname):
-            self._broadcast_event(events.ReconnectEvent(hostname))
-            # Sync components
-            self.logger.debug("Syncing components to remote host")
-            for group in self.config['groups']:
-                for comp in group['components']:
-                    if comp['host'] == hostname:
-                        self._copy_component_to_remote(comp, comp['host'])
+            self.broadcast_event(events.ReconnectEvent(hostname))
             return True
         else:
             return False
-
-    ###################
-    # Host related checks
-    ###################
-    def is_localhost(self, hostname):
-        """Check if 'hostname' resolves to localhost.
-
-        :param hostname: Name of host to check
-        :type hostname: str
-        :return: Whether 'host' resolves to localhost or not
-        :rtype: bool
-        """
-
-        try:
-            hn_out = socket.gethostbyname('%s' % hostname)
-            if hn_out == '127.0.0.1' or hn_out == '127.0.1.1' or hn_out == '::1':
-                self.logger.debug("Host '%s' is localhost" % hostname)
-                return True
-            else:
-                self.logger.debug("Host '%s' is not localhost" % hostname)
-                return False
-        except socket.gaierror:
-            raise exceptions.HostUnknownException("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
-
-    def run_on_localhost(self, comp):
-        """Check if component 'comp' is run on localhost or not.
-
-        :param comp: Component to check
-        :type comp: dict
-        :return: Whether component is run on localhost or not
-        :rtype: bool
-        """
-        try:
-            return self.is_localhost(comp['host'])
-        except exceptions.HostUnknownException as ex:
-            raise ex
 
     ###################
     # TMUX
@@ -1429,6 +1487,10 @@ class ControlCenter(AbstractController):
         self.logger.debug("Killing monitoring thread")
         self.mon_thread.kill()
 
+        if self.slave_server:
+            self.slave_server.kill_slaves(full)
+            self.slave_server.stop()
+
         if full:
             self.logger.info("Chose full shutdown. Killing remote and main sessions")
 
@@ -1442,110 +1504,121 @@ class ControlCenter(AbstractController):
                     self._kill_window(window)
 
             self.kill_session_by_name(self.session_name)
+
         self.logger.info("... Done")
         exit(status)
 
 
-class SlaveLauncher(AbstractController):
-    """Controller class that performs a single slave execution task."""
+class SlaveManager(AbstractController):
+    """Controller class that manages components on a slave machine."""
 
-    def __init__(self, configfile, kill_mode=False, check_mode=False):
-        """Initializes slave.
+    def _stop_remote_component(self, comp):
+        self.logger.error("This function is disabled for slave managers!")
+        pass
 
-        :param configfile: Path to configuration file (component configuration)
-        :type configfile: str
-        :param kill_mode: Whether the slave was started in kill mode or not
-        :type kill_mode: bool
-        :param check_mode: Whether the slave was started in check mode or not
-        :type check_mode: bool
+    def _start_remote_component(self, comp):
+        self.logger.error("This function is disabled for slave managers!")
+        pass
+
+    def _check_remote_component(self, comp):
+        self.logger.error("This function is disabled for slave managers!")
+        pass
+
+    def start_all(self):
+        self.logger.error("This function is disabled for slave managers!")
+        pass
+
+    def start_component(self, comp):
+        """Start component on a slave.
+
+        This function just calls `start_component_without_deps` because dependencies are managed by the master server.
+
+        :param comp: Component to start
+        :return: None
         """
+        # Is equivalent to start_without_deps because
+        self.start_component_without_deps(comp)
 
-        super(SlaveLauncher, self).__init__(configfile)
-        self.kill_mode = kill_mode
-        self.check_mode = check_mode
-        if kill_mode:
-            self.logger.info("started slave with kill mode")
-        if check_mode:
-            self.logger.info("started slave with check mode")
-        self.server = Server()
+    def stop_all(self):
+        self.logger.error("This function is disabled for slave managers!")
+        pass
 
-        if self.server.has_session("slave-session"):
-            self.session = self.server.find_where({
-                "session_name": "slave-session"
-            })
+    def reconnect_with_host(self, hostname):
+        self.logger.error("This function is disabled for slave managers!")
+        pass
 
-            self.logger.debug('found running slave session on server')
-        elif not kill_mode and not check_mode:
-            self.logger.debug('starting new slave session on server')
-            self.session = self.server.new_session(
-                session_name="slave-session"
-            )
+    def __init__(self, configfile):
+        """Initialize slave manager.
 
-        else:
-            self.logger.debug("No slave session found on server. Aborting")
-            # Print fake pid
-            print(0)
-            exit(config.CheckState.STOPPED.value)
+        :param configfile: Path to configuration file.
+        :type configfile: str
+        """
+        super(SlaveManager, self).__init__(configfile)
+        self.nodes = {}
+        self.host_list = {
+            '%s' % socket.gethostname(): True
+        }
+        self.monitor_queue = queue.Queue()
+        self.mon_thread = MonitoringThread(self.monitor_queue)
+        self.mon_thread.start()
 
         if configfile:
             try:
                 self._load_config(configfile)
-            except IOError or exceptions.EnvNotFoundException:
-                # Print fake pid
-                print(0)
-                exit(1)
+            except IOError:
+                self.cleanup(exit_status=1)
+            except exceptions.EnvNotFoundException:
+                self.cleanup(exit_status=1)
+            self.session_name = '%s-slave' % self.config["name"]
 
-            self.window_name = self.config['id']
-            self.log_file = ("%s/%s/latest.log" % (config.TMP_LOG_PATH, self.window_name))
-            ensure_dir(self.log_file)
+            self.logger.info("Loading config was successful")
+
+            self.server = Server()
+
+            if self.server.has_session(self.session_name):
+                self.session = self.server.find_where({
+                    "session_name": self.session_name
+                })
+
+                self.logger.info('found running session by name "%s" on server' % self.session_name)
+            else:
+                self.logger.info('starting new session by name "%s" on server' % self.session_name)
+                self.session = self.server.new_session(
+                    session_name=self.session_name,
+                    window_name="Main"
+                )
+
         else:
-            self.logger.error("No slave component config provided")
+            self.config = None
 
-    def init(self):
-        """Runs the mode specified by the slave execution call (start/stop or preparation for check)
+    def cleanup(self, full=False, exit_status=0):
+        """Clean up for safe shutdown.
 
+        Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
+        and then shuts down the local tmux master session.
+
+        :param full: Whether everything shall be shutdown or not
+        :type full: bool
         :return: None
         """
-        if not self.config:
-            self.logger.error(" Config not loaded yet!")
-        elif not self.session:
-            self.logger.error(" Init aborted. No session was found!")
-        else:
-            self.logger.debug(self.config)
-            window = self._find_window(self.window_name)
+        self.logger.info("Shutting down safely...")
 
-            if window:
-                self.logger.debug("window '%s' found running" % self.window_name)
-                if self.kill_mode:
-                    self.logger.debug("Shutting down window...")
-                    self._kill_window(window)
-                    self.logger.debug("... done!")
-                else:
-                    self.logger.debug("Starting '%s' in old window" % self.window_name)
-                    self._start_window(window, self.config, self.log_file)
-            elif not self.kill_mode:
-                self.logger.debug("creating window '%s'" % self.window_name)
-                window = self.session.new_window(self.window_name)
-                self._start_window(window, self.config, self.log_file)
+        self.logger.debug("Killing monitoring thread")
+        self.mon_thread.kill()
 
-            else:
-                self.logger.debug("There is no component running by the name '%s'. Exiting kill mode" %
-                                  self.window_name)
+        if full:
+            self.logger.info("Chose full shutdown. Killing tmux sessions")
+            self.kill_session_by_name(self.session_name)
 
-    def run_check(self):
-        """Run check for the current component.
+        self.logger.info("... Done")
+        exit(exit_status)
 
-        :return: Status of the component
-        :rtype: config.CheckState
+    def add_subscriber(self, subscriber):
+        """Add a queue to the list of subscribers for manager and monitoring thread events.
+
+        :param subscriber_queue: Event queue of the subscriber
+        :type subscriber_queue: queue.Queue
+        :return: None
         """
-
-        if not self.config:
-            self.logger.error("Config not loaded yet!")
-            exit(config.CheckState.STOPPED.value)
-        elif not self.session:
-            self.logger.error("Init aborted. No session was found!")
-            exit(config.CheckState.STOPPED.value)
-
-        ret = self._check_local_component(self.config)
-        print(ret[0])
-        exit(ret[1].value)
+        self.subscribers.append(subscriber)
+        self.mon_thread.add_subscriber(subscriber)

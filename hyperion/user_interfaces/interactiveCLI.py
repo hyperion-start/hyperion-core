@@ -95,7 +95,7 @@ class SimpleButton(urwid.Button):
 class StateController(object):
     """Intermediate interface class that constructs a urwid UI connected to the core application."""
 
-    def __init__(self, cc, event_queue):
+    def __init__(self, cc, event_queue, log_file_path):
         """Initialize StateController constructing the urwid UI.
 
         :param cc: Reference to core application
@@ -108,7 +108,7 @@ class StateController(object):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.event_queue = event_queue
-        self.log_viewer = LogTextWalker('%s/client.debug' % config.TMP_LOG_PATH)
+        self.log_viewer = LogTextWalker(log_file_path)
         self.tail_log = True
         self.states = {}
         self.host_stats = None
@@ -468,7 +468,7 @@ class StateController(object):
         if self.cc.host_list[host]:
             self.logger.debug("Showing non-component log NIY")
             # TODO show server or slave log
-        elif not self.cc.is_localhost(host):
+        else:
             threading.Thread(
                 target=self.cc.reconnect_with_host, args=[host],
                 name='reconnect_%s' % host,
@@ -503,7 +503,6 @@ class StateController(object):
 
     def handle_log(self, button, comp):
         self.logger.info("Clicked log %s" % comp['id'])
-        local_file_path = '%s/%s/latest.log' % (config.TMP_LOG_PATH, comp['id'])
 
         try:
             on_localhost = self.cc.run_on_localhost(comp)
@@ -512,31 +511,13 @@ class StateController(object):
             return
 
         if on_localhost:
-            if isfile(local_file_path):
-
-                log = self.comp_log_map.get(comp['id'], None)
-                if log:
-                    self.logger.info("Closing '%s' log" % comp['id'])
-                    self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
-                    self.comp_log_map[comp['id']] = None
-                else:
-                    self.logger.info("Opening '%s' log" % comp['id'])
-                    log = urwid.AttrMap(
-                        urwid.LineBox(urwid.BoxAdapter(
-                            urwid.ListBox(
-                                LogTextWalker(local_file_path, comp)),
-                                10
-                            ), '%s Log' % comp['id']
-                        ),
-                        None,
-                        focus_map='simple_button'
-                    )
-                    self.comp_log_map[comp['id']] = log
-                    self.additional_content_grid.contents.append((log, self.additional_content_grid.options()))
-            else:
-                self.logger.error("Log file '%s' does not exist!" % local_file_path)
+            local_file_path = '%s/localhost/component/%s/latest.log' % (config.TMP_LOG_PATH, comp['id'])
         else:
-            self.logger.info("Opening remote log '%s'" % comp['id'])
+            local_file_path = '%s/%s/component/%s/latest.log' % (config.TMP_LOG_PATH, comp['host'], comp['id'])
+
+        self.logger.debug("Filepath: %s" % local_file_path)
+
+        if isfile(local_file_path):
             log = self.comp_log_map.get(comp['id'], None)
             if log:
                 self.logger.info("Closing '%s' log" % comp['id'])
@@ -547,7 +528,7 @@ class StateController(object):
                 log = urwid.AttrMap(
                     urwid.LineBox(urwid.BoxAdapter(
                         urwid.ListBox(
-                            LogTextWalker('%s/debug.log' % config.TMP_LOG_PATH, comp)),
+                            LogTextWalker(local_file_path, comp)),
                             10
                         ), '%s Log' % comp['id']
                     ),
@@ -555,8 +536,9 @@ class StateController(object):
                     focus_map='simple_button'
                 )
                 self.comp_log_map[comp['id']] = log
-                #self.comp_log_map[comp['id']] = True
                 self.additional_content_grid.contents.append((log, self.additional_content_grid.options()))
+        else:
+            self.logger.error("Log file '%s' does not exist!" % local_file_path)
 
     def handle_shutdown(self, button, full=False):
         self.full_shutdown = full
@@ -618,16 +600,17 @@ class StateController(object):
         main_loop.widget = urwid.Frame(start_all_overlay)
 
 
-def main(cc):
+def main(cc, log_file_path):
     """Creates a state controller and starts urwid.
 
     :param cc: Reference to the core application
     :type cc: hyperion.ControlCenter
+    :param log_file_path: Path of the file this logger logs to
+    :type log_file_path: str
     :return: None
     """
-
     event_queue = queue.Queue()
-    cli_menu = StateController(cc, event_queue)
+    cli_menu = StateController(cc, event_queue, log_file_path)
     cc.add_subscriber(event_queue)
 
     palette = [

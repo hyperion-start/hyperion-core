@@ -2,11 +2,13 @@ import logging
 import logging.handlers
 import argparse
 import sys
+import yaml
+import time
 from signal import *
-from manager import ControlCenter, SlaveLauncher, ensure_dir, BASE_DIR
-from lib.util.depTree import CircularReferenceException, dep_resolve
-from lib.networking.server import Server
-from lib.networking import clientInterface
+from lib.util.setupParser import Loader
+from manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log
+from lib.util.depTree import dep_resolve
+from lib.networking import clientInterface, server
 from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, FORMAT
 from logging.config import fileConfig
 from lib.util.exception import *
@@ -36,7 +38,17 @@ except ImportError:
 else:
     interactive_enabled = True
 
-ensure_dir("%s/any.log" % TMP_LOG_PATH)
+ensure_dir('%s/any.log' % TMP_LOG_PATH)
+
+ensure_dir('%s/localhost/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/localhost/client/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/localhost/component/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/localhost/server/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/localhost/slave/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/localhost/standalone/any.log' % TMP_LOG_PATH)
+
+ensure_dir('%s/remote/slave/any.log' % TMP_LOG_PATH)
+
 fileConfig('%s/data/default-logger.config' % BASE_DIR)
 
 
@@ -72,8 +84,8 @@ def draw_graph(control_center):
     :return: None
     """
 
-    deps = Digraph("Deps", strict=True)
-    deps.graph_attr.update(rankdir="BT")
+    deps = Digraph('Deps', strict=True)
+    deps.graph_attr.update(rankdir='BT')
     try:
         node = control_center.nodes.get('master_node')
 
@@ -84,18 +96,18 @@ def draw_graph(control_center):
             unres = []
             dep_resolve(current, res, unres)
             for node in res:
-                if "depends" in node.component:
+                if 'depends' in node.component:
                     for dep in node.component['depends']:
                         if dep not in control_center.nodes:
-                            deps.node(dep, color="red")
-                            deps.edge(node.comp_name, dep, "missing", color="red")
-                        elif node.comp_name is not "master_node":
+                            deps.node(dep, color='red')
+                            deps.edge(node.comp_name, dep, 'missing', color='red')
+                        elif node.comp_name is not 'master_node':
                             deps.edge(node.comp_name, dep)
 
     except CircularReferenceException as ex:
-        control_center.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
-        deps.edge(ex.node1, ex.node2, "circular error", color="red")
-        deps.edge(ex.node2, ex.node1, color="red")
+        control_center.logger.error('Detected circular dependency reference between %s and %s!' % (ex.node1, ex.node2))
+        deps.edge(ex.node1, ex.node2, 'circular error', color='red')
+        deps.edge(ex.node2, ex.node1, color='red')
 
     deps.view()
 
@@ -111,117 +123,146 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Create top level parser
-    parser.add_argument("--config", '-c', type=str,
-                        default='test.yaml',
-                        help="YAML config file. see sample-config.yaml. Default: test.yaml")
-    subparsers = parser.add_subparsers(dest="cmd")
+    parser.add_argument('--config', '-c', type=str,
+                        help='YAML config file. see sample-config.yaml.')
+    subparsers = parser.add_subparsers(dest='cmd')
 
     # Create parser for server
-    subparser_server = subparsers.add_parser('server', help="Starts hyperion backend")
+    subparser_server = subparsers.add_parser('server', help='Starts hyperion backend')
     subparser_server.add_argument('-p', '--port',
-                                  help="Define the tcp port on which the backend will listen for clients. "
-                                       "Default: %s" % DEFAULT_TCP_PORT,
-                                  metavar="PORT",
+                                  help='Define the tcp port on which the backend will listen for clients. '
+                                       'Default: %s' % DEFAULT_TCP_PORT,
+                                  metavar='PORT',
                                   type=int,
                                   default=DEFAULT_TCP_PORT)
 
     # Create parser for the editor command
-    subparser_editor = subparsers.add_parser('edit', help="Launches the editor to edit or create new systems and "
-                                                          "components")
+    subparser_editor = subparsers.add_parser('edit', help='Launches the editor to edit or create new systems and '
+                                                          'components')
     # Create parser for the run command
-    subparser_cli = subparsers.add_parser('execute', help="initialize the configured system with the executing host as "
-                                                          "controlling instance. It offers to run a specific action for"
-                                                          " a single component or a list of components")
+    subparser_cli = subparsers.add_parser('execute', help='initialize the configured system with the executing host as '
+                                                          'controlling instance. It offers to run a specific action for'
+                                                          ' a single component or a list of components')
 
-    subparser_cli.add_argument('-C', '--component', metavar='COMP', help="single component or list of components "
-                                                                         "specific action", default='all', nargs='+')
+    subparser_cli.add_argument('-C', '--component', metavar='COMP', help='single component or list of components '
+                                                                         'specific action', default='all', nargs='+')
 
     comp_mutex = subparser_cli.add_mutually_exclusive_group(required=True)
 
-    comp_mutex.add_argument('-l', '--list', help="List all available components", action="store_true")
-    comp_mutex.add_argument('-s', '--start', help="start the component", dest='comp_start', action="store_true")
-    comp_mutex.add_argument('-k', '--stop', help="Stop the component", dest='comp_stop', action="store_true")
-    comp_mutex.add_argument('-c', '--check', help="Check the component", dest='comp_check', action="store_true")
-    comp_mutex.add_argument('-L', '--log', help="Show the component log", dest='comp_log', action="store_true")
-    comp_mutex.add_argument('-T', '--term', help="Show the component term", dest='comp_term', action="store_true")
+    comp_mutex.add_argument('-l', '--list', help='List all available components', action='store_true')
+    comp_mutex.add_argument('-s', '--start', help='start the component', dest='comp_start', action='store_true')
+    comp_mutex.add_argument('-k', '--stop', help='Stop the component', dest='comp_stop', action='store_true')
+    comp_mutex.add_argument('-c', '--check', help='Check the component', dest='comp_check', action='store_true')
+    comp_mutex.add_argument('-L', '--log', help='Show the component log', dest='comp_log', action='store_true')
+    comp_mutex.add_argument('-T', '--term', help='Show the component term', dest='comp_term', action='store_true')
 
-    subparser_ui = subparsers.add_parser('ui', help="Launches the setup specified by the --config argument and "
-                                                      "start with user interface")
+    subparser_ui = subparsers.add_parser('ui', help='Launches the setup specified by the --config argument and '
+                                                      'start with user interface')
 
     subparser_ui.add_argument('-p', '--port',
-                              help="Specify port to connect to. Defaults to %s" % DEFAULT_TCP_PORT,
+                              help='Specify port to connect to. Defaults to %s' % DEFAULT_TCP_PORT,
                               type=int,
                               default=DEFAULT_TCP_PORT)
 
     ui_mutex = subparser_ui.add_mutually_exclusive_group(required=False)
-    ui_mutex.add_argument('-H', '--host', help="Specify host to connect to. Defaults to localhost", default='localhost')
-    ui_mutex.add_argument('--no-socket', help="Start in standalone mode without connecting to a running backend",
-                          action="store_true")
+    ui_mutex.add_argument('-H', '--host', help='Specify host to connect to. Defaults to localhost', default='localhost')
+    ui_mutex.add_argument('--no-socket', help='Start in standalone mode without connecting to a running backend',
+                          action='store_true')
 
-    subparser_ui.add_argument('-x', help="Use PyQt gui (requires X server and python-qt4 package)",
+    subparser_ui.add_argument('-x', help='Use PyQt gui (requires X server and python-qt4 package)',
                               dest='x_server',
-                              action="store_true")
+                              action='store_true')
 
     # Create parser for validator
-    subparser_val = subparsers.add_parser('validate', help="Validate the setup specified by the --config argument")
+    subparser_val = subparsers.add_parser('validate', help='Validate the setup specified by the --config argument')
+    subparser_val.add_argument('--visual', help='Generate and show a graph image', action='store_true')
 
-    subparser_remote = subparsers.add_parser('slave', help="Run a component locally without controlling it. The "
-                                                           "control is taken care of the remote master invoking "
-                                                           "this command.\nIf run with the --kill flag, the "
-                                                           "passed component will be killed")
+    subparser_remote = subparsers.add_parser('slave', help='Run a component locally without controlling it. The '
+                                                           'control is taken care of the remote master invoking '
+                                                           'this command.\nIf run with the --kill flag, the '
+                                                           'passed component will be killed')
 
-    subparser_val.add_argument("--visual", help="Generate and show a graph image", action="store_true")
+    subparser_remote.add_argument('-p', '--port',
+                                  help='specify port of the master server to connect to',
+                                  type=int, required=True)
 
-    remote_mutex = subparser_remote.add_mutually_exclusive_group(required=False)
-
-    remote_mutex.add_argument('-k', '--kill', help="switch to kill mode", action="store_true")
-    remote_mutex.add_argument('-c', '--check', help="Run a component check", action="store_true")
+    subparser_remote.add_argument('-H', '--host',
+                                  help='specify master server hostname to connect to',
+                                  required=True)
 
     args = parser.parse_args()
     logger.debug(args)
 
     root_logger = logging.getLogger()
     log_formatter = logging.Formatter(FORMAT)
+    log_name = ''
+
+    if args.config:
+        try:
+            with open(args.config) as data_file:
+                tmp_config = yaml.load(data_file, Loader)
+                conf_name = tmp_config['name']
+                if conf_name.find(' ') != -1:
+                    logger.critical('Your config name contains at least one space, which is not allowed! Change it')
+                    sys.exit(1)
+                log_name = '%s' % conf_name
+        except IOError:
+            logger.critical("No config file at '%s' found" % args.config)
+            sys.exit(1)
 
     if args.cmd == 'server':
-        handler = logging.handlers.RotatingFileHandler("%s/server.debug" % TMP_LOG_PATH, 'w')
+        log_file_path = '%s/localhost/server/%s.log' % (TMP_LOG_PATH, log_name)
+        clear_log(log_file_path, log_name)
+        handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
+
         handler.setFormatter(log_formatter)
         root_logger.addHandler(handler)
 
-        logger.debug("Starting backend at port: %s" % args.port)
-        cc = ControlCenter(args.config, True)
+        sms = server.SlaveManagementServer()
+
+        logger.debug('Starting backend at port: %s' % args.port)
+        cc = ControlCenter(args.config, True, slave_server=sms)
         cc.init()
 
-        s = Server(int(args.port), cc)
+        s = server.Server(int(args.port), cc)
+        sys.exit(0)
 
     if args.cmd == 'ui':
-        logger.debug("Chose ui mode")
+        logger.debug('Chose ui mode')
 
         if args.no_socket:
-            handler = logging.handlers.RotatingFileHandler("%s/standalone.debug" % TMP_LOG_PATH, 'w')
+            log_file_path = '%s/localhost/standalone/%s.log' % (TMP_LOG_PATH, time.strftime("%H-%M-%S"))
+            handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
+
             handler.setFormatter(log_formatter)
             root_logger.addHandler(handler)
-            logger.debug("Entering ui in standalone mode")
-            cc = ControlCenter(args.config, True)
+            logger.debug('Entering ui in standalone mode')
+            sms = server.SlaveManagementServer()
+            cc = ControlCenter(args.config, True, slave_server=sms)
             cc.init()
         else:
-            handler = logging.handlers.RotatingFileHandler("%s/client.debug" % TMP_LOG_PATH, 'w')
+            log_file_path = '%s/localhost/client/%s.log' % (TMP_LOG_PATH, time.strftime("%H-%M-%S"))
+            clear_log(log_file_path, log_name)
+            handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
+
             handler.setFormatter(log_formatter)
             root_logger.addHandler(handler)
-            logger.debug("Entering ui in socket mode")
+
+            logger.debug('Entering ui in socket mode')
+
             cc = clientInterface.RemoteControllerInterface(args.host, args.port)
 
         if args.x_server:
             # PyQt
             if gui_enabled:
-                logger.debug("Launching GUI runner mode")
+                logger.debug('Launching GUI runner mode')
 
                 ui = hyperGUI.UiMainWindow()
                 signal(SIGINT, SIG_DFL)
 
                 start_gui(cc, ui)
             else:
-                logger.error("To use this feature you need PyQt4! Check the README.md for install instructions")
+                logger.error('To use this feature you need PyQt4! Check the README.md for install instructions')
                 cc.cleanup(True, 1)
         else:
             # Urwid
@@ -229,70 +270,70 @@ def main():
                 remove = []
                 for handler in root_logger.handlers:
                     if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-                        logger.debug("Remove non file stream handlers to disable logging on stdout!")
+                        logger.debug('Remove non file stream handlers to disable logging on stdout!')
                         remove.append(handler)
                 [root_logger.removeHandler(h) for h in remove]
 
-                cc.cleanup(interactiveCLI.main(cc))
+                cc.cleanup(interactiveCLI.main(cc, log_file_path))
             else:
-                logger.error("To use this feature you need urwid! Check the README.md for install instructions")
+                logger.error('To use this feature you need urwid! Check the README.md for install instructions')
 
     if args.cmd == 'edit':
-        logger.debug("Launching editor mode")
+        logger.debug('Launching editor mode')
 
     if args.cmd == 'execute':
         clilogger = logging.getLogger('EXECUTE-RESPONSE')
         clilogger.setLevel(logging.INFO)
-        logger.info("Launching cli mode")
+        logger.info('Launching cli mode')
 
         for handler in root_logger.handlers:
             if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-                logger.debug("Setting non file stream handlers to INFO to disable stdout bloating!")
+                logger.debug('Setting non file stream handlers to INFO to disable stdout bloating!')
                 handler.setLevel(logging.INFO)
 
         cc = ControlCenter(args.config)
         cc.init()
 
         if args.list:
-            logger.debug("Chose --list option")
+            logger.debug('Chose --list option')
             if args.component != 'all':
-                logger.warning("Specifying a component with the -C option is useless in combination with the "
-                               "--list option!")
-            clilogger.info("List of all components included in the current configuration:\t%s" % cc.list_components())
+                logger.warning('Specifying a component with the -C option is useless in combination with the '
+                               '--list option!')
+            clilogger.info('List of all components included in the current configuration:\t%s' % cc.list_components())
         else:
-            logger.debug("Chose comp specific operation:")
+            logger.debug('Chose comp specific operation:')
             comps = args.component
             if comps == 'all':
                 comps = cc.list_components()
 
             if args.comp_start:
-                logger.debug("Chose start %s" % args.component)
+                logger.debug('Chose start %s' % args.component)
                 for comp in comps:
                     cc.start_by_cli(comp)
             if args.comp_stop:
-                logger.debug("Chose stop %s" % args.component)
+                logger.debug('Chose stop %s' % args.component)
                 for comp in comps:
                     cc.stop_by_cli(comp)
             if args.comp_check:
-                logger.debug("Chose check %s" % args.component)
+                logger.debug('Chose check %s' % args.component)
                 for comp in comps:
                     cc.check_by_cli(comp)
             if args.comp_log:
-                logger.debug("Chose show log of %s" % args.component)
+                logger.debug('Chose show log of %s' % args.component)
                 if len(comps) > 1:
-                    logger.warning("The show log option only supports a single component as argument. Only the first is"
-                                   "used!")
+                    logger.warning('The show log option only supports a single component as argument. Only the first is'
+                                   'used!')
                 cc.show_comp_log(comps[0])
             if args.comp_term:
-                logger.debug("Chose show term of %s" % args.component)
+                logger.debug('Chose show term of %s' % args.component)
                 if len(comps) > 1:
-                    logger.warning("The show term option only supports a single component as argument. Only the first "
-                                   "is used!")
+                    logger.warning('The show term option only supports a single component as argument. Only the first '
+                                   'is used!')
                 cc.start_clone_session_and_attach(comps[0])
             cc.cleanup()
 
     elif args.cmd == 'validate':
-        logger.debug("Launching validation mode")
+        logger.debug('Launching validation mode')
         cc = ControlCenter(args.config)
         if args.visual:
             try:
@@ -303,7 +344,7 @@ def main():
             if graph_enabled:
                 draw_graph(cc)
             else:
-                logger.error("This feature requires graphviz. To use it install hyperion with the GRAPH option "
+                logger.error('This feature requires graphviz. To use it install hyperion with the GRAPH option '
                              "(pip install -e .['GRAPH'])")
         else:
             try:
@@ -313,13 +354,29 @@ def main():
         cc.cleanup()
 
     elif args.cmd == 'slave':
-        handler = logging.handlers.RotatingFileHandler("%s/slave.debug" % TMP_LOG_PATH, 'w')
-        handler.setFormatter(log_formatter)
-        root_logger.addHandler(handler)
-        logger.debug("Launching slave mode")
-        sl = SlaveLauncher(args.config, args.kill, args.check)
+        log_file_path = '%s/localhost/slave/%s.log' % (TMP_LOG_PATH, log_name)
+        clear_log(log_file_path, log_name)
+        handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
 
-        if args.check:
-            sl.run_check()
-        else:
-            sl.init()
+        handler.setFormatter(log_formatter)
+
+        socket_handler = logging.handlers.SocketHandler(args.host, args.port)
+        socket_handler.setLevel(logging.INFO)
+
+        memory_handler = logging.handlers.MemoryHandler(
+            capacity=1024*4000,
+            flushLevel=logging.CRITICAL,
+            target=socket_handler
+        )
+
+        root_logger.addHandler(handler)
+        root_logger.addHandler(socket_handler)
+        root_logger.addHandler(memory_handler)
+
+        logger.debug('Launching slave mode')
+        slc = SlaveManager(args.config)
+        clientInterface.RemoteSlaveInterface(args.host, args.port, slc)
+
+        logger.debug('Flushing memory handler!')
+        memory_handler.close()
+        sys.exit(0)

@@ -1,4 +1,4 @@
-name: Hyperion DEMO
+name: Hyperion-DEMO
 
 groups:
   - !include ../components/groups/group.yaml

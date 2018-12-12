@@ -42,22 +42,182 @@ def recvall(connection, n):
     return data
 
 
-class RemoteControllerInterface(AbstractController):
+class BaseClient:
+    """Base class for socket clients."""
     def __init__(self, host, port):
-        super(RemoteControllerInterface, self).__init__(None)
-        self.host_list = None
-        self.config = None
         self.host = host
         self.port = port
-        self.logger = logging.getLogger(__name__)
-        self.receive_queue = queue.Queue()
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.send_queue = queue.Queue()
         self.mysel = selectors.DefaultSelector()
         self.keep_running = True
-        self.ui_event_queue = None
-        self.mounted_hosts = []
 
         signal(SIGINT, self._handle_sigint)
+
+    def _handle_sigint(self, signum, frame):
+        self.logger.debug("Received C-c")
+        self._quit()
+
+    def _quit(self):
+        self.keep_running = False
+
+    def _interpret_message(self, action, args):
+        raise NotImplementedError
+
+    def _loop(self):
+        raise NotImplementedError
+
+
+class RemoteSlaveInterface(BaseClient):
+    def __init__(self, host, port, cc):
+        """Init remote slave interface for communication to the server at `host` on `port` with slave controller `cc`.
+
+        :param host: Hostname of the server to connect to
+        :type host: str
+        :param port: Port of the server to connect to
+        :type port: int
+        :param cc: Slave manager to dispatch calls to and forward messages from
+        :type cc: hyperion.manager.SlaveManager
+        """
+        BaseClient.__init__(self, host, port)
+        self.cc = cc
+
+        server_address = (host, port)
+        self.logger.debug('connecting to {} port {}'.format(*server_address))
+        self.sock = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.event_queue = queue.Queue()
+        self.cc.add_subscriber(self.event_queue)
+
+        try:
+            sock.connect(server_address)
+        except socket.error:
+            self.logger.critical("Master session does not seem to be running. Quitting remote client")
+            self._quit()
+            sys.exit(1)
+        sock.setblocking(False)
+
+        # Set up the selector to watch for when the socket is ready
+        # to send data as well as when there is data to read.
+        self.mysel.register(
+            sock,
+            selectors.EVENT_READ | selectors.EVENT_WRITE,
+        )
+
+        self.function_mapping = {
+            'start': self._start_wrapper,
+            'check': self._check_wrapper,
+            'stop': self._stop_wrapper,
+            'quit': self._quit,
+            'suspend': self._suspend
+        }
+        self._loop()
+        
+        self.logger.debug("Shutdown complete!")
+
+    def _suspend(self):
+        self.keep_running = False
+        worker = threading.Thread(
+            target=self.cc.cleanup,
+            args=[False],
+            name="Suspend slave thread"
+        )
+        worker.start()
+        worker.join()
+
+    def _quit(self):
+        self.keep_running = False
+        worker = threading.Thread(
+            target=self.cc.cleanup,
+            args=[True],
+            name="Shutdown slave thread"
+        )
+        worker.start()
+        worker.join()
+
+    def _interpret_message(self, action, args):
+        self.logger.debug("Action: %s, args: %s" % (action, args))
+        func = self.function_mapping.get(action)
+
+        try:
+            func(*args)
+        except TypeError:
+            self.logger.error("Ignoring unrecognized slave action '%s'" % action)
+
+    def _start_wrapper(self, comp_id):
+        self.cc.start_component(self.cc.get_component_by_id(comp_id))
+
+    def _check_wrapper(self, comp_id):
+        self.cc.check_component(self.cc.get_component_by_id(comp_id))
+
+    def _stop_wrapper(self, comp_id):
+        self.cc.stop_component(self.cc.get_component_by_id(comp_id))
+
+    def _process_events(self):
+        """Process events enqueued by the manager and send them to connected clients if necessary.
+
+        :return: None
+        """
+        while not self.event_queue.empty():
+            event = self.event_queue.get_nowait()
+            self.logger.debug("Forwarding event '%s' to slave manager server" % event)
+            message = actionSerializer.serialize_request('queue_event', [event])
+            self.send_queue.put(message)
+
+    def _loop(self):
+        self.logger.debug("Started slave client messaging loop")
+        # Keep alive until shutdown is requested and no messages are left to send
+        while self.keep_running:
+            for key, mask in self.mysel.select(timeout=1):
+                connection = key.fileobj
+
+                if mask & selectors.EVENT_READ:
+                    self.logger.debug("Got read event")
+                    raw_msglen = connection.recv(4)
+                    if raw_msglen:
+                        # A readable client socket has data
+                        msglen = struct.unpack('>I', raw_msglen)[0]
+                        data = recvall(connection, msglen)
+                        self.logger.debug("Received message")
+                        action, args = actionSerializer.deserialize(data)
+                        self._interpret_message(action, args)
+
+                    # Interpret empty result as closed connection
+                    else:
+                        self.keep_running = False
+                        # Reset queue for shutdown condition
+                        self.send_queue = queue.Queue()
+                        self.logger.critical("Connection to server was lost!")
+                        self._quit()
+
+                if mask & selectors.EVENT_WRITE:
+                    if not self.send_queue.empty():  # Server is ready to read, check if we have messages to send
+                        self.logger.debug("Sending next message in queue to Server")
+                        next_msg = self.send_queue.get()
+                        self.sock.sendall(next_msg)
+            self._process_events()
+        self.logger.debug("Exiting messaging loop")
+
+
+class RemoteControllerInterface(AbstractController, BaseClient):
+    def _stop_remote_component(self, comp):
+        self.logger.critical("This function should not be called in this context!")
+        pass
+
+    def _start_remote_component(self, comp):
+        self.logger.critical("This function should not be called in this context!")
+        pass
+
+    def _check_remote_component(self, comp):
+        self.logger.critical("This function should not be called in this context!")
+        pass
+
+    def __init__(self, host, port):
+        AbstractController.__init__(self, None)
+        BaseClient.__init__(self, host, port)
+
+        self.host_list = None
+        self.config = None
+        self.mounted_hosts = []
 
         self.function_mapping = {
             'get_conf_response': self._set_config,
@@ -83,7 +243,7 @@ class RemoteControllerInterface(AbstractController):
             selectors.EVENT_READ | selectors.EVENT_WRITE,
         )
 
-        self.thread = threading.Thread(target=self.loop)
+        self.thread = threading.Thread(target=self._loop)
         self.thread.start()
 
         self.request_config()
@@ -104,6 +264,10 @@ class RemoteControllerInterface(AbstractController):
         action = 'get_host_list'
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
+
+    def _quit(self):
+        self.keep_running = False
+        self.cleanup(False)
 
     def cleanup(self, full=False, exit_code=0):
         if full:
@@ -185,8 +349,8 @@ class RemoteControllerInterface(AbstractController):
         self.logger.debug("Updated host list")
 
     def _forward_event(self, event):
-        if self.ui_event_queue:
-            self.ui_event_queue.put(event)
+        if self.monitor_queue:
+            self.monitor_queue.put(event)
 
         # Special events handling
         if isinstance(event, DisconnectEvent):
@@ -196,7 +360,7 @@ class RemoteControllerInterface(AbstractController):
             self.host_list[event.host_name] = True
             self._mount_host(event.host_name)
 
-    def loop(self):
+    def _loop(self):
         # Keep alive until shutdown is requested and no messages are left to send
         while self.keep_running or not self.send_queue.empty():
             for key, mask in self.mysel.select(timeout=1):
@@ -219,7 +383,7 @@ class RemoteControllerInterface(AbstractController):
                         # Reset queue for shutdown condition
                         self.send_queue = queue.Queue()
                         self.logger.critical("Connection to server was lost!")
-                        self.ui_event_queue.put(ServerDisconnectEvent())
+                        self.monitor_queue.put(ServerDisconnectEvent())
 
                 if mask & selectors.EVENT_WRITE:
                     if not self.send_queue.empty():  # Server is ready to read, check if we have messages to send
@@ -234,7 +398,7 @@ class RemoteControllerInterface(AbstractController):
         :type subscriber_queue: queue.Queue
         :return: None
         """
-        self.ui_event_queue = subscriber_queue
+        self.monitor_queue = subscriber_queue
 
     ###################
     # Host related
@@ -262,7 +426,7 @@ class RemoteControllerInterface(AbstractController):
             else:
                 self.logger.error("Error while trying to create directory '%s'" % directory)
 
-        cmd = 'sshfs %s:%s %s -F %s' % (hostname,
+        cmd = 'sshfs %s:%s/localhost %s -F %s' % (hostname,
                                         config.TMP_LOG_PATH,
                                         directory,
                                         config.SSH_CONFIG_PATH
@@ -330,7 +494,8 @@ class RemoteControllerInterface(AbstractController):
             else:
                 self.logger.debug("Host '%s' is not localhost" % hostname)
                 return False
-        except socket.gaierror:
+        except socket.gaierror as err:
+            self.logger.debug("%s gaierror: %s" % (hostname, err))
             raise exceptions.HostUnknownException("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
 
     def run_on_localhost(self, comp):
@@ -345,6 +510,3 @@ class RemoteControllerInterface(AbstractController):
             return self.is_localhost(comp['host'])
         except exceptions.HostUnknownException as ex:
             raise ex
-
-    def _handle_sigint(self, signum, frame):
-        self.cleanup(False)

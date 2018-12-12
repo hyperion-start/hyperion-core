@@ -6,7 +6,6 @@ import logging
 from functools import partial
 from time import sleep
 import hyperion.lib.util.config as config
-from hyperion.lib.monitoring.threads import LocalCrashEvent, RemoteCrashEvent, DisconnectEvent
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -128,7 +127,7 @@ class UiMainWindow(object):
 
         start_button = BlinkButton('start', self.centralwidget)
         start_button.setObjectName("start_button_all")
-        start_button.clicked.connect(lambda: self.handle_start_all())
+        start_button.clicked.connect(lambda: self.control_center.start_all())
         start_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
         stop_button = BlinkButton('stop', self.centralwidget)
@@ -224,17 +223,17 @@ class UiMainWindow(object):
         start_button = BlinkButton('test', scrollAreaWidgetContents)
         start_button.setObjectName("start_button_%s" % comp['id'])
         start_button.setText("start")
-        start_button.clicked.connect(lambda: self.handle_start_button(comp))
+        start_button.clicked.connect(lambda: self.control_center.start_component(comp))
 
         stop_button = BlinkButton(scrollAreaWidgetContents)
         stop_button.setObjectName("stop_button_%s" % comp['id'])
         stop_button.setText("stop")
-        stop_button.clicked.connect(lambda: self.handle_stop_button(comp))
+        stop_button.clicked.connect(lambda: self.control_center.stop_component(comp))
 
         check_button = BlinkButton(scrollAreaWidgetContents)
         check_button.setObjectName("check_button_%s" % comp['id'])
         check_button.setText("check")
-        check_button.clicked.connect(lambda: self.handle_check_button(comp))
+        check_button.clicked.connect(lambda: self.control_center.check_component(comp))
 
         term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
         term_toggle.setObjectName("term_toggle_%s" % comp['id'])
@@ -528,28 +527,8 @@ class UiMainWindow(object):
         """
 
         self.logger.debug("Clicked stop all")
-        stop_button = self.centralwidget.findChild(QtGui.QPushButton, "stop_button_all")
-
-        if not self.animations.has_key('stop_all'):
-            anim = QtCore.QPropertyAnimation(
-                stop_button,
-                "color",
-            )
-
-            stop_button.setStyleSheet("")
-
-            anim.setDuration(2000)
-            anim.setStartValue(QtGui.QColor(0, 0, 0))
-            anim.setEndValue(QtGui.QColor(255, 255, 255))
-        else:
-            anim = self.animations.get('stop_all')
-
-        anim.start()
-
-        self.animations['stop_all'] = anim
 
         nodes = self.control_center.get_start_all_list()
-
         for node in nodes:
             self.handle_stop_button(node.component)
 

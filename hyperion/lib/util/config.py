@@ -23,8 +23,8 @@ class StartState(Enum):
 
 DEFAULT_TCP_PORT = "23081"
 
-TMP_SLAVE_DIR = "/tmp/Hyperion/slave/components"
-TMP_COMP_DIR = "/tmp/Hyperion/components"
+TMP_SLAVE_DIR = "/tmp/Hyperion/slave/conf"
+TMP_CONF_DIR = "/tmp/Hyperion/conf/"
 TMP_LOG_PATH = "/tmp/Hyperion/log"
 TMP_ENV_PATH = "/tmp/Hyperion/env"
 
