@@ -119,6 +119,17 @@ def dump_config(conf):
         dump(conf, outfile, default_flow_style=False)
 
 
+def set_component_ids(conf):
+    """Set all component ids to comp_name@host
+
+    :param conf: Config to alter
+    :return: None
+    """
+    for group in conf['groups']:
+        for comp in group['components']:
+            comp['id'] = "%s@%s" % (comp['name'], comp['host'])
+
+
 class AbstractController(object):
     """Abstract controller class that defines basic controller variables and methods."""
 
@@ -727,11 +738,7 @@ class ControlCenter(AbstractController):
 
         else:
             self._setup_ssh_config()
-
-            # Set id for each component
-            for group in self.config['groups']:
-                for comp in group['components']:
-                    comp['id'] = "%s@%s" % (comp['name'], comp['host'])
+            set_component_ids(self.config)
 
             for group in self.config['groups']:
                 for comp in group['components']:
@@ -1618,8 +1625,8 @@ class SlaveManager(AbstractController):
     def add_subscriber(self, subscriber):
         """Add a queue to the list of subscribers for manager and monitoring thread events.
 
-        :param subscriber_queue: Event queue of the subscriber
-        :type subscriber_queue: queue.Queue
+        :param subscriber: Event queue of the subscriber
+        :type subscriber: queue.Queue
         :return: None
         """
         self.subscribers.append(subscriber)
