@@ -86,11 +86,22 @@ def draw_graph(control_center):
 
     deps = Digraph('Deps', strict=True)
     deps.graph_attr.update(rankdir='BT')
+
+    subgraphs = {}
+
     try:
         node = control_center.nodes.get('master_node')
 
         for current in node.depends_on:
-            deps.node(current.comp_name)
+
+            if not current.component['host'] in subgraphs:
+                subgraphs[current.component['host']] = Digraph(
+                    name='cluster_%s' % current.component['host'],
+                    graph_attr={'style': 'filled', 'color': 'lightgrey', 'label': current.component['host']},
+                    node_attr={'style': 'filled', 'color': 'white'}
+                )
+
+            subgraphs.get(current.component['host']).node(current.comp_id, _attributes={'style': 'filled', 'color': 'white'})
 
             res = []
             unres = []
@@ -98,16 +109,29 @@ def draw_graph(control_center):
             for node in res:
                 if 'depends' in node.component:
                     for dep in node.component['depends']:
+
+                        parent = deps
+                        if node.component['host'] == dep.split('@')[1]:
+                            parent = subgraphs.get(node.component['host'])
+
+                        logging.debug("%s depends on %s" % (node.comp_id, dep))
+                        logging.debug("Host: %s" % node.component['host'])
+
                         if dep not in control_center.nodes:
-                            deps.node(dep, color='red')
-                            deps.edge(node.comp_name, dep, 'missing', color='red')
-                        elif node.comp_name is not 'master_node':
-                            deps.edge(node.comp_name, dep)
+                            parent.node(dep, color='red')
+                            parent.edge(node.comp_id, dep, 'missing', color='red')
+                        elif node.comp_id is not 'master_node':
+                            parent.edge(node.comp_id, dep)
 
     except CircularReferenceException as ex:
         control_center.logger.error('Detected circular dependency reference between %s and %s!' % (ex.node1, ex.node2))
         deps.edge(ex.node1, ex.node2, 'circular error', color='red')
         deps.edge(ex.node2, ex.node1, color='red')
+
+    for subgraph in subgraphs:
+        deps.subgraph(subgraphs.get(subgraph))
+
+    logging.debug(deps)
 
     deps.view()
 
