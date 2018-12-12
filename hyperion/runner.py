@@ -291,7 +291,15 @@ def main():
                 logger.debug('Setting non file stream handlers to INFO to disable stdout bloating!')
                 handler.setLevel(logging.INFO)
 
-        cc = ControlCenter(args.config)
+        log_file_path = '%s/localhost/server/%s.log' % (TMP_LOG_PATH, log_name)
+        clear_log(log_file_path, log_name)
+        handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
+
+        handler.setFormatter(log_formatter)
+        root_logger.addHandler(handler)
+
+        sms = server.SlaveManagementServer()
+        cc = ControlCenter(args.config, slave_server=sms)
         cc.init()
 
         if args.list:

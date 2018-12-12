@@ -10,3 +10,5 @@ else
   echo "Already in tmux session, switching to correct session"
   tmux switch-client -t "$1"
 fi
+
+exit 0

@@ -777,7 +777,8 @@ class ControlCenter(AbstractController):
         config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config['name'])
 
         if window:
-            self.slave_server.start_slave(hostname, config_path, self.config['name'], window)
+            if self.slave_server:
+                self.slave_server.start_slave(hostname, config_path, self.config['name'], window)
         else:
             self.logger.error("No connection to remote '%s' - can not start slave manager" % hostname)
 
@@ -1129,10 +1130,10 @@ class ControlCenter(AbstractController):
         :rtype: list of str
         """
 
-        return [self.nodes.get(node).comp_name for node in self.nodes]
+        return [self.nodes.get(node).comp_id for node in self.nodes]
 
     def start_by_cli(self, comp_id):
-        """Interface function for starting component by name `comp_name` from the cli.
+        """Interface function for starting component by name `comp_id` from the cli.
 
         Logging information is provided on the INFO level.
 
@@ -1228,23 +1229,23 @@ class ControlCenter(AbstractController):
             self.start_remote_clone_session(comp)
 
             remote_cmd = ("%s '%s-clone-session'" % (SCRIPT_SHOW_SESSION_PATH, comp_id))
-            cmd = "ssh -F %s %s 'bash -s' < %s" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
+            cmd = "ssh -tt -F %s %s 'bash -s' < %s" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
             call(cmd, shell=True)
 
     def show_comp_log(self, comp_id):
-        """Interface function for viewing the log of component by name `comp_name` from the cli. !!(NYI)!!
+        """Interface function for viewing the log of component by name `comp_id` from the cli.
 
         :param comp_id: Id of the component whose log to show (name@host)
         :type comp_id: str
         :return: None
         """
         host = comp_id.split('@')[1]
-        cmd = '/bin/bash -c "tail -n +1 -F %s/%s/component/%s/latest.log"' % (config.TMP_LOG_PATH, host, comp_id)
+        cmd = '/bin/bash -c "tail -n +1 -F %s/localhost/component/%s/latest.log"' % (config.TMP_LOG_PATH, comp_id)
 
         comp = self.get_component_by_id(comp_id)
 
         try:
-           on_localhost = self.run_on_localhost(comp)
+            on_localhost = self.run_on_localhost(comp)
         except exceptions.HostUnknownException:
             self.logger.warn("Host '%s' is unknown and therefore not reachable!" % host)
             return
@@ -1255,8 +1256,9 @@ class ControlCenter(AbstractController):
             except KeyboardInterrupt:
                 pass
         else:
+            cmd = '/bin/bash -c "tail -n +1 -F %s/localhost/component/%s/latest.log"' % (config.TMP_LOG_PATH, comp_id)
             try:
-                call("ssh -F %s %s '/bin/bash -s' < \"%s\"" % (config.CUSTOM_SSH_CONFIG_PATH, host, cmd),
+                call("ssh -F %s %s '%s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, cmd),
                      shell=True)
             except KeyboardInterrupt:
                 pass
@@ -1449,7 +1451,7 @@ class ControlCenter(AbstractController):
         :return:
         """
 
-        session_name = 'slave-session'
+        session_name = '%s-slave' % self.config['name']
         comp_id = comp['id']
         hostname = comp['host']
 
