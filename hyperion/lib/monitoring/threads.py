@@ -28,6 +28,7 @@ class ComponentMonitorJob(object):
         """
         self.pid = pid
         self.comp_id = comp_id
+        self.error_msg = "Component '%s' crashed!" % comp_id
 
     def run_check(self):
         """You need to override this function in monitoring subclasses. It is called in the main monitoring thread.
@@ -35,9 +36,14 @@ class ComponentMonitorJob(object):
         :return: True on a successful check, otherwise a CrashEvent is generated
         :rtype: bool or CrashEvent
         """
+        raise NotImplementedError
 
 
 class CancellationJob(ComponentMonitorJob):
+    def run_check(self):
+        # Is never called here
+        pass
+
     def __init__(self, pid, comp_id):
         """Creates a cancellation job for a component.
 
@@ -46,7 +52,6 @@ class CancellationJob(ComponentMonitorJob):
         :param comp_id: Name of the component
         :type comp_id: str
         """
-
         super(CancellationJob, self).__init__(pid, comp_id)
 
 
@@ -61,7 +66,6 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
         :param comp_id: Name of the component
         :type comp_id: str
         """
-
         super(LocalComponentMonitoringJob, self).__init__(pid, comp_id)
 
     def run_check(self):
@@ -151,11 +155,12 @@ class HostMonitorJob(object):
         self.hostname = hostname
         self.host_status = host_status
         self.host_lock = host_lock
+        self.error_msg = "Lost connection to '%s'!" % hostname
 
     def run_check(self):
         try:
             proc = Process(self.pid)
-            if proc.is_running() and system('(ping -w2 -c 1 %s) > /dev/null' % self.hostname) is 0:
+            if proc.is_running():
                 return True
         except NoSuchProcess:
             pass
@@ -268,7 +273,8 @@ class MonitoringThread(Thread):
                     self.job_queue.put(mon_job)
                 else:
                     # If job is not ok, notify subscribers
-                    logger.debug("Check failed, notifying subscribers")
+                    logger.error(mon_job.error_msg)
+                    logger.debug("Notifying mon subscribers about failed check")
                     for subscriber in self.subscribed_queues:
                         subscriber.put(ret)
 

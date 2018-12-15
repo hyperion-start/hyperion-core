@@ -622,7 +622,12 @@ class AbstractController(object):
 
         try:
             conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
-            conf.write("Host *\n    ControlMaster yes\n    ControlPath ~/.ssh/controlmasters/%C")
+            conf.write(
+                "Host *\n"
+                "    ControlMaster yes\n"
+                "    ControlPath ~/.ssh/controlmasters/%C\n"
+                "    ServerAliveInterval 10"
+            )
         except IOError:
             self.logger.error("Could not append to custom ssh config!")
 
