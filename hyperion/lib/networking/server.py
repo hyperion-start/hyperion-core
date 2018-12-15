@@ -535,14 +535,18 @@ class SlaveManagementServer(BaseServer):
                 break
 
         self.check_buffer[comp_id] = None
-        connection_queue.put(message)
-        end_t = time.time() + component_wait + 1
 
-        self.logger.debug("Curr time: %s - wating until %s" % (time.time(), end_t))
-        while end_t > time.time():
-            if self.check_buffer[comp_id]:
-                break
-            time.sleep(.5)
+        if connection_queue:
+            connection_queue.put(message)
+            end_t = time.time() + component_wait + 1
+
+            self.logger.debug("Curr time: %s - wating until %s" % (time.time(), end_t))
+            while end_t > time.time():
+                if self.check_buffer[comp_id]:
+                    break
+                time.sleep(.5)
+        else:
+            self.logger.error("Slave on '%s' is not connected!" % hostname)
 
         ret = self.check_buffer[comp_id]
         if ret:
