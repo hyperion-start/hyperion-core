@@ -310,7 +310,7 @@ class SlaveManagementServer(BaseServer):
         server.setblocking(False)
         try:
             server.bind(server_address)
-            self.logger.debug("Starting slave management server on localhost:%s" % server.getsockname()[1])
+            self.logger.info("Starting slave management server on localhost:%s" % server.getsockname()[1])
             self.port = server.getsockname()[1]
         except socket.error as e:
             if e.errno == 98:
@@ -349,7 +349,7 @@ class SlaveManagementServer(BaseServer):
     def stop(self):
         self._quit()
         self.thread.join()
-        self.logger.debug("Slave server successfully shutdown!")
+        self.logger.info("Slave server successfully shutdown!")
 
     def _quit(self):
         self.logger.debug("Sending all pending messages to slave clients before quitting server...")
@@ -396,7 +396,7 @@ class SlaveManagementServer(BaseServer):
         if action == 'unsubscribe':
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
-            self.logger.debug("Client %s unsubscribed" % connection.getpeername()[0])
+            self.logger.info("Client %s unsubscribed" % connection.getpeername()[0])
             connection.close()
             return
 
@@ -430,7 +430,7 @@ class SlaveManagementServer(BaseServer):
                 # Handle uncontrolled connection loss
                 self.send_queues.pop(connection)
                 self.sel.unregister(connection)
-                self.logger.debug("Connection to client %s was lost!" % connection.getpeername()[0])
+                self.logger.error("Connection to client %s was lost!" % connection.getpeername()[0])
                 self.notify_queue.put(events.DisconnectEvent(connection.getpeername()[0]))
                 connection.close()
         except socket.error as e:
@@ -466,18 +466,18 @@ class SlaveManagementServer(BaseServer):
         tmux_cmd = 'tmux new -d -s "%s-slave" "%s"' % (config_name, cmd)
         window.cmd('send-keys', tmux_cmd, 'Enter')
 
-        self.logger.debug("Waiting for slave on '%s' (%s) to connect..." % (hn, hostname))
+        self.logger.info("Waiting for slave on '%s' (%s) to connect..." % (hn, hostname))
         end_t = time.time() + 4
         while time.time() < end_t:
             for host in self.send_queues:
                 hn_in = host.getpeername()[0]
                 self.logger.debug("'%s' is connected" % hn_in)
                 if hn == hn_in:
-                    self.logger.debug("Connection successfully established")
+                    self.logger.info("Connection successfully established")
                     return True
             time.sleep(.5)
 
-        self.logger.debug("Connection to slave failed!")
+        self.logger.error("Connection to slave failed!")
         return False
 
     def start_component(self, comp_id, hostname):
@@ -530,7 +530,6 @@ class SlaveManagementServer(BaseServer):
         message = actionSerializer.serialize_request(action, payload)
 
         for connection in self.send_queues:
-            self.logger.debug("Send queue %s == %s ?" % (connection.getpeername()[0], hn))
             if connection.getpeername()[0] == hn:
                 connection_queue = self.send_queues.get(connection)
                 break
@@ -541,7 +540,7 @@ class SlaveManagementServer(BaseServer):
             connection_queue.put(message)
             end_t = time.time() + component_wait + 1
 
-            self.logger.debug("Curr time: %s - wating until %s" % (time.time(), end_t))
+            self.logger.debug("Waiting on '%s' response for %s seconds" % (hostname, component_wait))
             while end_t > time.time():
                 if self.check_buffer[comp_id]:
                     break
@@ -554,5 +553,5 @@ class SlaveManagementServer(BaseServer):
             self.logger.debug("Slave answered check request with %s" % config.STATE_DESCRIPTION.get(ret))
             return ret
         else:
-            self.logger.debug("No answer from slave - returning unreachable")
+            self.logger.error("No answer from slave - returning unreachable")
             return config.CheckState.UNREACHABLE
