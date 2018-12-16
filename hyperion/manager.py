@@ -623,10 +623,12 @@ class AbstractController(object):
         try:
             conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
             conf.write(
+                "\n"
                 "Host *\n"
                 "    ControlMaster yes\n"
                 "    ControlPath ~/.ssh/controlmasters/%C\n"
-                "    ServerAliveInterval 10"
+                "    ServerAliveInterval 10\n"
+                "    PasswordAuthentication no"
             )
         except IOError:
             self.logger.error("Could not append to custom ssh config!")
@@ -1355,6 +1357,7 @@ class ControlCenter(AbstractController):
             window.cmd("send-keys", cmd, "Enter")
 
         t_end = time() + config.SSH_CONNECTION_TIMEOUT
+        t_min = time() + 0.5
 
         pid = self._get_window_pid(window)
         pids = []
@@ -1370,7 +1373,7 @@ class ControlCenter(AbstractController):
                         pids.append(p.pid)
                 except NoSuchProcess:
                     pass
-            if len(pids) > 0:
+            if len(pids) > 0 and time() > t_min:
                 break
 
         if len(pids) < 1:
@@ -1379,7 +1382,14 @@ class ControlCenter(AbstractController):
             self.host_list_lock.release()
             return False
 
-        ssh_proc = Process(pids[0])
+        try:
+            ssh_proc = Process(pids[0])
+        except NoSuchProcess:
+            self.logger.debug("ssh process is long gone already. Connection failed")
+            self.logger.error("SSH connection was not successful. Make sure that an ssh connection is allowed, "
+                              "you have set up ssh-keys and the identification certificate is up to date")
+            return False
+
         # Add host to known list with process to poll from
         self.host_list_lock.acquire()
         self.host_list[hostname] = ssh_proc
@@ -1395,8 +1405,8 @@ class ControlCenter(AbstractController):
             self._copy_config_to_remote(hostname)
             return True
         else:
-            self.logger.debug("SSH process has finished. Connection was not successful. Check if an ssh connection "
-                              "is allowed or if the certificate has to be renewed")
+            self.logger.error("SSH connection was not successful. Make sure that an ssh connection is allowed, "
+                             "you have set up ssh-keys and the identification certificate is up to date")
             return False
 
     def reconnect_with_host(self, hostname):
