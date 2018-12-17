@@ -99,10 +99,28 @@ class DisconnectEvent(BaseEvent):
         return str("DisconnectEvent - %s" % self.host_name)
 
 
+class SlaveDisconnectEvent(DisconnectEvent):
+    """Signal that the socket connection to a slave has died."""
+    def __init__(self, host_name, port):
+        """Create a socket disconnect event for host `hostname`.
+
+        :param host_name: Name of the host the slave was running on
+        :type host_name: str
+        :param port: Port the slave was running on
+        """
+        super(SlaveDisconnectEvent, self).__init__(host_name)
+        self.host_name = host_name
+        self.port = port
+        self.message = 'Lost connection to slave on %s:%s' % (host_name, port)
+
+    def __str__(self):
+        return str("SlaveDisconnectEvent - %s:%s" % (self.host_name, self.port))
+
+
 class ReconnectEvent(BaseEvent):
     """Signal reconnection to host 'host_name'."""
     def __init__(self, host_name):
-        """Create reconnect event for host 'host_name'
+        """Create reconnect event for host 'host_name'.
 
         :param host_name: Name of the remote host
         :type host_name: str
@@ -112,7 +130,26 @@ class ReconnectEvent(BaseEvent):
         self.message = 'Lost connection to remote host %s' % host_name
 
     def __str__(self):
-        return str("DisconnectEvent - %s" % self.host_name)
+        return str("ReconnectEvent - %s" % self.host_name)
+
+
+class SlaveReconnectEvent(ReconnectEvent):
+    """Signal reconnection to slave on host `host`."""
+    def __init__(self, host_name, port):
+        """Create slave reconnect event for `host` on `port`.
+
+        :param host_name: Host that reconnected
+        :type host_name: str
+        :param port: Remote
+        :type port: int
+        """
+        super(SlaveReconnectEvent, self).__init__(host_name)
+        self.host_name = host_name
+        self.port = port
+        self.message = "Reconnected to '%s' on '%s'" % host_name, port
+
+    def __str__(self):
+        return str("SlaveReconnectEvent - %s:%s" % (self.host_name, self.port))
 
 
 class StartReportEvent(BaseEvent):
