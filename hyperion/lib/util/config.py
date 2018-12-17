@@ -21,6 +21,13 @@ class StartState(Enum):
     FAILED = 102
 
 
+class HostState(Enum):
+    """Enum that provides information about the status of a host"""
+    CONNECTED = 1
+    DISCONNECTED = 2
+    SSH_ONLY = 3
+
+
 DEFAULT_TCP_PORT = "23081"
 
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/conf"

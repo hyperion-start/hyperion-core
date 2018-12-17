@@ -10,7 +10,7 @@ import hyperion.lib.util.config as config
 import hyperion.lib.util.actionSerializer as actionSerializer
 import hyperion.lib.util.exception as exceptions
 from hyperion.manager import AbstractController
-from hyperion.lib.util.events import ServerDisconnectEvent, DisconnectEvent, ReconnectEvent
+import hyperion.lib.util.events as events
 from signal import *
 from subprocess import Popen, PIPE
 
@@ -353,11 +353,13 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             self.monitor_queue.put(event)
 
         # Special events handling
-        if isinstance(event, DisconnectEvent):
-            self.host_list[event.host_name] = None
+        if isinstance(event, events.SlaveDisconnectEvent):
+            self.host_list[event.host_name] = config.HostState.SSH_ONLY
+        elif isinstance(event, events.DisconnectEvent):
+            self.host_list[event.host_name] = config.HostState.DISCONNECTED
             self._unmount_host(event.host_name)
-        elif isinstance(event, ReconnectEvent):
-            self.host_list[event.host_name] = True
+        elif isinstance(event, events.ReconnectEvent):
+            self.host_list[event.host_name] = config.HostState.CONNECTED
             self._mount_host(event.host_name)
 
     def _loop(self):
@@ -383,7 +385,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                         # Reset queue for shutdown condition
                         self.send_queue = queue.Queue()
                         self.logger.critical("Connection to server was lost!")
-                        self.monitor_queue.put(ServerDisconnectEvent())
+                        self.monitor_queue.put(events.ServerDisconnectEvent())
 
                 if mask & selectors.EVENT_WRITE:
                     if not self.send_queue.empty():  # Server is ready to read, check if we have messages to send
@@ -414,7 +416,8 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         # First unmount to prevent unknown permissions issue on disconnected mountpoint
         self._unmount_host(hostname)
 
-        if not self.host_list[hostname]:
+        state = self.host_list[hostname]
+        if not state or state == config.HostState.DISCONNECTED:
             self.logger.error("'%s' seems not to be connected. Aborting mount! Logs will not be available" % hostname)
             return
         try:

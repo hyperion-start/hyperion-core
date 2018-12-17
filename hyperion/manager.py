@@ -696,6 +696,9 @@ class ControlCenter(AbstractController):
             '%s' % socket.gethostname(): True
         }
         self.host_list_lock = Lock()
+        self.host_states = {
+            '%s' % socket.gethostname(): config.HostState.CONNECTED
+        }
         self.monitor_queue = queue.Queue()
         self.mon_thread = MonitoringThread(self.monitor_queue)
         if monitor_enabled:
@@ -779,6 +782,7 @@ class ControlCenter(AbstractController):
             self.logger.debug("Starting slave on connected remote hosts")
             for host in self.host_list:
                 if host and not self.is_localhost(host):
+                    self.logger.debug("Starting slave on '%s'" % host)
                     self._start_remote_slave(host)
 
     def _start_remote_slave(self, hostname):
@@ -792,7 +796,10 @@ class ControlCenter(AbstractController):
 
         if window:
             if self.slave_server:
-                self.slave_server.start_slave(hostname, config_path, self.config['name'], window)
+                if self.slave_server.start_slave(hostname, config_path, self.config['name'], window):
+                    self.host_states[hostname] = config.HostState.CONNECTED
+                else:
+                    self.host_states[hostname] = config.HostState.SSH_ONLY
         else:
             self.logger.error("No connection to remote '%s' - can not start slave manager" % hostname)
 
@@ -1338,6 +1345,7 @@ class ControlCenter(AbstractController):
 
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
+            self.host_states[hostname] = config.HostState.DISCONNECTED
             self.host_list_lock.release()
             return False
 
@@ -1379,6 +1387,7 @@ class ControlCenter(AbstractController):
         if len(pids) < 1:
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
+            self.host_states[hostname] = config.HostState.DISCONNECTED
             self.host_list_lock.release()
             return False
 
@@ -1393,6 +1402,7 @@ class ControlCenter(AbstractController):
         # Add host to known list with process to poll from
         self.host_list_lock.acquire()
         self.host_list[hostname] = ssh_proc
+        self.host_states[hostname] = config.HostState.SSH_ONLY
         self.host_list_lock.release()
 
         self.logger.debug("Testing if connection was successful")
@@ -1406,7 +1416,7 @@ class ControlCenter(AbstractController):
             return True
         else:
             self.logger.error("SSH connection was not successful. Make sure that an ssh connection is allowed, "
-                             "you have set up ssh-keys and the identification certificate is up to date")
+                              "you have set up ssh-keys and the identification certificate is up to date")
             return False
 
     def reconnect_with_host(self, hostname):

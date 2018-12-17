@@ -272,13 +272,7 @@ class Server(BaseServer):
         return self.cc.config
 
     def _send_host_list(self):
-        lst = {}
-        for key, val in self.cc.host_list.items():
-            if val:
-                lst[key] = True
-            else:
-                lst[key] = False
-        return lst
+        return self.cc.host_states
 
     def _handle_sigint(self, signum, frame):
         self.logger.debug("Received C-c")
