@@ -1,4 +1,5 @@
 import socket
+import select
 import time
 import logging
 import logging.handlers
@@ -448,12 +449,24 @@ class SlaveManagementServer(BaseServer):
         :return: Whether the start was successful or not
         :rtype: bool
         """
+        hn = socket.gethostbyname('%s' % hostname)
+
+        for host in self.send_queues:
+            if hn == host.getpeername()[0]:
+                self.logger.debug("Socket to %s already exists! Checking if it is still connected")
+                try:
+                    select.select([host], [], [host], 1)
+                    self.logger.debug("Connection still up")
+                    self._forward_event(events.SlaveReconnectEvent(hostname, host.getpeername()[1]))
+                    return True
+                except socket.error:
+                    self.logger.error("Existing connection to %s died. Trying to reconnect...")
+
         log_file_path = "%s/remote/slave/%s@%s.log" % (config.TMP_LOG_PATH, config_name, hostname)
         slave_log_handler = logging.handlers.RotatingFileHandler(log_file_path)
         hyperion.manager.clear_log(log_file_path, '%s@%s' % (config_name, hostname))
 
         slave_log_handler.setFormatter(logging.Formatter(config.FORMAT))
-        hn = socket.gethostbyname('%s' % hostname)
         self.slave_log_handlers[hn] = slave_log_handler
 
         cmd = 'hyperion --config %s slave -H %s -p %s' % (config_path, socket.gethostname(), self.port)

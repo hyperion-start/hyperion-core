@@ -1437,6 +1437,7 @@ class ControlCenter(AbstractController):
         # Start new connection
         if self._establish_master_connection(hostname):
             self.broadcast_event(events.ReconnectEvent(hostname))
+            self._start_remote_slave(hostname)
             return True
         else:
             return False
