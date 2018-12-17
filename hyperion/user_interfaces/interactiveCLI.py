@@ -283,9 +283,12 @@ class StateController(object):
         hosts = []
         for host in self.cc.host_list:
             host_object = SimpleButton(host, self.handle_host_clicked, user_data=host)
-            if self.cc.host_list[host]:
+            state = self.cc.host_list[host]
+            if state == config.HostState.CONNECTED:
                 host_object = urwid.AttrMap(host_object, 'host', focus_map='reversed')
-            else:
+            elif state == config.HostState.SSH_ONLY:
+                host_object = urwid.AttrMap(host_object, 'partly_available_host', focus_map='reversed')
+            elif state == config.HostState.DISCONNECTED:
                 host_object = urwid.AttrMap(host_object, 'unavailable_host', focus_map='reversed')
 
             self.host_stats = urwid.Columns([
@@ -465,7 +468,8 @@ class StateController(object):
 
     def handle_host_clicked(self, button, host):
         self.logger.info("Clicked host '%s'" % host)
-        if self.cc.host_list[host]:
+        state = self.cc.host_list[host]
+        if state and state == config.HostState.CONNECTED:
             self.logger.debug("Showing non-component log NIY")
             # TODO show server or slave log
         else:
@@ -626,6 +630,7 @@ def main(cc, log_file_path):
         ('headers', 'white,bold', ''),
         ('host', 'dark green', ''),
         ('unavailable_host', 'dark red', ''),
+        ('partly_available_host', 'brown', ''),
         ('important', 'dark blue', 'black', ('standout', 'underline')),
         ('selected', 'white', 'dark blue'),
         ('deselected', 'white', 'light gray'),
@@ -681,6 +686,8 @@ def refresh(_loop, state_controller, _data=None):
     while not event_queue.empty():
         event = event_queue.get_nowait()
 
+        logger.debug("Got event: %s" % event)
+
         if isinstance(event, events.CheckEvent):
             logger.debug("Check event - comp %s; state %s" % (event.comp_id, event.check_state))
             state_controller.states[event.comp_id].set_text([
@@ -691,17 +698,14 @@ def refresh(_loop, state_controller, _data=None):
                 )
             ])
         elif isinstance(event, events.StartingEvent):
-            logger.debug("Got starting event - comp %s" % event.comp_id)
             state_controller.states[event.comp_id].set_text([
                 "state: STARTING..."
             ])
         elif isinstance(event, events.StoppingEvent):
-            logger.debug("Got stopping event - comp %s" % event.comp_id)
             state_controller.states[event.comp_id].set_text([
                 "state: STOPPING..."
             ])
         elif isinstance(event, events.CrashEvent):
-            logger.debug("Got crash event - comp %s" % event.comp_id)
             logger.warning("Component %s crashed!" % event.comp_id)
             state_controller.cc.check_component(state_controller.cc.get_component_by_id(event.comp_id))
             state_controller.states[event.comp_id].set_text([
@@ -709,19 +713,20 @@ def refresh(_loop, state_controller, _data=None):
                 ('darkred', "CRASHED")
             ])
         elif isinstance(event, events.DisconnectEvent):
-            logger.debug("Got disconnect event - comp %s" % event.host_name)
             logger.warning("Lost connection to host '%s'" % event.host_name)
             state_controller.fetch_host_items()
         elif isinstance(event, events.ReconnectEvent):
-            logger.debug("Got reconnect event - comp %s" % event.host_name)
-            logger.warning("Connection to host '%s' established" % event.host_name)
+            logger.info("Reconnected to host '%s'" % event.host_name)
+            state_controller.fetch_host_items()
+        elif isinstance(event, events.SlaveDisconnectEvent):
+            logger.warn("Connection to slave on '%s' lost" % event.host_name)
             state_controller.fetch_host_items()
         elif isinstance(event, events.StartReportEvent):
-            logger.debug("Got start report event!")
             state_controller.start_report_popup(event)
         elif isinstance(event, events.ServerDisconnectEvent):
-            logger.critical("Got server disconnect event!")
+            logger.critical("Server disconnected!")
             state_controller.handle_shutdown(None, False)
+            # TODO: Show custom popup with option to quit or cancel
         else:
             logger.debug("Got unrecognized event of type: %s" % type(event))
 
