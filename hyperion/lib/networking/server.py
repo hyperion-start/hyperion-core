@@ -423,10 +423,12 @@ class SlaveManagementServer(BaseServer):
                         pass
             else:
                 # Handle uncontrolled connection loss
+                hostname = socket.gethostbyaddr(connection.getpeername()[0])[0]
+
                 self.send_queues.pop(connection)
                 self.sel.unregister(connection)
-                self.logger.error("Connection to client %s was lost!" % connection.getpeername()[0])
-                self.notify_queue.put(events.DisconnectEvent(connection.getpeername()[0]))
+                self.logger.error("Connection to client %s was lost!" % hostname)
+                self.notify_queue.put(events.SlaveDisconnectEvent(hostname, connection.getpeername()[1]))
                 connection.close()
         except socket.error as e:
             self.logger.error("Something went wrong while receiving a message. Check debug for more information")
