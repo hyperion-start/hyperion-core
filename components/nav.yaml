@@ -5,6 +5,6 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - roscore@localhost
+  - roscore@Wintermute
 
 host: hyperion-vm

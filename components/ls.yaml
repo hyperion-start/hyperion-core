@@ -5,4 +5,4 @@ cmd:
   - check: pgrep roscore > /dev/null
   - stop: echo "shutdown"
 
-host: localhost
+host: Wintermute

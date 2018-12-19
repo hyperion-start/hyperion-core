@@ -6,9 +6,9 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - roscore@localhost
+  - roscore@Wintermute
   - nav@hyperion-vm
 
 wait: 5
 
-host: localhost
+host: Wintermute

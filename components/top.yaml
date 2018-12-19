@@ -6,6 +6,6 @@ cmd:
   - stop: echo "shutdown"
 
 depends:
-  - xeyes@localhost
+  - xeyes@Wintermute
 
 host: hyperion-vm
