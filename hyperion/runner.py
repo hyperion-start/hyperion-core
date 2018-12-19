@@ -6,7 +6,7 @@ import yaml
 import time
 from signal import *
 from lib.util.setupParser import Loader
-from manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log, set_component_ids
+from manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log, conf_preprocessing
 from lib.util.depTree import dep_resolve
 from lib.networking import clientInterface, server
 from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, FORMAT
@@ -367,7 +367,7 @@ def main():
     elif args.cmd == 'validate':
         logger.debug('Launching validation mode')
         cc = ControlCenter(args.config)
-        set_component_ids(cc.config)
+        conf_preprocessing(cc.config, cc.custom_env_path)
 
         if args.visual:
             try:

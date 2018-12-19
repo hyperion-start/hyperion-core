@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 from libtmux import Server, Window
 from yaml import load, dump
+import re
 import logging
 import os
 import sys
@@ -119,15 +120,54 @@ def dump_config(conf):
         dump(conf, outfile, default_flow_style=False)
 
 
-def set_component_ids(conf):
-    """Set all component ids to comp_name@host
+def conf_preprocessing(conf, custom_env=None):
+    """Preprocess configuration file.
 
-    :param conf: Config to alter
+    - Set all component ids to comp_name@host
+    - Interpret environment variables in hostnames
+
+    :param conf: Config to preprocess
+    :type conf: dict
+    :param custom_env: Path to custom environment to source before trying to evaluate env variables
+    :type custom_env: str
     :return: None
     """
+    if custom_env:
+        pipe = Popen('/bin/bash -c ". %s > /dev/null; env"' % custom_env, stdout=PIPE, shell=True)
+        data = pipe.communicate()[0]
+
+        env = dict((line.split("=", 1) for line in data.splitlines()))
+        os.environ.update(env)
+
+    pattern = '\\${(.*)}'
+    pattern2 = '.*@\\${(.*)}'
+    logging.debug("Pattern %s" % pattern)
+
     for group in conf['groups']:
         for comp in group['components']:
+
+            host = comp['host']
+            match = re.compile(pattern).match(host)
+
+            if match and len(match.groups()) > 0:
+                hn = os.environ.get(match.groups()[0])
+                if not hn:
+                    hn = match.groups()[0]
+                comp['host'] = hn
+
             comp['id'] = "%s@%s" % (comp['name'], comp['host'])
+
+            if 'depends' in comp:
+                dep_index = 0
+                for dep in comp['depends']:
+                    match = re.compile(pattern2).match(dep)
+
+                    if match and len(match.groups()) > 0:
+                        host_var = os.environ.get(match.groups()[0])
+                        if not host_var:
+                            host_var = match.groups()[0]
+                        comp['depends'][dep_index] = re.sub(pattern, host_var, dep)
+                    dep_index += 1
 
 
 ####################
@@ -755,7 +795,7 @@ class ControlCenter(AbstractController):
         else:
             if not setup_ssh_config():
                 self.cleanup(True, 1)
-            set_component_ids(self.config)
+            conf_preprocessing(self.config, self.custom_env_path)
 
             for group in self.config['groups']:
                 for comp in group['components']:
