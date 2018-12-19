@@ -21,6 +21,7 @@ setup(
     install_requires=['libtmux',
                       'pyyaml',
                       'psutil',
+                      'enum',
                       'selectors2;python_version<"3.4"'],
     extras_require={
         'GRAPH': ['graphviz'],
