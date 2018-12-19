@@ -411,8 +411,9 @@ class AbstractController(object):
         :return: State of the component
         :rtype: config.CheckState
         """
+        on_localhost = self.run_on_localhost(comp)
         try:
-            if self.run_on_localhost(comp):
+            if on_localhost:
                 ret = self._check_local_component(comp)
 
                 pid = ret[0]
@@ -428,7 +429,10 @@ class AbstractController(object):
             pass
 
         # Create queue event for external notification and return for inner purpose
-        self.broadcast_event(events.CheckEvent(comp['id'], ret_val))
+        # But only broadcast if it was a local check or no answer was received, because remote events will be
+        # forwarded automatically
+        if on_localhost or ret_val == config.CheckState.UNREACHABLE:
+            self.broadcast_event(events.CheckEvent(comp['id'], ret_val))
         return ret_val
 
     def _check_local_component(self, comp):
