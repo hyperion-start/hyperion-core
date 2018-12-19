@@ -555,14 +555,14 @@ class SlaveManagementServer(BaseServer):
 
             self.logger.debug("Waiting on '%s' response for %s seconds" % (hostname, component_wait))
             while end_t > time.time():
-                if self.check_buffer[comp_id]:
+                if self.check_buffer[comp_id] is not None:
                     break
                 time.sleep(.5)
         else:
             self.logger.error("Slave on '%s' is not connected!" % hostname)
 
         ret = self.check_buffer[comp_id]
-        if ret:
+        if ret is not None:
             self.logger.debug("Slave answered check request with %s" % config.STATE_DESCRIPTION.get(ret))
             return ret
         else:
