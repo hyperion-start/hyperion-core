@@ -105,7 +105,7 @@ class Server(BaseServer):
         self.event_queue = queue.Queue()
         self.cc.add_subscriber(self.event_queue)
 
-        server_address = ('', port)
+        server_address = ('localhost', port)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setblocking(False)
         try:
@@ -187,7 +187,7 @@ class Server(BaseServer):
                 # Handle uncontrolled connection loss
                 self.send_queues.pop(connection)
                 self.sel.unregister(connection)
-                self.logger.debug("Connection to client %s was lost!" % connection.getpeername()[0])
+                self.logger.debug("Connection to client on %s was lost!" % connection.getpeername()[1])
                 connection.close()
         except socket.error as e:
             self.logger.error("Something went wrong while receiving a message. Check debug for more information")
@@ -295,12 +295,14 @@ class SlaveManagementServer(BaseServer):
         self.notify_queue = queue.Queue()
         self.function_mapping = {
             'queue_event': self._forward_event,
+            'auth': None,
             'unsubscribe': None
         }
         self.check_buffer = {}
         self.slave_log_handlers = {}
+        self.port_mapping = {}
 
-        server_address = ('', 0)
+        server_address = ('localhost', 0)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setblocking(False)
         try:
@@ -395,6 +397,11 @@ class SlaveManagementServer(BaseServer):
             connection.close()
             return
 
+        if action == 'auth':
+            hostname = args[0]
+            self.port_mapping[connection] = hostname
+            return
+
         try:
             func(*args)
         except TypeError:
@@ -423,7 +430,7 @@ class SlaveManagementServer(BaseServer):
                         pass
             else:
                 # Handle uncontrolled connection loss
-                hostname = socket.gethostbyaddr(connection.getpeername()[0])[0]
+                hostname = self.port_mapping.get(connection)
 
                 self.send_queues.pop(connection)
                 self.sel.unregister(connection)
@@ -453,13 +460,13 @@ class SlaveManagementServer(BaseServer):
         """
         hn = socket.gethostbyname('%s' % hostname)
 
-        for host in self.send_queues:
-            if hn == host.getpeername()[0]:
+        for conn in self.send_queues:
+            if hostname == self.port_mapping.get(conn):
                 self.logger.debug("Socket to %s already exists! Checking if it is still connected")
                 try:
-                    select.select([host], [], [host], 1)
+                    select.select([conn], [], [conn], 1)
                     self.logger.debug("Connection still up")
-                    self._forward_event(events.SlaveReconnectEvent(hostname, host.getpeername()[1]))
+                    self._forward_event(events.SlaveReconnectEvent(hostname, conn.getpeername()[1]))
                     return True
                 except socket.error:
                     self.logger.error("Existing connection to %s died. Trying to reconnect...")
@@ -478,10 +485,11 @@ class SlaveManagementServer(BaseServer):
         self.logger.info("Waiting for slave on '%s' (%s) to connect..." % (hn, hostname))
         end_t = time.time() + 4
         while time.time() < end_t:
-            for host in self.send_queues:
-                hn_in = host.getpeername()[0]
-                self.logger.debug("'%s' is connected" % hn_in)
-                if hn == hn_in:
+            for conn in self.send_queues:
+                con_host = self.port_mapping.get(conn)
+                if con_host:
+                    self.logger.debug("'%s' is connected" % con_host)
+                if hostname == con_host:
                     self.logger.info("Connection successfully established")
                     return True
             time.sleep(.5)
@@ -494,13 +502,11 @@ class SlaveManagementServer(BaseServer):
         payload = [comp_id]
 
         connection_queue = None
-        hn = socket.gethostbyname(hostname)
 
         message = actionSerializer.serialize_request(action, payload)
 
         for connection in self.send_queues:
-            self.logger.debug("Send queue %s == %s ?" % (connection.getpeername()[0], hn))
-            if connection.getpeername()[0] == hn:
+            if self.port_mapping.get(connection) == hostname:
                 connection_queue = self.send_queues.get(connection)
                 break
 
@@ -514,12 +520,11 @@ class SlaveManagementServer(BaseServer):
         payload = [comp_id]
 
         connection_queue = None
-        hn = socket.gethostbyname(hostname)
 
         message = actionSerializer.serialize_request(action, payload)
 
         for connection in self.send_queues:
-            if connection.getpeername()[0] == hn:
+            if self.port_mapping.get(connection) == hostname:
                 connection_queue = self.send_queues.get(connection)
                 break
 
@@ -534,12 +539,11 @@ class SlaveManagementServer(BaseServer):
         payload = [comp_id]
 
         connection_queue = None
-        hn = socket.gethostbyname(hostname)
 
         message = actionSerializer.serialize_request(action, payload)
 
         for connection in self.send_queues:
-            if connection.getpeername()[0] == hn:
+            if self.port_mapping.get(connection) == hostname:
                 connection_queue = self.send_queues.get(connection)
                 break
 

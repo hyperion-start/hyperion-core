@@ -9,7 +9,7 @@ import threading
 import hyperion.lib.util.config as config
 import hyperion.lib.util.actionSerializer as actionSerializer
 import hyperion.lib.util.exception as exceptions
-from hyperion.manager import AbstractController
+from hyperion.manager import AbstractController, setup_ssh_config
 import hyperion.lib.util.events as events
 from signal import *
 from subprocess import Popen, PIPE
@@ -42,7 +42,7 @@ def recvall(connection, n):
     return data
 
 
-class BaseClient:
+class BaseClient(object):
     """Base class for socket clients."""
     def __init__(self, host, port):
         self.host = host
@@ -67,6 +67,87 @@ class BaseClient:
     def _loop(self):
         raise NotImplementedError
 
+    def is_localhost(self, hostname):
+        """Check if 'hostname' resolves to localhost.
+
+        :param hostname: Name of host to check
+        :type hostname: str
+        :return: Whether 'host' resolves to localhost or not
+        :rtype: bool
+        """
+
+        if hostname == 'localhost':
+            hostname = self.host
+
+        try:
+            hn_out = socket.gethostbyname('%s' % hostname)
+            if hn_out == '127.0.0.1' or hn_out == '127.0.1.1' or hn_out == '::1':
+                self.logger.debug("Host '%s' is localhost" % hostname)
+                return True
+            else:
+                self.logger.debug("Host '%s' is not localhost" % hostname)
+                return False
+        except socket.gaierror as err:
+            self.logger.debug("%s gaierror: %s" % (hostname, err))
+            raise exceptions.HostUnknownException("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
+
+    def run_on_localhost(self, comp):
+        """Check if component 'comp' is run on localhost or not.
+
+        :param comp: Component to check
+        :type comp: dict
+        :return: Whether component is run on localhost or not
+        :rtype: bool
+        """
+        try:
+            return self.is_localhost(comp['host'])
+        except exceptions.HostUnknownException as ex:
+            raise ex
+
+    def forward_over_ssh(self):
+        """Forwards a random local free port to the remote host port via a ssh connection.
+
+        Determines a free port by binding with socket, the socket is then closed and the used port is passed to a
+        background ssh port forward command, that will fail if the forwarding did not succeed. The ssh forward command
+        is based on the approach in https://gist.github.com/scy/6781836:
+
+
+        `The magic here is -f combined with sleep 10, which basically says "wait until the connection is there and the
+        ports are open before you go into the background, but close yourself after 10 seconds". And here comes the fun
+        part: SSH won't terminate as long as forwarded ports are still in use. So what it really means is that
+        subsequent scripts have 10 seconds to open the port and then can keep it open as long as they want to.`
+
+
+        Use inside a while loop checking the output value to ensure the forward worked!
+
+        :return: The local port that is forwarded or False, if it did not succeed
+        :rtype: int or bool
+        """
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(('', 0))
+        addr = s.getsockname()
+        local_port = addr[1]
+        s.close()
+
+        # Forward port over SSH
+        cmd = 'ssh -f -F %s -L %s:localhost:%s -o ExitOnForwardFailure=yes %s sleep 10' % (
+            config.CUSTOM_SSH_CONFIG_PATH,
+            local_port,
+            self.port,
+            self.host
+        )
+        tunnel_process = Popen('%s' % cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+
+        while tunnel_process.poll() is None:
+            time.sleep(.5)
+
+        if tunnel_process.returncode == 0:
+            self.logger.debug("Port forwarding succeeded - %s:localhost:%s %s" % (self.port, local_port, self.host))
+            return local_port
+        else:
+            self.logger.debug("SSH Forwarding failed")
+            return False
+
 
 class RemoteSlaveInterface(BaseClient):
     def __init__(self, host, port, cc):
@@ -83,12 +164,28 @@ class RemoteSlaveInterface(BaseClient):
         self.cc = cc
 
         server_address = (host, port)
-        self.logger.debug('connecting to {} port {}'.format(*server_address))
         self.sock = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.event_queue = queue.Queue()
         self.cc.add_subscriber(self.event_queue)
 
+        if not self.is_localhost(host):
+            if not setup_ssh_config():
+                self._quit()
+
+            local_port = None
+            tries = 0
+            while not local_port:
+                local_port = self.forward_over_ssh()
+                if tries == 5:
+                    self.logger.critical("SSH connection to server can not be established - Quitting. "
+                                         "Are ssh keys set up?")
+                    self._quit()
+                    sys.exit(1)
+                tries += 1
+            server_address = ('', local_port)
+
         try:
+            self.logger.debug('connecting to {} port {}'.format(*server_address))
             sock.connect(server_address)
         except socket.error:
             self.logger.critical("Master session does not seem to be running. Quitting remote client")
@@ -110,9 +207,16 @@ class RemoteSlaveInterface(BaseClient):
             'quit': self._quit,
             'suspend': self._suspend
         }
+        self._send_auth()
         self._loop()
         
         self.logger.debug("Shutdown complete!")
+
+    def _send_auth(self):
+        action = 'auth'
+        payload = [socket.gethostname()]
+        message = actionSerializer.serialize_request(action, payload)
+        self.send_queue.put(message)
 
     def _suspend(self):
         self.keep_running = False
@@ -228,6 +332,16 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         server_address = (host, port)
         self.logger.debug('connecting to {} port {}'.format(*server_address))
         self.sock = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        if not self.is_localhost(host):
+            if not setup_ssh_config():
+                self._quit()
+
+            local_port = None
+            while not local_port:
+                local_port = self.forward_over_ssh()
+            server_address = ('', local_port)
+
         try:
             sock.connect(server_address)
         except socket.error:
@@ -476,40 +590,3 @@ class RemoteControllerInterface(AbstractController, BaseClient):
 
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
-
-    def is_localhost(self, hostname):
-        """Check if 'hostname' resolves to localhost.
-
-        :param hostname: Name of host to check
-        :type hostname: str
-        :return: Whether 'host' resolves to localhost or not
-        :rtype: bool
-        """
-
-        if hostname == 'localhost':
-            hostname = self.host
-
-        try:
-            hn_out = socket.gethostbyname('%s' % hostname)
-            if hn_out == '127.0.0.1' or hn_out == '127.0.1.1' or hn_out == '::1':
-                self.logger.debug("Host '%s' is localhost" % hostname)
-                return True
-            else:
-                self.logger.debug("Host '%s' is not localhost" % hostname)
-                return False
-        except socket.gaierror as err:
-            self.logger.debug("%s gaierror: %s" % (hostname, err))
-            raise exceptions.HostUnknownException("Host '%s' is unknown! Update your /etc/hosts file!" % hostname)
-
-    def run_on_localhost(self, comp):
-        """Check if component 'comp' is run on localhost or not.
-
-        :param comp: Component to check
-        :type comp: dict
-        :return: Whether component is run on localhost or not
-        :rtype: bool
-        """
-        try:
-            return self.is_localhost(comp['host'])
-        except exceptions.HostUnknownException as ex:
-            raise ex
