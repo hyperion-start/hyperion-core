@@ -130,6 +130,47 @@ def set_component_ids(conf):
             comp['id'] = "%s@%s" % (comp['name'], comp['host'])
 
 
+####################
+# SSH Stuff
+####################
+def setup_ssh_config():
+    """Creates an ssh configuration that is saved to `CUSTOM_SSH_CONFIG_PATH`.
+
+    The user config in `SSH_CONFIG_PATH` is copied to `CUSTOM_SSH_CONFIG_PATH` and then appends the lines enabling
+    master connections for all hosts to it. This is done in order to use the master connection feature without
+    tempering with the users standard configuration.
+
+    :return: Whether copying was successful or not
+    :rtype: bool
+    """
+    logger = logging.getLogger(__name__)
+    try:
+        logger.debug("Trying to copy ssh config from %s to %s" % (config.SSH_CONFIG_PATH,
+                                                                  config.CUSTOM_SSH_CONFIG_PATH))
+        ensure_dir(config.CUSTOM_SSH_CONFIG_PATH)
+        ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH)
+        shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
+    except IOError:
+        logger.critical("Could not copy ssh config! Make sure you have a config in your users .ssh folder!")
+        return False
+
+    try:
+        conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
+        conf.write(
+            "\n"
+            "Host *\n"
+            "    ControlMaster yes\n"
+            "    ControlPath ~/.ssh/controlmasters/%C\n"
+            "    ServerAliveInterval 10\n"
+            "    PasswordAuthentication no"
+        )
+    except IOError:
+        logger.error("Could not append to custom ssh config!")
+        return False
+
+    return True
+
+
 class AbstractController(object):
     """Abstract controller class that defines basic controller variables and methods."""
 
@@ -599,41 +640,6 @@ class AbstractController(object):
         return False
 
     ####################
-    # SSH Stuff
-    ####################
-    def _setup_ssh_config(self):
-        """Creates an ssh configuration that is saved to `CUSTOM_SSH_CONFIG_PATH`.
-
-        The user config in `SSH_CONFIG_PATH` is copied to `CUSTOM_SSH_CONFIG_PATH` and then appends the lines enabling
-        master connections for all hosts to it. This is done in order to use the master connection feature without
-        tempering with the users standard configuration.
-
-        :return: None
-        """
-        try:
-            self.logger.debug("Trying to copy ssh config from %s to %s" % (config.SSH_CONFIG_PATH,
-                                                                           config.CUSTOM_SSH_CONFIG_PATH))
-            ensure_dir(config.CUSTOM_SSH_CONFIG_PATH)
-            ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH)
-            shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
-        except IOError:
-            self.logger.critical("Could not copy ssh config! Make sure you have a config in your users .ssh folder!")
-            self.cleanup(True, 1)
-
-        try:
-            conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
-            conf.write(
-                "\n"
-                "Host *\n"
-                "    ControlMaster yes\n"
-                "    ControlPath ~/.ssh/controlmasters/%C\n"
-                "    ServerAliveInterval 10\n"
-                "    PasswordAuthentication no"
-            )
-        except IOError:
-            self.logger.error("Could not append to custom ssh config!")
-
-    ####################
     # Do override in subclass
     ####################
     def cleanup(self, full, exit_status):
@@ -747,7 +753,8 @@ class ControlCenter(AbstractController):
             self.logger.error(" Config not loaded yet!")
 
         else:
-            self._setup_ssh_config()
+            if not setup_ssh_config():
+                self.cleanup(True, 1)
             set_component_ids(self.config)
 
             for group in self.config['groups']:
@@ -759,9 +766,6 @@ class ControlCenter(AbstractController):
                                     self.logger.info("Master connection to %s established!" % comp['host'])
                     except exceptions.HostUnknownException as ex:
                         self.logger.error(ex.message)
-
-            #if self.dev_mode:
-            dump_config(self.config)
 
             try:
                 self.set_dependencies()
