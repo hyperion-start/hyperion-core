@@ -798,12 +798,11 @@ class ControlCenter(AbstractController):
         window = self._find_window('ssh-%s' % hostname)
         config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config['name'])
 
-        if window:
-            if self.slave_server:
-                if self.slave_server.start_slave(hostname, config_path, self.config['name'], window):
-                    self.host_states[hostname] = config.HostState.CONNECTED
-                else:
-                    self.host_states[hostname] = config.HostState.SSH_ONLY
+        if window and self.host_list[hostname] and self.slave_server:
+            if self.slave_server.start_slave(hostname, config_path, self.config['name'], window):
+                self.host_states[hostname] = config.HostState.CONNECTED
+            else:
+                self.host_states[hostname] = config.HostState.SSH_ONLY
         else:
             self.logger.error("No connection to remote '%s' - can not start slave manager" % hostname)
 
@@ -1401,6 +1400,10 @@ class ControlCenter(AbstractController):
             self.logger.debug("ssh process is long gone already. Connection failed")
             self.logger.error("SSH connection was not successful. Make sure that an ssh connection is allowed, "
                               "you have set up ssh-keys and the identification certificate is up to date")
+            self.host_list_lock.acquire()
+            self.host_list[hostname] = None
+            self.host_states[hostname] = config.HostState.DISCONNECTED
+            self.host_list_lock.release()
             return False
 
         # Add host to known list with process to poll from
@@ -1421,6 +1424,10 @@ class ControlCenter(AbstractController):
         else:
             self.logger.error("SSH connection was not successful. Make sure that an ssh connection is allowed, "
                               "you have set up ssh-keys and the identification certificate is up to date")
+            self.host_list_lock.acquire()
+            self.host_list[hostname] = None
+            self.host_states[hostname] = config.HostState.DISCONNECTED
+            self.host_list_lock.release()
             return False
 
     def reconnect_with_host(self, hostname):
