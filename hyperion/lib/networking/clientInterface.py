@@ -506,6 +506,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                         self.logger.debug("Sending next message in queue to Server")
                         next_msg = self.send_queue.get()
                         self.sock.sendall(next_msg)
+            time.sleep(.4)
 
     def add_subscriber(self, subscriber_queue):
         """Set reference to ui event queue.
