@@ -1020,7 +1020,7 @@ class ControlCenter(AbstractController):
                     self.start_component_without_deps(node.component)
 
                     # Wait component time for startup
-                    sleep(get_component_wait(node.component))
+                    end_t = time() + get_component_wait(node.component)
 
                     tries = 0
                     while True:
@@ -1036,7 +1036,8 @@ class ControlCenter(AbstractController):
                             failed_comps[node.comp_id] = state
                             failed_comps[comp['id']] = config.CheckState.DEP_FAILED
                             break
-                        tries = tries + 1
+                        if time() > end_t:
+                            tries = tries + 1
                         sleep(.5)
 
         state = self.check_component(node.component)
@@ -1053,8 +1054,22 @@ class ControlCenter(AbstractController):
             else:
                 self.logger.info("All dependencies satisfied, starting '%s'" % (comp['id']))
                 self.start_component_without_deps(comp)
-                sleep(get_component_wait(comp))
-                ret = self.check_component(comp)
+
+                end_t = time() + get_component_wait(comp)
+
+                tries = 0
+                while True:
+                    ret = self.check_component(comp)
+
+                    if (ret is config.CheckState.RUNNING or
+                            ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
+                        break
+                    if tries > 3:
+                        break
+                    if time() > end_t:
+                        tries = tries + 1
+                    sleep(.5)
+
             if (ret is not config.CheckState.RUNNING and
                     ret is not config.CheckState.STOPPED_BUT_SUCCESSFUL):
                 self.logger.warn("All dependencies satisfied, but start failed: %s!" % config.STATE_DESCRIPTION.get(ret))
