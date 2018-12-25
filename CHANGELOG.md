@@ -30,6 +30,16 @@ the sake of using variables defined in the custom environment file (if any is gi
 the env variables are analyzed.
 - Only broadcast local check events or if a slave did not answer (in time) to prevent sending a check event twice 
 (received check events are forwarded automatically)
+- Major changes in generated graph layout:
+    - Rankdir is now from R to L, hostnames in node labels appear after a
+    linebreak, are slightly smaller and colored green for better overview.
+    - Node style changed to squares.
+    - Edge style changed from splines to polyline (less ambiguous overlap).
+    - Rank is globally managed, not cluster specific.
+- Replaced enum dependency with enum34
+- On component (depedency) start don't always wait the whole component wait time. Instead, checks are performed 
+periodically until successful, if the component wait time is over, each check is counted as try and on 4 unsuccessful 
+tries the process is interpreted as failed start.
 
 ### Fixed
 - Stability of execute mode (all commands now work again for remote or local components)
@@ -47,6 +57,9 @@ That would cause an incorrect status of SSH_ONLY when the slave connection faile
 be.
 - SlaveManager check_buffer content validation: changed to None check instead of single if because a value of 0 as
 answer (currently RUNNING) would be interpreted as no answer and result in an UNREACHABLE event.
+- Lowered CPU usage of `clientInterface` by adding sleep to the messaging loop.
+- If custom environment was given as relative path, absolute path is joined and saved (necessary to source before 
+running checks in subprocess)
 
 ## 0.0.1 - 12.12.2018
 First alpha release
