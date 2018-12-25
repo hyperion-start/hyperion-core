@@ -84,8 +84,8 @@ def draw_graph(control_center):
     :return: None
     """
 
-    deps = Digraph('Deps', strict=True)
-    deps.graph_attr.update(rankdir='BT')
+    deps = Digraph('Deps', strict=True, graph_attr={'splines': 'polyline', 'outputorder': 'edgesfirst', 'newrank': 'true'})
+    deps.graph_attr.update(rankdir='RL')
 
     subgraphs = {}
 
@@ -95,32 +95,78 @@ def draw_graph(control_center):
         for current in node.depends_on:
 
             if not current.component['host'] in subgraphs:
+                logging.debug("Creating host subgraph for %s" % current.component['host'])
                 subgraphs[current.component['host']] = Digraph(
                     name='cluster_%s' % current.component['host'],
-                    graph_attr={'style': 'filled', 'color': 'lightgrey', 'label': current.component['host']},
+                    graph_attr={'style': 'filled', 'color': 'lightgrey',
+                                'label': current.component['host']},
                     node_attr={'style': 'filled', 'color': 'white'}
                 )
 
-            subgraphs.get(current.component['host']).node(current.comp_id, _attributes={'style': 'filled', 'color': 'white'})
+            subgraphs.get(current.component['host']).node(current.comp_id, label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(current.comp_id.split('@')),
+                                                          _attributes={'style': 'filled',
+                                                                       'color': 'white',
+                                                                       'shape': 'box'})
 
             res = []
             unres = []
             dep_resolve(current, res, unres)
             for node in res:
+
+                if not node.component['host'] in subgraphs:
+                    logging.debug("Creating host subgraph for %s" % node.component['host'])
+                    subgraphs[node.component['host']] = Digraph(
+                        name='cluster_%s' % node.component['host'],
+                        graph_attr={'style': 'filled', 'color': 'lightgrey',
+                                    'label': node.component['host']},
+                        node_attr={'style': 'filled', 'color': 'white'}
+                    )
+
+                subgraphs.get(node.component['host']).node(node.comp_id,
+                                                           label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(node.comp_id.split('@')),
+                                                           _attributes={'style': 'filled',
+                                                                        'color': 'white',
+                                                                        'shape': 'box'})
+
                 if 'depends' in node.component:
                     for dep in node.component['depends']:
 
+                        if not dep.split('@')[1] in subgraphs:
+                            logging.debug("Creating host subgraph for %s" % dep.split('@')[1])
+                            subgraphs[dep.split('@')[1]] = Digraph(
+                                name='cluster_%s' % dep.split('@')[1],
+                                graph_attr={'style': 'filled', 'color': 'lightgrey',
+                                            'label': dep.split('@')[1]},
+                                node_attr={'style': 'filled', 'color': 'white'}
+                            )
+
+                        subgraphs.get(dep.split('@')[1]).node(dep,
+                                                              label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' %
+                                                                    tuple(dep.split('@')),
+                                                              _attributes={'style': 'filled',
+                                                                           'color': 'white',
+                                                                           'shape': 'box'})
+
                         parent = deps
+
                         if node.component['host'] == dep.split('@')[1]:
                             parent = subgraphs.get(node.component['host'])
 
-                        logging.debug("%s depends on %s" % (node.comp_id, dep))
-                        logging.debug("Host: %s" % node.component['host'])
+                            logging.debug("%s depends on %s" % (node.comp_id, dep))
+                            logging.debug("Host: %s" % node.component['host'])
 
                         if dep not in control_center.nodes:
-                            parent.node(dep, color='red')
+                            parent = subgraphs.get(dep.split('@')[1])
+                            parent.node(dep,
+                                        label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(dep.split('@')),
+                                        color='red',
+                                        _attributes={'style': 'filled',
+                                                     'color': 'white',
+                                                     'shape': 'box'})
                             parent.edge(node.comp_id, dep, 'missing', color='red')
+
                         elif node.comp_id is not 'master_node':
+                            logging.debug("Adding edge in %s" % parent.name)
                             parent.edge(node.comp_id, dep)
 
     except CircularReferenceException as ex:
