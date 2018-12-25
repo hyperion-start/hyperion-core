@@ -258,7 +258,7 @@ class AbstractController(object):
                 self.custom_env_path = env
             elif os.path.isfile(os.path.join(os.path.dirname(filename), env)):
                 self.logger.debug("Custom env given as relative path! Saving to config")
-                self.custom_env_path = os.path.join(os.path.dirname(filename), env)
+                self.custom_env_path = os.path.abspath(os.path.join(os.path.dirname(filename), env))
             else:
                 self.logger.critical("Env file %s could not be found!" % env)
                 raise exceptions.EnvNotFoundException("Env file %s could not be found!" % env)
