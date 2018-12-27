@@ -400,7 +400,7 @@ class AbstractController(object):
     ###################
     # Check
     ###################
-    def check_component(self, comp):
+    def check_component(self, comp, broadcast=True):
         """Runs component check for `comp` and returns status.
 
         If `comp` is run locally the call is redirected to ``check_local_component``, if `comp` is run on a remote
@@ -408,6 +408,8 @@ class AbstractController(object):
 
         :param comp: Component to check
         :type comp: dict
+        :param broadcast: Whether to broadcast the result to receivers or not
+        :type broadcast: bool
         :return: State of the component
         :rtype: config.CheckState
         """
@@ -431,7 +433,7 @@ class AbstractController(object):
         # Create queue event for external notification and return for inner purpose
         # But only broadcast if it was a local check or no answer was received, because remote events will be
         # forwarded automatically
-        if on_localhost or ret_val == config.CheckState.UNREACHABLE:
+        if (on_localhost or ret_val == config.CheckState.UNREACHABLE) and broadcast:
             self.broadcast_event(events.CheckEvent(comp['id'], ret_val))
         return ret_val
 
@@ -1009,12 +1011,13 @@ class ControlCenter(AbstractController):
         for node in res:
             if node.comp_id != comp['id']:
                 self.logger.debug("Checking and starting %s" % node.comp_id)
-                state = self.check_component(node.component)
+                state = self.check_component(node.component, False)
 
                 if (state is config.CheckState.STOPPED_BUT_SUCCESSFUL or
                         state is config.CheckState.STARTED_BY_HAND or
                         state is config.CheckState.RUNNING):
                     self.logger.debug("Component '%s' is already running, skipping to next in line" % comp['id'])
+                    self.broadcast_event(events.CheckEvent(node.comp_id, state))
                 else:
                     self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_id, comp['id']))
                     self.start_component_without_deps(node.component)
@@ -1026,7 +1029,7 @@ class ControlCenter(AbstractController):
                     while True:
                         self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_id,
                                                                                      config.STATE_DESCRIPTION.get(state)))
-                        state = self.check_component(node.component)
+                        state = self.check_component(node.component, False)
                         if (state is config.CheckState.RUNNING or
                                 state is config.CheckState.STOPPED_BUT_SUCCESSFUL):
                             self.logger.debug("Dep '%s' success" % node.comp_id)
@@ -1039,16 +1042,19 @@ class ControlCenter(AbstractController):
                         if time() > end_t:
                             tries = tries + 1
                         sleep(.5)
+                    self.broadcast_event(events.CheckEvent(node.comp_id, state))
 
-        state = self.check_component(node.component)
+        state = self.check_component(node.component, False)
         if (state is config.CheckState.STARTED_BY_HAND or
                 state is config.CheckState.RUNNING):
             self.logger.warn("Component %s is already running. Skipping start" % comp['id'])
+            self.broadcast_event(events.CheckEvent(comp['id'], state))
             return config.StartState.ALREADY_RUNNING
         else:
             if len(failed_comps) > 0:
                 self.logger.warn("At least one dependency failed and the component is not running. Aborting start")
                 failed_comps[comp['id']] = config.CheckState.DEP_FAILED
+                self.broadcast_event(events.CheckEvent(comp['id'], state))
                 self.broadcast_event(events.StartReportEvent(comp['id'], failed_comps))
                 return config.StartState.FAILED
             else:
@@ -1059,7 +1065,7 @@ class ControlCenter(AbstractController):
 
                 tries = 0
                 while True:
-                    ret = self.check_component(comp)
+                    ret = self.check_component(comp, False)
 
                     if (ret is config.CheckState.RUNNING or
                             ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
@@ -1069,6 +1075,8 @@ class ControlCenter(AbstractController):
                     if time() > end_t:
                         tries = tries + 1
                     sleep(.5)
+
+            self.broadcast_event(events.CheckEvent(comp['id'], ret))
 
             if (ret is not config.CheckState.RUNNING and
                     ret is not config.CheckState.STOPPED_BUT_SUCCESSFUL):
