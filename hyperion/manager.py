@@ -1137,23 +1137,25 @@ class ControlCenter(AbstractController):
                 if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
                     logger.debug("Dep %s already running" % comp.comp_id)
                 else:
-                    tries = 0
                     logger.debug("Starting dep %s" % comp.comp_id)
                     self.start_component_without_deps(comp.component)
                     # Component wait time for startup
-                    sleep(get_component_wait(comp.component))
+                    end_t = time() + get_component_wait(comp.component)
+
+                    tries = 0
                     while True:
                         sleep(.5)
                         ret = self.check_component(comp.component)
                         if (ret is config.CheckState.RUNNING or
                                 ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
-                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
+                        if tries > 3 or ret is config.CheckState.NOT_INSTALLED or ret is \
                                 config.CheckState.UNREACHABLE:
                             logger.debug("Component %s failed, adding it to failed list" % comp.comp_id)
                             failed_comps[comp.comp_id] = ret
                             break
-                        tries = tries + 1
+                        if time() > end_t:
+                            tries = tries + 1
             else:
                 ret = self.check_component(comp.component)
                 if ret is config.CheckState.STOPPED:
