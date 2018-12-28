@@ -875,6 +875,9 @@ class ControlCenter(AbstractController):
 
             # Add edges based on dependencies specified in the configuration
             if "depends" in node.component:
+                if 'noauto' in node.component:
+                    self.logger.warn('%s is a "noauto" component and has dependencies, this is considered bad practice'
+                                     % node.comp_id)
                 for dep in node.component['depends']:
                     if dep in self.nodes:
                         node.add_edge(self.nodes[dep])
@@ -1377,6 +1380,9 @@ class ControlCenter(AbstractController):
         dep_resolve(node, res, unres)
         res.remove(node)
 
+        it = list(res)
+        [res.remove(entry) if 'noauto' in entry.component else '' for entry in it]
+
         return res
 
     def get_start_all_list(self):
@@ -1391,6 +1397,9 @@ class ControlCenter(AbstractController):
         unres = []
         dep_resolve(node, res, unres)
         res.remove(node)
+
+        it = list(res)
+        [res.remove(entry) if 'noauto' in entry.component else '' for entry in it]
 
         return res
 
