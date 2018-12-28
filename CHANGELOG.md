@@ -15,6 +15,10 @@ communication thus resolving #32 and #28.
   mapped to the host from the message payload.
 - Possibility to use environment variables for host names in components (e.g `host: ${base-pc}` where base-pc can 
 evaluate to anything)
+- Broadcasting results of check events is now optional (true by default)
+- Adding a `noauto` key to a component config will prevent it from being started automatically by a `start_all` 
+procedure. This will also prevent it from being started as dependency of another component which can lead to severe 
+start procedure problems thus is it discouraged to depend on noauto components (Resolves #36).
 
 ### Changed
 - Slave session start moved from ssh window of the master server tmux session to remote host tmux session called 
@@ -40,6 +44,9 @@ the env variables are analyzed.
 - On component (depedency) start don't always wait the whole component wait time. Instead, checks are performed 
 periodically until successful, if the component wait time is over, each check is counted as try and on 4 unsuccessful 
 tries the process is interpreted as failed start.
+- Most component check results of checks performed during component startup (including dependencies) are not 
+broadcasted to ui clients. Only the last check of the component (thus not a intermediate but a meaningful result) will 
+be published (Resolves #35). 
 
 ### Fixed
 - Stability of execute mode (all commands now work again for remote or local components)
