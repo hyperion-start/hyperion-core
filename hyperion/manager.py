@@ -1133,9 +1133,10 @@ class ControlCenter(AbstractController):
 
             if not failed:
                 logger.debug("Checking %s" % comp.comp_id)
-                ret = self.check_component(comp.component)
+                ret = self.check_component(comp.component, False)
                 if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
                     logger.debug("Dep %s already running" % comp.comp_id)
+                    self.broadcast_event(events.CheckEvent(comp.comp_id, ret))
                 else:
                     logger.debug("Starting dep %s" % comp.comp_id)
                     self.start_component_without_deps(comp.component)
@@ -1145,7 +1146,7 @@ class ControlCenter(AbstractController):
                     tries = 0
                     while True:
                         sleep(.5)
-                        ret = self.check_component(comp.component)
+                        ret = self.check_component(comp.component, False)
                         if (ret is config.CheckState.RUNNING or
                                 ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
                             break
@@ -1156,11 +1157,13 @@ class ControlCenter(AbstractController):
                             break
                         if time() > end_t:
                             tries = tries + 1
+                    self.broadcast_event(events.CheckEvent(comp.comp_id, ret))
             else:
                 ret = self.check_component(comp.component)
                 if ret is config.CheckState.STOPPED:
                     self.broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
                     failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
+                self.broadcast_event(events.CheckEvent(comp.comp_id, ret))
         self.broadcast_event(events.StartReportEvent('All components', failed_comps))
 
     def stop_all(self):
