@@ -133,7 +133,7 @@ def conf_preprocessing(conf, custom_env=None):
     :return: None
     """
     if custom_env:
-        pipe = Popen('/bin/bash -c ". %s > /dev/null; env"' % custom_env, stdout=PIPE, shell=True)
+        pipe = Popen('. %s > /dev/null; env' % custom_env, stdout=PIPE, shell=True, executable='/bin/bash')
         data = pipe.communicate()[0]
 
         env = dict((line.split("=", 1) for line in data.splitlines()))
@@ -280,7 +280,14 @@ class AbstractController(object):
         if self.custom_env_path:
             shell_init = '. %s; ' % self.custom_env_path
 
-        p = Popen('%s%s' % (shell_init, comp['cmd'][1]['check']), shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        p = Popen(
+            '%s%s' % (shell_init, comp['cmd'][1]['check']),
+            shell=True,
+            stdin=PIPE,
+            stdout=PIPE,
+            stderr=PIPE,
+            executable='/bin/bash'
+        )
 
         while p.poll() is None:
             sleep(.5)
