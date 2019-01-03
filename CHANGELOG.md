@@ -19,6 +19,8 @@ evaluate to anything)
 - Adding a `noauto` key to a component config will prevent it from being started automatically by a `start_all` 
 procedure. This will also prevent it from being started as dependency of another component which can lead to severe 
 start procedure problems thus is it discouraged to depend on noauto components (Resolves #36).
+- Usage of optional `stop` commands for components (resolves #34). Note: the component window receives an interrupt, after which the
+given stop command is executed.
 
 ### Changed
 - Slave session start moved from ssh window of the master server tmux session to remote host tmux session called 
@@ -47,6 +49,8 @@ tries the process is interpreted as failed start.
 - Most component check results of checks performed during component startup (including dependencies) are not 
 broadcasted to ui clients. Only the last check of the component (thus not a intermediate but a meaningful result) will 
 be published (Resolves #35). 
+- Special order of component cmds in configurations is not required anymore since the function `get_component_cmd` takes
+ care of that now.
 
 ### Fixed
 - Stability of execute mode (all commands now work again for remote or local components)
