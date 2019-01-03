@@ -170,6 +170,27 @@ def conf_preprocessing(conf, custom_env=None):
                     dep_index += 1
 
 
+def get_component_cmd(component, cmd_type):
+    """Retrieve component cmd from config.
+    
+    :param component: Compnent configuration
+    :type component: dict
+    :param cmd_type: Type of the cmd. Valid types are 'start', 'check' and 'stop'
+    :type cmd_type: str
+    :return: Command as string or None
+    :rtype: str or None
+    """
+    if cmd_type is not 'start' and cmd_type is not 'check' and cmd_type is not 'stop':
+        logging.getLogger(__name__).error("Unrecognized cmd type '%s' was given" % cmd_type)
+        return
+
+    cmd = None
+    for ind, found in enumerate([True if cmd_type in cmd else "" for cmd in component['cmd']]):
+        if found:
+            cmd = component['cmd'][ind][cmd_type]
+    return cmd
+
+
 ####################
 # SSH Stuff
 ####################
@@ -280,8 +301,10 @@ class AbstractController(object):
         if self.custom_env_path:
             shell_init = '. %s; ' % self.custom_env_path
 
+        check = get_component_cmd(comp, 'check')
+
         p = Popen(
-            '%s%s' % (shell_init, comp['cmd'][1]['check']),
+            '%s%s' % (shell_init, check),
             shell=True,
             stdin=PIPE,
             stdout=PIPE,
@@ -399,7 +422,26 @@ class AbstractController(object):
             if window:
                 self.logger.debug("window '%s' found running" % comp['id'])
                 self.logger.debug("Shutting down window...")
+
+                stop = get_component_cmd(comp, 'stop')
+                if stop:
+                    self.logger.debug("Found custom stop command")
+                    if self._is_window_busy(window):
+                        window.cmd("send-keys", "", "C-c")
+                    window.cmd('send-keys', stop, "Enter")
+
+                    end_t = time() + 2
+                    wait = True
+                    while wait:
+                        if not self._is_window_busy(window):
+                            wait = False
+                        elif time() < end_t:
+                            wait = False
+                            self.logger.error("Stop command still running after 2 seconds... stop waiting for"
+                                              "termination")
+
                 self._kill_window(window)
+
                 self.logger.debug("... done!")
             else:
                 self.logger.warning("Component '%s' seems to already be stopped" % comp['id'])
@@ -455,7 +497,7 @@ class AbstractController(object):
         logger = self.logger
 
         logger.debug("Running component check for %s" % comp['id'])
-        check_available = len(comp['cmd']) > 1 and 'check' in comp['cmd'][1]
+        check_available = get_component_cmd(comp, 'check') is not None
         window = self._find_window(comp['id'])
 
         pid = 0
@@ -614,7 +656,9 @@ class AbstractController(object):
 
         self._wait_until_window_not_busy(window)
         self.logger.debug("Running start command for %s" % comp_id)
-        window.cmd("send-keys", comp['cmd'][0]['start'], "Enter")
+
+        start = get_component_cmd(comp, 'start')
+        window.cmd("send-keys", start, "Enter")
 
     def _find_window(self, window_name):
         """Return window by name (None if not found).
