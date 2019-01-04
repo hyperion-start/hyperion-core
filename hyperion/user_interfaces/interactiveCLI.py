@@ -119,9 +119,7 @@ class StateController(object):
         header_text = urwid.Text(u'%s' % cc.config['name'], align='center')
         header = urwid.Pile([urwid.Divider(), urwid.AttrMap(header_text, 'titlebar')])
 
-        for g in self.cc.config['groups']:
-            self.groups[g['name']] = g
-        self.groups['All'] = ({'name': 'All'})
+        self.load_groups_from_config()
 
         self.radio_button_log_group = []
         group_col = self.group_col = urwid.Columns([], 1)
@@ -156,7 +154,8 @@ class StateController(object):
                         urwid.Columns([
                             SimpleButton('Start', self.handle_start_all),
                             SimpleButton('Stop', self.handle_stop_all),
-                            SimpleButton('Check', self.handle_check_all)
+                            SimpleButton('Check', self.handle_check_all),
+                            SimpleButton('Reload Config', self.handle_reload_config)
                         ], 1)
                     ]), 'All Components'),
 
@@ -266,6 +265,11 @@ class StateController(object):
 
         self.shutdown_overlay = urwid.Overlay(shutdown_box, self.layout, align='center', width=('relative', 60),
                                           valign='middle', height=('relative', 60))
+
+    def load_groups_from_config(self):
+        for g in self.cc.config['groups']:
+            self.groups[g['name']] = g
+        self.groups['All'] = ({'name': 'All'})
 
     def setup_component_states(self):
         for grp in self.groups:
@@ -437,6 +441,13 @@ class StateController(object):
 
         if key == 'H' or key == 'h':
             main_loop.widget = urwid.Frame(self.help_overlay)
+
+    def handle_reload_config(self, button):
+        urwid.AttrMap(button, 'group_selected')
+        self.logger.info("Clicked reload config")
+        threading.Thread(
+            target=self.cc.reload_config, name='reload_config',
+        ).start()
 
     def handle_start_all(self, button):
         urwid.AttrMap(button, 'group_selected')
@@ -693,8 +704,8 @@ def refresh(_loop, state_controller, _data=None):
             state_controller.states[event.comp_id].set_text([
                 "state: ",
                 (
-                    '%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(event.check_state),
-                    "%s" % config.SHORT_STATE_DESCRIPTION.get(event.check_state)
+                    '%s' % config.URWID_ATTRIBUTE_FOR_STATE.get(config.CheckState(event.check_state)),
+                    "%s" % config.SHORT_STATE_DESCRIPTION.get(config.CheckState(event.check_state))
                 )
             ])
         elif isinstance(event, events.StartingEvent):
@@ -712,14 +723,17 @@ def refresh(_loop, state_controller, _data=None):
                 "state: ",
                 ('darkred', "CRASHED")
             ])
+        elif isinstance(event, events.SlaveReconnectEvent):
+            logger.warn("Reconnected to slave on '%s'" % event.host_name)
+            state_controller.fetch_host_items()
+        elif isinstance(event, events.SlaveDisconnectEvent):
+            logger.warn("Connection to slave on '%s' lost" % event.host_name)
+            state_controller.fetch_host_items()
         elif isinstance(event, events.DisconnectEvent):
             logger.warning("Lost connection to host '%s'" % event.host_name)
             state_controller.fetch_host_items()
         elif isinstance(event, events.ReconnectEvent):
             logger.info("Reconnected to host '%s'" % event.host_name)
-            state_controller.fetch_host_items()
-        elif isinstance(event, events.SlaveDisconnectEvent):
-            logger.warn("Connection to slave on '%s' lost" % event.host_name)
             state_controller.fetch_host_items()
         elif isinstance(event, events.StartReportEvent):
             state_controller.start_report_popup(event)
@@ -727,6 +741,11 @@ def refresh(_loop, state_controller, _data=None):
             logger.critical("Server disconnected!")
             state_controller.handle_shutdown(None, False)
             # TODO: Show custom popup with option to quit or cancel
+        elif isinstance(event, events.ConfigReloadEvent):
+            state_controller.load_groups_from_config()
+            state_controller.selected_group = state_controller.groups.keys()[0]
+            state_controller.fetch_host_items()
+            state_controller.fetch_components()
         else:
             logger.debug("Got unrecognized event of type: %s" % type(event))
 
