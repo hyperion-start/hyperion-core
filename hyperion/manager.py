@@ -867,7 +867,7 @@ class ControlCenter(AbstractController):
             try:
                 self.set_dependencies()
             except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
-                logging.debug("Error while setting up dependency tree. Initiating shutdown")
+                self.logger.debug("Error while setting up dependency tree. Initiating shutdown")
                 self.cleanup(True, 1)
 
             if self.custom_env_path:
