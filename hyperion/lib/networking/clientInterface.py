@@ -469,13 +469,15 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             self.monitor_queue.put(event)
 
         # Special events handling
-        if isinstance(event, events.SlaveDisconnectEvent):
+        if isinstance(event, events.SlaveReconnectEvent):
+            self.host_list[event.host_name] = config.HostState.CONNECTED
+        elif isinstance(event, events.SlaveDisconnectEvent):
             self.host_list[event.host_name] = config.HostState.SSH_ONLY
         elif isinstance(event, events.DisconnectEvent):
             self.host_list[event.host_name] = config.HostState.DISCONNECTED
             self._unmount_host(event.host_name)
         elif isinstance(event, events.ReconnectEvent):
-            self.host_list[event.host_name] = config.HostState.CONNECTED
+            self.host_list[event.host_name] = config.HostState.SSH_ONLY
             self._mount_host(event.host_name)
 
     def _loop(self):
