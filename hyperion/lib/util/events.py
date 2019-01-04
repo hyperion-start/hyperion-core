@@ -176,3 +176,11 @@ class ServerDisconnectEvent(BaseEvent):
     """Inform the ui about a server connection loss."""
     def __init__(self):
         super(ServerDisconnectEvent, self).__init__()
+
+
+class ConfigReloadEvent(BaseEvent):
+    """Inform about config reload"""
+    def __init__(self, config, host_states):
+        super(ConfigReloadEvent, self).__init__()
+        self.config = config
+        self.host_states = host_states
