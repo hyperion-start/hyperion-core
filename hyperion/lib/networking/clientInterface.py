@@ -182,6 +182,7 @@ class RemoteSlaveInterface(BaseClient):
                     self._quit()
                     sys.exit(1)
                 tries += 1
+                time.sleep(.5)
             server_address = ('', local_port)
 
         try:
@@ -299,6 +300,7 @@ class RemoteSlaveInterface(BaseClient):
                         next_msg = self.send_queue.get()
                         self.sock.sendall(next_msg)
             self._process_events()
+            time.sleep(.5)
         self.logger.debug("Exiting messaging loop")
 
 
