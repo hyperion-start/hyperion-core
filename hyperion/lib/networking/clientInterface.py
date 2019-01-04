@@ -444,7 +444,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def check_component(self, comp):
+    def check_component(self, comp, broadcast=False):
         self.logger.debug("Serializing component check")
         action = 'check'
         payload = [comp['id']]
