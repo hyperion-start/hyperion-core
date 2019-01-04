@@ -511,6 +511,24 @@ class SlaveManagementServer(BaseServer):
         self.logger.error("Connection to slave failed!")
         return False
 
+    def kill_slave_on_host(self, hostname):
+        """Kill a slave session of the current master session running on the remote host.
+
+        :param hostname: Host to kill the slave on
+        :type hostname: str
+        :return: None
+        """
+        for conn in self.send_queues:
+            if hostname == self.port_mapping.get(conn):
+                self.logger.debug("Socket to %s still exists - Sending shutdown" % hostname)
+                try:
+                    # Test if connection still alive
+                    select.select([conn], [], [conn], 1)
+                    message = actionSerializer.serialize_request('quit', [])
+                    self.send_queues.get(conn).put(message)
+                except socket.error:
+                    self.logger.error("Existing connection to %s died. Could not send quit command" % hostname)
+
     def start_component(self, comp_id, hostname):
         action = 'start'
         payload = [comp_id]
