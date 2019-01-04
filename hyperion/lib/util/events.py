@@ -33,7 +33,9 @@ class CheckEvent(ComponentEvent):
         self.check_state = check_state
 
     def __str__(self):
-        return str("CheckEvent - %s: %s" % (self.comp_id, config.STATE_DESCRIPTION.get(self.check_state)))
+        return str("CheckEvent - %s: %s" % (self.comp_id, config.STATE_DESCRIPTION.get(config.CheckState(
+            self.check_state
+        ))))
 
 
 class StartingEvent(ComponentEvent):
@@ -146,7 +148,7 @@ class SlaveReconnectEvent(ReconnectEvent):
         super(SlaveReconnectEvent, self).__init__(host_name)
         self.host_name = host_name
         self.port = port
-        self.message = "Reconnected to '%s' on '%s'" % host_name, port
+        self.message = "Reconnected to '%s' on '%s'" % (host_name, port)
 
     def __str__(self):
         return str("SlaveReconnectEvent - %s:%s" % (self.host_name, self.port))
