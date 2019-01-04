@@ -886,17 +886,23 @@ class ControlCenter(AbstractController):
                     self.logger.debug("Starting slave on '%s'" % host)
                     self._start_remote_slave(host)
 
-    def _start_remote_slave(self, hostname):
+    def _start_remote_slave(self, hostname, custom_messages=None):
         """Start slave manager on host 'hostname'.
 
         :param hostname: Host to start the slave manager on.
+        :type hostname: str
+        :param custom_messages: Optional messages to send to a newly connected or reconnected host.
+        :type custom_messages: list of str
         :return: None
         """
+        if not custom_messages:
+            custom_messages = []
+
         window = self._find_window('ssh-%s' % hostname)
         config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config['name'])
 
         if window and self.host_list[hostname] and self.slave_server:
-            if self.slave_server.start_slave(hostname, config_path, self.config['name'], window):
+            if self.slave_server.start_slave(hostname, config_path, self.config['name'], window, custom_messages):
                 self.host_states[hostname] = config.HostState.CONNECTED
             else:
                 self.host_states[hostname] = config.HostState.SSH_ONLY

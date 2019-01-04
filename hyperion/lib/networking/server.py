@@ -444,7 +444,7 @@ class SlaveManagementServer(BaseServer):
             self.sel.unregister(connection)
             connection.close()
 
-    def start_slave(self, hostname, config_path, config_name, window):
+    def start_slave(self, hostname, config_path, config_name, window, custom_messages=None):
         """Start slave on the remote host.
 
         :param hostname: Host where the slave is started
@@ -455,18 +455,27 @@ class SlaveManagementServer(BaseServer):
         :type window: libtmux.Window
         :param config_name: Name of the configuration (not the file name!)
         :type config_name: str
+        :param custom_messages: Optional custom messages to send on connect (or reconnect).
+        :type custom_messages: list of str
         :return: Whether the start was successful or not
         :rtype: bool
         """
         hn = socket.gethostbyname('%s' % hostname)
 
+        if not custom_messages:
+            custom_messages = []
+
         for conn in self.send_queues:
             if hostname == self.port_mapping.get(conn):
-                self.logger.debug("Socket to %s already exists! Checking if it is still connected")
+                self.logger.debug("Socket to %s already exists! Checking if it is still connected" % hostname)
                 try:
                     select.select([conn], [], [conn], 1)
                     self.logger.debug("Connection still up")
                     self._forward_event(events.SlaveReconnectEvent(hostname, conn.getpeername()[1]))
+
+                    for message in custom_messages:
+                        self.send_queues.get(conn).put(message)
+
                     return True
                 except socket.error:
                     self.logger.error("Existing connection to %s died. Trying to reconnect...")
@@ -491,6 +500,11 @@ class SlaveManagementServer(BaseServer):
                     self.logger.debug("'%s' is connected" % con_host)
                 if hostname == con_host:
                     self.logger.info("Connection successfully established")
+
+                    for message in custom_messages:
+                        self.send_queues.get(conn).put(message)
+
+                    self._forward_event(events.SlaveReconnectEvent(hostname, conn.getpeername()[1]))
                     return True
             time.sleep(.5)
 
