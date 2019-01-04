@@ -1652,16 +1652,19 @@ class ControlCenter(AbstractController):
         :return: Whether establishing the connection was successful or not
         :rtype: bool
         """
+        old_status = self.host_states.get(hostname)
+
         # Check if really necessary
         self.logger.debug("Reconnecting with %s" % hostname)
         proc = self.host_list.get(hostname)
-        if proc is not None:
+        if proc is not None and not proc.is_running():
             self.logger.debug("Killing off leftover process")
             proc.kill()
 
         # Start new connection
         if self._establish_master_connection(hostname):
-            self.broadcast_event(events.ReconnectEvent(hostname))
+            if old_status is config.HostState.DISCONNECTED:
+                self.broadcast_event(events.ReconnectEvent(hostname))
             self._start_remote_slave(hostname)
             return True
         else:
