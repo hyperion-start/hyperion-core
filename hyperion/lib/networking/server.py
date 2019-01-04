@@ -132,7 +132,8 @@ class Server(BaseServer):
             'get_host_list': self._send_host_list,
             'quit': self.cc.cleanup,
             'reconnect_with_host': self.cc.reconnect_with_host,
-            'unsubscribe': None
+            'unsubscribe': None,
+            'reload_config': self.cc.reload_config
         }
 
         self.receiver_mapping = {

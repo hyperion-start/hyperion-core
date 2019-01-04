@@ -206,7 +206,8 @@ class RemoteSlaveInterface(BaseClient):
             'check': self._check_wrapper,
             'stop': self._stop_wrapper,
             'quit': self._quit,
-            'suspend': self._suspend
+            'suspend': self._suspend,
+            'conf_reload': self.cc.reload_config
         }
         self._send_auth()
         self._loop()
@@ -316,6 +317,12 @@ class RemoteControllerInterface(AbstractController, BaseClient):
     def _check_remote_component(self, comp):
         self.logger.critical("This function should not be called in this context!")
         pass
+
+    def reload_config(self):
+        action = 'reload_config'
+        payload = []
+        message = actionSerializer.serialize_request(action, payload)
+        self.send_queue.put(message)
 
     def __init__(self, host, port):
         AbstractController.__init__(self, None)
@@ -479,6 +486,10 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         elif isinstance(event, events.ReconnectEvent):
             self.host_list[event.host_name] = config.HostState.SSH_ONLY
             self._mount_host(event.host_name)
+        elif isinstance(event, events.ConfigReloadEvent):
+            self.logger.debug("Updating config and host list")
+            self.config = event.config
+            self.host_list = event.host_states
 
     def _loop(self):
         # Keep alive until shutdown is requested and no messages are left to send

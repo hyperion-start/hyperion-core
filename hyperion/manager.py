@@ -17,6 +17,7 @@ from lib.monitoring.threads import LocalComponentMonitoringJob, HostMonitorJob, 
 import lib.util.exception as exceptions
 import lib.util.config as config
 import lib.util.events as events
+import lib.util.actionSerializer as actionSerializer
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -774,6 +775,9 @@ class AbstractController(object):
     def reconnect_with_host(self, hostname):
         raise NotImplementedError
 
+    def reload_config(self):
+        raise NotImplementedError
+
 
 class ControlCenter(AbstractController):
     """Controller class that is able to handle a master session."""
@@ -885,6 +889,78 @@ class ControlCenter(AbstractController):
                 if host and not self.is_localhost(host):
                     self.logger.debug("Starting slave on '%s'" % host)
                     self._start_remote_slave(host)
+
+    def reload_config(self):
+        """Try reloading configuration file. The old config is saved under a temporary variable that is discarded if
+        reloading was successful, but restored if reloading failed at some point (missing file, or dependency errors)
+
+        :return: None
+        """
+        old_conf = self.config.copy()
+        try:
+            self._load_config(self.configfile)
+        except IOError as err:
+            self.logger.debug("Exact exception: %s" % err.message)
+            self.config = old_conf
+            return
+        except exceptions.EnvNotFoundException:
+            self.config = old_conf
+            return
+
+        conf_preprocessing(self.config, self.custom_env_path)
+
+        try:
+            self.set_dependencies()
+        except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
+            self.logger.error("Error while setting up dependency tree. Rolling back to working config")
+            self.config = old_conf
+            try:
+                self.set_dependencies()
+            except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
+                self.logger.critical("Resetting to old config failed!")
+                self.cleanup(True, 1)
+
+        # Update hosts
+        old_hostlist = self.host_list.copy()
+        self.host_list = {'%s' % socket.gethostname(): True}
+        self.host_states = {'%s' % socket.gethostname(): config.HostState.CONNECTED}
+
+        for group in self.config['groups']:
+            for comp in group['components']:
+                try:
+                    if comp['host'] != "localhost" and not self.run_on_localhost(comp):
+                        if comp['host'] not in self.host_list:
+                            if self._establish_master_connection(comp['host']):
+                                self.logger.info("Master connection to %s established!" % comp['host'])
+                except exceptions.HostUnknownException as ex:
+                    self.logger.error(ex.message)
+
+        unused_hosts = [k for k in old_hostlist if k not in self.host_list]
+        if len(unused_hosts) > 0:
+            self.logger.debug("Updated config removed hosts from setup - Killing unused remote slaves")
+            for host in unused_hosts:
+                self.slave_server.kill_slave_on_host(host)
+
+        if self.custom_env_path:
+            self.logger.debug("Sourcing custom environment in main window of master session")
+            cmd = ". %s" % self.custom_env_path
+            self._send_main_session_command(cmd)
+
+        if self.slave_server and not self.slave_server.thread.is_alive():
+            self.slave_server.start()
+
+        messages = [actionSerializer.serialize_request('conf_reload', [])]
+
+        for host in self.host_list:
+            if host and not self.is_localhost(host):
+                if host not in old_hostlist:
+                    self.logger.debug("Starting slave on '%s'" % host)
+                    self._start_remote_slave(host)
+                else:
+                    self.logger.debug("Updating slave on '%s'" % host)
+                    self._start_remote_slave(host, messages)
+
+        self.broadcast_event(events.ConfigReloadEvent(self.config, self.host_states))
 
     def _start_remote_slave(self, hostname, custom_messages=None):
         """Start slave manager on host 'hostname'.
@@ -1711,6 +1787,21 @@ class SlaveManager(AbstractController):
     def start_all(self):
         self.logger.error("This function is disabled for slave managers!")
         pass
+
+    def reload_config(self):
+
+        old_conf = self.config.copy
+
+        try:
+            self._load_config(self.configfile)
+        except IOError:
+            self.logger.error("Reloading config failed - falling back to old config!")
+            self.config = old_conf
+        except exceptions.EnvNotFoundException:
+            self.logger.error("Reloading config failed: Env file not found - falling back to old config!")
+        self.session_name = '%s-slave' % self.config["name"]
+
+        self.logger.info("Config reload was successful")
 
     def start_component(self, comp):
         """Start component on a slave.
