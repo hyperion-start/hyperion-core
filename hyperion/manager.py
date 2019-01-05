@@ -1391,7 +1391,7 @@ class ControlCenter(AbstractController):
 
         return [self.nodes.get(node).comp_id for node in self.nodes]
 
-    def start_by_cli(self, comp_id):
+    def start_by_cli(self, comp_id, force_mode=False):
         """Interface function for starting component by name `comp_id` from the cli.
 
         Logging information is provided on the INFO level.
@@ -1410,10 +1410,9 @@ class ControlCenter(AbstractController):
             return
 
         logger.info("Starting component '%s' ..." % comp_id)
-        ret = self.start_component(comp)
+        ret = self.start_component(comp, force_mode)
         if ret is config.StartState.STARTED:
             logger.info("Started component '%s'" % comp_id)
-            sleep(get_component_wait(comp))
             ret = self.check_component(comp)
             logger.info("Check returned status: %s" % config.STATE_DESCRIPTION.get(ret))
         elif ret is config.StartState.FAILED:

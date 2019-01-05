@@ -216,6 +216,13 @@ def main():
 
     subparser_cli.add_argument('-C', '--component', metavar='COMP', help='single component or list of components '
                                                                          'specific action', default='all', nargs='+')
+    subparser_cli.add_argument(
+        '-f',
+        '--force-mode',
+        help='set force mode for component start (only makes sense combined with --start flag)',
+        dest='force_mode',
+        action='store_true'
+    )
 
     comp_mutex = subparser_cli.add_mutually_exclusive_group(required=True)
 
@@ -227,7 +234,7 @@ def main():
     comp_mutex.add_argument('-T', '--term', help='Show the component term', dest='comp_term', action='store_true')
 
     subparser_ui = subparsers.add_parser('ui', help='Launches the setup specified by the --config argument and '
-                                                      'start with user interface')
+                                                    'start with user interface')
 
     subparser_ui.add_argument('-p', '--port',
                               help='Specify port to connect to. Defaults to %s' % DEFAULT_TCP_PORT,
@@ -239,9 +246,12 @@ def main():
     ui_mutex.add_argument('--no-socket', help='Start in standalone mode without connecting to a running backend',
                           action='store_true')
 
-    subparser_ui.add_argument('-x', help='Use PyQt gui (requires X server and python-qt4 package)',
-                              dest='x_server',
-                              action='store_true')
+    subparser_ui.add_argument(
+        '-x',
+        help='Use PyQt gui (requires X server and python-qt4 package)',
+        dest='x_server',
+        action='store_true'
+    )
 
     # Create parser for validator
     subparser_val = subparsers.add_parser('validate', help='Validate the setup specified by the --config argument')
@@ -387,7 +397,7 @@ def main():
             if args.comp_start:
                 logger.debug('Chose start %s' % args.component)
                 for comp in comps:
-                    cc.start_by_cli(comp)
+                    cc.start_by_cli(comp, args.force_mode)
             if args.comp_stop:
                 logger.debug('Chose stop %s' % args.component)
                 for comp in comps:
