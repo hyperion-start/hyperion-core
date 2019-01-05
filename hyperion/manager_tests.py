@@ -149,8 +149,19 @@ class ComponentTest(unittest.TestCase):
         window.cmd('send-keys', '', 'C-c')
         time.sleep(1)
         self.assertFalse(ev_queue.empty())
+
+        # Start event
         msg = ev_queue.get()
-        self.assertTrue(isinstance(msg, LocalCrashEvent))
+        self.assertTrue(isinstance(msg, events.StartingEvent))
+        self.assertEqual(msg.comp_id, 'tail@localhost')
+
+        # Check event
+        msg = ev_queue.get()
+        self.assertTrue(isinstance(msg, events.CheckEvent))
+        self.assertEqual(msg.comp_id, 'tail@localhost')
+
+        msg = ev_queue.get()
+        self.assertTrue(isinstance(msg, events.CrashEvent))
         self.assertEqual(msg.comp_id, 'tail@localhost')
 
 
