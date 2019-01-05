@@ -134,7 +134,12 @@ def conf_preprocessing(conf, custom_env=None):
     :return: None
     """
     if custom_env:
-        pipe = Popen('. %s > /dev/null; env' % custom_env, stdout=PIPE, shell=True, executable='/bin/bash')
+        pipe = Popen(
+            '. %s > /dev/null; env' % custom_env,
+            stdout=PIPE,
+            shell=True,
+            executable=config.SHELL_EXECUTABLE_PATH
+        )
         data = pipe.communicate()[0]
 
         env = dict((line.split("=", 1) for line in data.splitlines()))
@@ -285,6 +290,10 @@ class AbstractController(object):
                 self.logger.critical("Env file %s could not be found!" % env)
                 raise exceptions.EnvNotFoundException("Env file %s could not be found!" % env)
 
+        if 'shell_path' in self.config and self.config.get('shell_path'):
+            config.SHELL_EXECUTABLE_PATH = self.config.get('shell_path')
+            self.logger.info("Changed default shell to: '%s'" % config.SHELL_EXECUTABLE_PATH)
+
     ###################
     # Component Management
     ###################
@@ -310,7 +319,7 @@ class AbstractController(object):
             stdin=PIPE,
             stdout=PIPE,
             stderr=PIPE,
-            executable='/bin/bash'
+            executable=config.SHELL_EXECUTABLE_PATH
         )
 
         while p.poll() is None:
