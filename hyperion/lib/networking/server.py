@@ -249,10 +249,10 @@ class Server(BaseServer):
                 message_queue = self.send_queues.get(key)
                 message_queue.put(message)
 
-    def _start_component_wrapper(self, comp_id):
+    def _start_component_wrapper(self, comp_id, force_mode=False):
         try:
             comp = self.cc.get_component_by_id(comp_id)
-            self.cc.start_component(comp)
+            self.cc.start_component(comp, force_mode)
         except exceptions.ComponentNotFoundException as e:
             self.logger.error(e.message)
 

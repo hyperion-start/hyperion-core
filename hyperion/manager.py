@@ -763,10 +763,10 @@ class AbstractController(object):
     def add_subscriber(self, subscriber):
         raise NotImplementedError
 
-    def start_all(self):
+    def start_all(self, force_mode=False):
         raise NotImplementedError
 
-    def start_component(self, comp):
+    def start_component(self, comp, force_mode=False):
         raise NotImplementedError
 
     def _start_remote_component(self, comp):
@@ -1137,7 +1137,7 @@ class ControlCenter(AbstractController):
     ###################
     # Start
     ###################
-    def start_component(self, comp):
+    def start_component(self, comp, force_mode=False):
         """Invoke dependency based start of component `comp`.
 
         Traverses the path of dependencies and invokes a call to ``start_component_without_deps`` for all found
@@ -1145,6 +1145,8 @@ class ControlCenter(AbstractController):
 
         :param comp: Component to start
         :type comp: dict
+        :param force_mode: Whether starting the main component is tried, even if a dependency failed.
+        :type force_mode: bool
         :return: Information on the start process
         :rtype: config.StartState
         """
@@ -1155,39 +1157,48 @@ class ControlCenter(AbstractController):
         dep_resolve(node, res, unres)
         for node in res:
             if node.comp_id != comp['id']:
-                self.logger.debug("Checking and starting %s" % node.comp_id)
-                state = self.check_component(node.component, False)
+                if len(failed_comps) == 0 or force_mode:
+                    self.logger.debug("Checking and starting %s" % node.comp_id)
+                    state = self.check_component(node.component, False)
 
-                if (state is config.CheckState.STOPPED_BUT_SUCCESSFUL or
-                        state is config.CheckState.STARTED_BY_HAND or
-                        state is config.CheckState.RUNNING):
-                    self.logger.debug("Component '%s' is already running, skipping to next in line" % comp['id'])
-                    self.broadcast_event(events.CheckEvent(node.comp_id, state))
+                    if (state is config.CheckState.STOPPED_BUT_SUCCESSFUL or
+                            state is config.CheckState.STARTED_BY_HAND or
+                            state is config.CheckState.RUNNING):
+                        self.logger.debug("Component '%s' is already running, skipping to next in line" % comp['id'])
+                        self.broadcast_event(events.CheckEvent(node.comp_id, state))
+                    else:
+                        self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_id, comp['id']))
+                        self.start_component_without_deps(node.component)
+
+                        # Wait component time for startup
+                        end_t = time() + get_component_wait(node.component)
+
+                        tries = 0
+                        while True:
+                            self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_id,
+                                                                                         config.STATE_DESCRIPTION.get(state)))
+                            state = self.check_component(node.component, False)
+                            if (state is config.CheckState.RUNNING or
+                                    state is config.CheckState.STOPPED_BUT_SUCCESSFUL or
+                                    state is config.CheckState.STARTED_BY_HAND):
+                                self.logger.debug("Dep '%s' success" % node.comp_id)
+                                break
+                            if tries > 3:
+                                self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.DEP_FAILED))
+                                failed_comps[node.comp_id] = state
+                                failed_comps[comp['id']] = config.CheckState.DEP_FAILED
+                                break
+                            if time() > end_t:
+                                tries = tries + 1
+                            sleep(.5)
+                        self.broadcast_event(events.CheckEvent(node.comp_id, state))
                 else:
-                    self.logger.debug("Start component '%s' as dependency of '%s'" % (node.comp_id, comp['id']))
-                    self.start_component_without_deps(node.component)
-
-                    # Wait component time for startup
-                    end_t = time() + get_component_wait(node.component)
-
-                    tries = 0
-                    while True:
-                        self.logger.debug("Checking %s resulted in checkstate %s" % (node.comp_id,
-                                                                                     config.STATE_DESCRIPTION.get(state)))
-                        state = self.check_component(node.component, False)
-                        if (state is config.CheckState.RUNNING or
-                                state is config.CheckState.STOPPED_BUT_SUCCESSFUL):
-                            self.logger.debug("Dep '%s' success" % node.comp_id)
-                            break
-                        if tries > 3:
-                            self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.DEP_FAILED))
-                            failed_comps[node.comp_id] = state
-                            failed_comps[comp['id']] = config.CheckState.DEP_FAILED
-                            break
-                        if time() > end_t:
-                            tries = tries + 1
-                        sleep(.5)
-                    self.broadcast_event(events.CheckEvent(node.comp_id, state))
+                    self.logger.debug("Previous dependency failed. Only checking '%s' now" % node.comp_id)
+                    state = self.check_component(node.component, True)
+                    if not (state is config.CheckState.RUNNING or
+                            state is config.CheckState.STOPPED_BUT_SUCCESSFUL or
+                            state is config.CheckState.STARTED_BY_HAND):
+                        failed_comps[node.comp_id] = config.CheckState.DEP_FAILED
 
         state = self.check_component(node.component, False)
         if (state is config.CheckState.STARTED_BY_HAND or
@@ -1196,14 +1207,16 @@ class ControlCenter(AbstractController):
             self.broadcast_event(events.CheckEvent(comp['id'], state))
             return config.StartState.ALREADY_RUNNING
         else:
-            if len(failed_comps) > 0:
+            if len(failed_comps) > 0 and not force_mode:
                 self.logger.warn("At least one dependency failed and the component is not running. Aborting start")
                 failed_comps[comp['id']] = config.CheckState.DEP_FAILED
                 self.broadcast_event(events.CheckEvent(comp['id'], state))
                 self.broadcast_event(events.StartReportEvent(comp['id'], failed_comps))
                 return config.StartState.FAILED
             else:
-                self.logger.info("All dependencies satisfied, starting '%s'" % (comp['id']))
+                self.logger.info(
+                    "All dependencies satisfied or force mode is active (%s), starting '%s'" % (force_mode, comp['id'])
+                )
                 self.start_component_without_deps(comp)
 
                 end_t = time() + get_component_wait(comp)
@@ -1258,9 +1271,14 @@ class ControlCenter(AbstractController):
                                                                                  comp['id']))
             self.broadcast_event(events.CheckEvent(comp['id'], config.CheckState.UNREACHABLE))
 
-    def start_all(self):
-        """Start all components ordered by dependecy.
+    def start_all(self, force_mode=False):
+        """Start all components ordered by dependency.
 
+        If force mode is active, each component start is attempted. If not, after a component failed, each component is
+        only checked.
+
+        :param force_mode: Whether to enforce start attempt even if a dependency failed
+        :type force_mode: bool
         :return: None
         """
         comps = self.get_start_all_list()
@@ -1276,7 +1294,7 @@ class ControlCenter(AbstractController):
                     logger.debug("Comp %s failed, because dependency %s failed!" % (comp.comp_id, dep.comp_id))
                     failed = True
 
-            if not failed:
+            if not failed or force_mode:
                 logger.debug("Checking %s" % comp.comp_id)
                 ret = self.check_component(comp.component, False)
                 if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
@@ -1796,7 +1814,7 @@ class SlaveManager(AbstractController):
         self.logger.error("This function is disabled for slave managers!")
         pass
 
-    def start_all(self):
+    def start_all(self, force_mode=False):
         self.logger.error("This function is disabled for slave managers!")
         pass
 
@@ -1815,12 +1833,16 @@ class SlaveManager(AbstractController):
 
         self.logger.info("Config reload was successful")
 
-    def start_component(self, comp):
+    def start_component(self, comp, force_mode=True):
         """Start component on a slave.
 
         This function just calls `start_component_without_deps` because dependencies are managed by the master server.
 
         :param comp: Component to start
+        :type comp: dict
+        :param force_mode: Whether start is forced or not. (Slave always starts without dependency resolution thus this
+        parameter does not affect this subclass implementation)
+        :type force_mode: bool
         :return: None
         """
         # Is equivalent to start_without_deps because
