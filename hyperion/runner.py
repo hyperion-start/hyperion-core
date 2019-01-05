@@ -310,6 +310,10 @@ def main():
     if args.cmd == 'ui':
         logger.debug('Chose ui mode')
 
+        if args.x_server:
+            logger.critical("PyQt gui is a work in progress and currently disabled!")
+            sys.exit(0)
+
         if args.no_socket:
             log_file_path = '%s/localhost/standalone/%s.log' % (TMP_LOG_PATH, time.strftime("%H-%M-%S"))
             handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
@@ -343,7 +347,7 @@ def main():
                 start_gui(cc, ui)
             else:
                 logger.error('To use this feature you need PyQt4! Check the README.md for install instructions')
-                cc.cleanup(True, 1)
+                cc.cleanup(False, 1)
         else:
             # Urwid
             if interactive_enabled:
