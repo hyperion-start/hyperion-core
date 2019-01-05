@@ -31,6 +31,17 @@ class BasicManagerTests(unittest.TestCase):
         self.assertEqual(self.cc.config['name'], 'Unit test config')
         self.assertTrue(self.cc.server.has_session('Unit test config'))
 
+    def test_host_resolution(self):
+        host_test_comp = self.cc.get_component_by_id('host_depends_test@localhost')
+        self.assertIsNotNone(self.cc.get_component_by_id('host_test@resolved-host'))
+
+        self.assertEqual(
+            'host_test@resolved-host',
+            host_test_comp['depends'][0],
+            msg="Dependency host resolution failed. Expected 'host_test@resolved-host' but got '%s'" %
+                host_test_comp['depends'][0]
+        )
+
     def test_initialization(self):
         self.assertTrue('id' in self.cc.config['groups'][0]['components'][0])
 
