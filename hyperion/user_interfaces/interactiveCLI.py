@@ -669,12 +669,12 @@ def main(cc, log_file_path):
         ('stopped', 'white', 'dark red'),
         ('running', 'white', 'dark green'),
         ('other', 'white', 'brown'),
+        ('force_mode', 'white', 'dark red'),
     ]
 
     global main_loop
     main_loop = urwid.MainLoop(cli_menu.layout, palette, unhandled_input=cli_menu.handle_input, pop_ups=True)
     main_loop.set_alarm_in(0, refresh, cli_menu)
-    cli_menu.handle_check_all(None)
     main_loop.run()
     return cli_menu.full_shutdown
 
