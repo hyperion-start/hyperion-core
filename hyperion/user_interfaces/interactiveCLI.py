@@ -113,6 +113,7 @@ class StateController(object):
         self.states = {}
         self.host_stats = None
         self.log_hidden = False
+        self.force_mode = False
 
         self.comp_log_map = {}
 
@@ -234,6 +235,9 @@ class StateController(object):
             urwid.Text([u'Press ', ('host', u'K'), u' to hide or un-hide the application log'], "center"),
             urwid.Divider(),
             urwid.Text([u'When focussing a component log press ', ('host', u'C'), u' to close it'], "center"),
+            urwid.Divider(),
+            urwid.Text([u'Press ', ('host', u'F'), u' to toggle force mode (if active component start is tried even if '
+                                                   u'dependencies failed)'], "center"),
             urwid.Divider(),
             urwid.Text([u'Press ', ('host', u'H'), u' to show this help and ',
                         ('host', u'Esc'), u' to dismiss it'], "center"),
@@ -402,6 +406,21 @@ class StateController(object):
         :return: None
         """
 
+        if key == 'F' or key == 'f':
+            header_text = urwid.Text(u'%s' % self.cc.config['name'], align='center')
+            if self.force_mode:
+                header = urwid.Pile([
+                    urwid.Divider(),
+                    urwid.AttrMap(header_text, 'titlebar')
+                ])
+            else:
+                header = urwid.Pile([
+                    urwid.Divider(), urwid.AttrMap(header_text, 'titlebar'),
+                    urwid.AttrMap(urwid.Text(u'FORCE MODE ACTIVE', align='center'), 'force_mode')
+                ])
+            self.force_mode = not self.force_mode
+            self.layout.header = header
+
         if key == 'Q' or key == 'q':
             main_loop.widget = urwid.Frame(self.shutdown_overlay)
 
@@ -453,13 +472,13 @@ class StateController(object):
         urwid.AttrMap(button, 'group_selected')
         self.logger.info("Clicked start all")
         threading.Thread(
-            target=self.cc.start_all, name='start_all',
+            target=self.cc.start_all, args=[self.force_mode], name='start_all',
         ).start()
 
     def handle_start(self, button, comp):
         self.logger.info("Clicked start %s" % comp['id'])
         threading.Thread(
-            target=self.cc.start_component, args=[comp],
+            target=self.cc.start_component, args=[comp, self.force_mode],
             name='start_comp_%s' % comp['id'],
         ).start()
 
