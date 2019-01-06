@@ -21,6 +21,13 @@ procedure. This will also prevent it from being started as dependency of another
 start procedure problems thus is it discouraged to depend on noauto components (Resolves #36).
 - Usage of optional `stop` commands for components (resolves #34). Note: the component window receives an interrupt, after which the
 given stop command is executed.
+- Reload config at runtime feature (Resolves #37)
+- Option to specify standard shell executable for subprocess calls when the environment file is sourced (config 
+preprocessing and when running a component check). The default path '/bin/bash' can be overridden by specifying the 
+executable path as value of the `shell_path` field in the system config file.
+- Force mode: tries starting a component even if dependencies failed (Resolves #33). In interactive cli press `F` to 
+toggle force mode.
+- Unit test for slave to server to client connection (by passing on a check event).
 
 ### Changed
 - Slave session start moved from ssh window of the master server tmux session to remote host tmux session called 
@@ -51,6 +58,8 @@ broadcasted to ui clients. Only the last check of the component (thus not a inte
 be published (Resolves #35). 
 - Special order of component cmds in configurations is not required anymore since the function `get_component_cmd` takes
  care of that now.
+- Disabled automatic `check all` action on interactive cli start.
+- Disabled PyQt gui for now, since currently it is not compatible with the server/client architecture.
 
 ### Fixed
 - Stability of execute mode (all commands now work again for remote or local components)
@@ -71,6 +80,9 @@ answer (currently RUNNING) would be interpreted as no answer and result in an UN
 - Lowered CPU usage of `clientInterface` by adding sleep to the messaging loop.
 - If custom environment was given as relative path, absolute path is joined and saved (necessary to source before 
 running checks in subprocess)
+- Use sleep in slave messaging loop to fix CPU leak.
+- Reconnect event (sent on ssh reconnect) resulted in wrong host status CONNECTED, now it is set to SSH_ONLY.
+- SlaveReconnect being handled by client interfaces the right way.
 
 ## 0.0.1 - 12.12.2018
 First alpha release
