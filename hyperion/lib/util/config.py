@@ -31,7 +31,7 @@ class HostState(Enum):
 SHELL_EXECUTABLE_PATH = '/bin/bash'
 """Path to shell executable"""
 
-DEFAULT_TCP_PORT = "23081"
+DEFAULT_TCP_PORT = 23081
 
 TMP_SLAVE_DIR = "/tmp/Hyperion/slave/conf"
 TMP_CONF_DIR = "/tmp/Hyperion/conf/"

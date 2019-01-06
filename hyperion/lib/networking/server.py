@@ -98,7 +98,7 @@ class BaseServer(object):
 
 
 class Server(BaseServer):
-    def __init__(self, port, cc):
+    def __init__(self, port, cc, loop_in_thread=False):
         BaseServer.__init__(self)
         self.port = port
         self.cc = cc  # type: hyperion.ControlCenter
@@ -143,6 +143,13 @@ class Server(BaseServer):
 
         self.sel.register(server, selectors.EVENT_READ, self.accept)
 
+        if not loop_in_thread:
+            self._loop()
+        else:
+            self.worker = worker = threading.Thread(target=self._loop)
+            worker.start()
+
+    def _loop(self):
         while self.keep_running:
             try:
                 for key, mask in self.sel.select(timeout=1):

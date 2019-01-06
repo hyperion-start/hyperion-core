@@ -3,10 +3,8 @@ import manager
 import libtmux
 import lib.util.exception
 import os.path
-import time
-import sys
+from lib.networking import server, clientInterface
 import hyperion.lib.util.exception as exceptions
-import hyperion.lib.util.config as config
 from hyperion.lib.monitoring.threads import *
 
 is_py2 = sys.version[0] == '2'
@@ -28,8 +26,8 @@ class BasicManagerTests(unittest.TestCase):
             pass
 
     def test_construction(self):
-        self.assertEqual(self.cc.config['name'], 'Unit test config')
-        self.assertTrue(self.cc.server.has_session('Unit test config'))
+        self.assertEqual(self.cc.config['name'], 'Unit-test-config')
+        self.assertTrue(self.cc.server.has_session('Unit-test-config'))
 
     def test_host_resolution(self):
         host_test_comp = self.cc.get_component_by_id('host_depends_test@localhost')
@@ -52,7 +50,7 @@ class BasicManagerTests(unittest.TestCase):
             self.cc.get_component_by_id('do fail')
 
         lst = self.cc.get_start_all_list()
-        self.assertEqual(lst[0].comp_id, 'tail@localhost')
+        self.assertEqual(lst[0].comp_id, 'host_test@resolved-host')
 
         wait = manager.get_component_wait(tail)
         self.assertEqual(wait, 0.2)
@@ -204,6 +202,50 @@ class ExecuteModeTest(unittest.TestCase):
         self.assertEqual(
             self.cc.check_component(self.cc.get_component_by_id('tail@localhost')), config.CheckState.STOPPED
         )
+
+
+class ServerClientsTests(unittest.TestCase):
+    def setUp(self):
+        sms = server.SlaveManagementServer()
+        self.cc = manager.ControlCenter('%s/data/test-config.yaml' % manager.BASE_DIR, slave_server=sms)
+        self.cc.init()
+
+        self.cc._establish_master_connection('localhost')
+        self.cc._copy_config_to_remote('localhost')
+
+        config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.cc.config['name'])
+        port = self.cc.slave_server.port
+
+        self.server = server.Server(config.DEFAULT_TCP_PORT, self.cc, loop_in_thread=True)
+
+        print("Starting slave manager")
+        self.slc = slc = manager.SlaveManager(config_path)
+        print("Starting slave interface")
+        self.si = clientInterface.RemoteSlaveInterface('localhost', port, slc, loop_in_thread=True)
+        print("Starting client interface")
+        self.ci_queue = queue.Queue()
+        self.ci = clientInterface.RemoteControllerInterface('localhost', config.DEFAULT_TCP_PORT)
+        self.ci.add_subscriber(self.ci_queue)
+        print("SETUP DONE")
+
+    def tearDown(self):
+        try:
+            self.ci.cleanup(True)
+            self.server.worker.join()
+
+            while self.cc.server.has_session(self.cc.session_name):
+                time.sleep(.5)
+
+        except SystemExit:
+            pass
+
+    def test_connection(self):
+        test_ev = events.CheckEvent('tail@localhost', config.CheckState.STOPPED)
+        self.si.event_queue.put(test_ev)
+        ci_msg = self.ci_queue.get(timeout=5)
+
+        self.assertEqual(ci_msg.comp_id, test_ev.comp_id)
+        self.assertEqual(ci_msg.check_state, test_ev.check_state)
 
 
 if __name__ == '__main__':

@@ -150,7 +150,7 @@ class BaseClient(object):
 
 
 class RemoteSlaveInterface(BaseClient):
-    def __init__(self, host, port, cc):
+    def __init__(self, host, port, cc, loop_in_thread=False):
         """Init remote slave interface for communication to the server at `host` on `port` with slave controller `cc`.
 
         :param host: Hostname of the server to connect to
@@ -159,6 +159,9 @@ class RemoteSlaveInterface(BaseClient):
         :type port: int
         :param cc: Slave manager to dispatch calls to and forward messages from
         :type cc: hyperion.manager.SlaveManager
+        :param loop_in_thread: Whether to run the loop function in an extra thread. Useful for unit tests and disabled
+        by default.
+        :type loop_in_thread: bool
         """
         BaseClient.__init__(self, host, port)
         self.cc = cc
@@ -210,7 +213,12 @@ class RemoteSlaveInterface(BaseClient):
             'conf_reload': self.cc.reload_config
         }
         self._send_auth()
-        self._loop()
+
+        if not loop_in_thread:
+            self._loop()
+        else:
+            self.worker = worker = threading.Thread(target=self._loop)
+            worker.start()
         
         self.logger.debug("Shutdown complete!")
 
