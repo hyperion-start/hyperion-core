@@ -1,4 +1,4 @@
-## [UNRELEASED] 
+## [1.0.0-alpha] - 06.01.2019
 
 ### Added
 - This changelog
