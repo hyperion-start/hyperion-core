@@ -137,10 +137,18 @@ def conf_preprocessing(conf, custom_env=None):
         pipe = Popen(
             '. %s > /dev/null; env' % custom_env,
             stdout=PIPE,
+            stderr=PIPE,
             shell=True,
             executable=config.SHELL_EXECUTABLE_PATH
         )
-        data = pipe.communicate()[0]
+        data, err_lines = pipe.communicate()
+
+        if err_lines and len(err_lines) > 0:
+            logging.getLogger(__name__).critical(
+                "Sourcing the custom environment file of this config returned with an error! "
+                "Is it suitable for the selected shell executable ('%s')? "
+                "Full stderr output:\n%s" % (config.SHELL_EXECUTABLE_PATH, "".join(err_lines))
+            )
 
         env = dict((line.split("=", 1) for line in data.splitlines()))
         os.environ.update(env)
