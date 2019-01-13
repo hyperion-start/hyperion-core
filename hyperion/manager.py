@@ -294,6 +294,10 @@ class AbstractController(object):
             config.SHELL_EXECUTABLE_PATH = self.config.get('shell_path')
             self.logger.info("Changed default shell to: '%s'" % config.SHELL_EXECUTABLE_PATH)
 
+        if 'verbose_checks' in self.config and self.config.get('verbose_checks'):
+            config.SHOW_CHECK_OUTPUT = self.config.get('verbose_checks')
+            self.logger.info("Set verbose checks to: '%s'" % config.SHOW_CHECK_OUTPUT)
+
     ###################
     # Component Management
     ###################
@@ -324,6 +328,13 @@ class AbstractController(object):
 
         while p.poll() is None:
             sleep(.5)
+
+        if config.SHOW_CHECK_OUTPUT:
+            self.logger.info(("Check output of '%s':\n%s" % (comp['id'], "".join(p.stdout.readlines()))))
+
+            err_out_list = p.stderr.readlines()
+            if len(err_out_list):
+                self.logger.error(("'%s' check stderr:\n%s" % (comp['id'], "".join(err_out_list))))
 
         if p.returncode == 0:
             self.logger.debug("Check returned true")
