@@ -191,7 +191,7 @@ def get_component_cmd(component, cmd_type):
         return
 
     cmd = None
-    for ind, found in enumerate([True if cmd_type in cmd else "" for cmd in component['cmd']]):
+    for ind, found in enumerate([True if cmd_type in cmd_tmp else "" for cmd_tmp in component['cmd']]):
         if found:
             cmd = component['cmd'][ind][cmd_type]
     return cmd
