@@ -1,3 +1,16 @@
+## [Unreleased]
+
+### Added
+- `verbose_checks` top level field in config. If set to true enables logging stdout and stderr of check commands.
+- If sourcing the custom environment file exited with an error while preprocessing, the user is informed via critical 
+log output.
+
+### Changed
+
+### Fixed
+- Bug in search component cmd, that would use a dictionary as command to run, when the requested cmd type could not be
+found in the list of available commands.
+
 ## [1.0.0-alpha] - 06.01.2019
 
 ### Added
