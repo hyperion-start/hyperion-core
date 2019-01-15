@@ -150,8 +150,16 @@ def conf_preprocessing(conf, custom_env=None):
                 "Full stderr output:\n%s" % (config.SHELL_EXECUTABLE_PATH, "".join(err_lines))
             )
 
-        env = dict((line.split("=", 1) for line in data.splitlines()))
-        os.environ.update(env)
+        keys = []
+        values = []
+        for line in data.splitlines():
+            entry = line.split("=", 1)
+            if len(entry) == 2:
+                keys.append(entry[0])
+                values.append(entry[1])
+            else:
+                logging.debug("Line in env omitted: %s" % line)
+        os.environ.update(dict(zip(keys, values)))
 
     pattern = '\\${(.*)}'
     pattern2 = '.*@\\${(.*)}'
