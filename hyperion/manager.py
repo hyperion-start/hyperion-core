@@ -1065,13 +1065,50 @@ class ControlCenter(AbstractController):
         """
         unmet_deps = False
 
+        provides = {}
+        requires = {}
+
         for group in self.config['groups']:
             for comp in group['components']:
                 self.nodes[comp['id']] = Node(comp)
 
+                # collect provides
+                if 'provides' in comp:
+                    for entry in comp.get('provides'):
+                        if provides.get(entry):
+                            provides[entry].append(comp['id'])
+                        else:
+                            provides[entry] = [comp['id']]
+                    if 'noauto' in comp:
+                        self.logger.warn(
+                            '%s is a "noauto" component and a provider for "%s", this is considered bad practice. '
+                            'noauto components should not have depending components!'
+                            % (comp['id'], entry))
+
+                # collect requires
+                if 'requires' in comp:
+                    for entry in comp.get('requires'):
+                        if requires.get(entry):
+                            requires[entry].append(comp['id'])
+                        else:
+                            requires[entry] = [comp['id']]
+
+        unmet = [k for k in requires if k not in provides]
+
+        if len(unmet) > 0:
+            self.logger.critical("Unmet requirements were detected! %s" % unmet)
+            unmet_deps = True
+
         # Add a pseudo node that depends on all other nodes, to get a starting point to be able to iterate through all
         # nodes with simple algorithms
         master_node = Node({'id': 'master_node'})
+
+        for requirement in requires:
+            for requiring_comp in requires.get(requirement):
+                if provides.get(requirement):
+                    for provider in provides.get(requirement):
+                        self.nodes.get(requiring_comp).add_edge(self.nodes.get(provider))
+
         for id in self.nodes:
             node = self.nodes.get(id)
 
@@ -1081,17 +1118,6 @@ class ControlCenter(AbstractController):
             # Add edges from each node to pseudo node
             master_node.add_edge(node)
 
-            # Add edges based on dependencies specified in the configuration
-            if "depends" in node.component:
-                if 'noauto' in node.component:
-                    self.logger.warn('%s is a "noauto" component and has dependencies, this is considered bad practice'
-                                     % node.comp_id)
-                for dep in node.component['depends']:
-                    if dep in self.nodes:
-                        node.add_edge(self.nodes[dep])
-                    else:
-                        self.logger.error("Unmet dependency: '%s' for component '%s'!" % (dep, node.comp_id))
-                        unmet_deps = True
         self.nodes['master_node'] = master_node
 
         # Test if starting all components is possible
@@ -1109,7 +1135,7 @@ class ControlCenter(AbstractController):
             self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
             raise ex
         if unmet_deps:
-            raise exceptions.UnmetDependenciesException()
+            raise exceptions.UnmetDependenciesException(unmet)
 
     def _copy_config_to_remote(self, host):
         """Copy the configuration to a remote machine.

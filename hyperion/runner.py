@@ -75,11 +75,13 @@ def start_gui(ui):
 ###################
 # Visualisation
 ###################
-def draw_graph(control_center):
+def draw_graph(control_center, unmet):
     """Generate and open a dependency graph pdf with graphviz.
 
     :param control_center: Manager holding the configuration to generate.
     :type control_center: ControlCenter
+    :param unmet: List of unmet requirements
+    :type unmet: List of str
     :return: None
     """
 
@@ -91,8 +93,19 @@ def draw_graph(control_center):
     try:
         node = control_center.nodes.get('master_node')
 
-        for current in node.depends_on:
+        res = []
+        unres = []
+        dep_resolve(node, res, unres)
+        res.remove(node)
 
+        for requirement in unmet:
+            deps.node(
+                requirement,
+                label='%s' % requirement,
+                _attributes={'style': 'dashed', 'color': 'red', 'shape': 'box'}
+            )
+
+        for current in res:
             if not current.component['host'] in subgraphs:
                 logging.debug("Creating host subgraph for %s" % current.component['host'])
                 subgraphs[current.component['host']] = Digraph(
@@ -102,71 +115,30 @@ def draw_graph(control_center):
                     node_attr={'style': 'filled', 'color': 'white'}
                 )
 
-            subgraphs.get(current.component['host']).node(current.comp_id, label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(current.comp_id.split('@')),
-                                                          _attributes={'style': 'filled',
-                                                                       'color': 'white',
-                                                                       'shape': 'box'})
+            subgraphs.get(current.component['host']).node(
+                current.comp_id,
+                label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(current.comp_id.split('@')),
+                _attributes={'style': 'filled', 'color': 'white', 'shape': 'box'}
+            )
 
-            res = []
-            unres = []
-            dep_resolve(current, res, unres)
-            for node in res:
+            for requirement in unmet:
+                if current.component.get('requires') and requirement in current.component['requires']:
+                    deps.edge(current.comp_id, requirement, 'missing', color='red')
 
-                if not node.component['host'] in subgraphs:
-                    logging.debug("Creating host subgraph for %s" % node.component['host'])
-                    subgraphs[node.component['host']] = Digraph(
-                        name='cluster_%s' % node.component['host'],
-                        graph_attr={'style': 'filled', 'color': 'lightgrey',
-                                    'label': node.component['host']},
-                        node_attr={'style': 'filled', 'color': 'white'}
-                    )
+            for sub_node_dep in current.depends_on:
+                parent = deps
 
-                subgraphs.get(node.component['host']).node(node.comp_id,
-                                                           label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(node.comp_id.split('@')),
-                                                           _attributes={'style': 'filled',
-                                                                        'color': 'white',
-                                                                        'shape': 'box'})
+                # Provide option to always show requires as node labels?
+                edge_label = None
+#                for requirement in current.component['requires']:
+#                    if requirement in sub_node_dep.component['provides']:
+#                        edge_label = requirement
 
-                if 'depends' in node.component:
-                    for dep in node.component['depends']:
+                if current.component['host'] == sub_node_dep.comp_id.split('@')[1]:
+                    parent = subgraphs.get(current.component['host'])
 
-                        if not dep.split('@')[1] in subgraphs:
-                            logging.debug("Creating host subgraph for %s" % dep.split('@')[1])
-                            subgraphs[dep.split('@')[1]] = Digraph(
-                                name='cluster_%s' % dep.split('@')[1],
-                                graph_attr={'style': 'filled', 'color': 'lightgrey',
-                                            'label': dep.split('@')[1]},
-                                node_attr={'style': 'filled', 'color': 'white'}
-                            )
-
-                        subgraphs.get(dep.split('@')[1]).node(dep,
-                                                              label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' %
-                                                                    tuple(dep.split('@')),
-                                                              _attributes={'style': 'filled',
-                                                                           'color': 'white',
-                                                                           'shape': 'box'})
-
-                        parent = deps
-
-                        if node.component['host'] == dep.split('@')[1]:
-                            parent = subgraphs.get(node.component['host'])
-
-                            logging.debug("%s depends on %s" % (node.comp_id, dep))
-                            logging.debug("Host: %s" % node.component['host'])
-
-                        if dep not in control_center.nodes:
-                            parent = subgraphs.get(dep.split('@')[1])
-                            parent.node(dep,
-                                        label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(dep.split('@')),
-                                        color='red',
-                                        _attributes={'style': 'filled',
-                                                     'color': 'white',
-                                                     'shape': 'box'})
-                            parent.edge(node.comp_id, dep, 'missing', color='red')
-
-                        elif node.comp_id is not 'master_node':
-                            logging.debug("Adding edge in %s" % parent.name)
-                            parent.edge(node.comp_id, dep)
+                if current.comp_id is not 'master_node':
+                    parent.edge(current.comp_id, sub_node_dep.comp_id, edge_label)
 
     except CircularReferenceException as ex:
         control_center.logger.error('Detected circular dependency reference between %s and %s!' % (ex.node1, ex.node2))
@@ -430,13 +402,16 @@ def main():
         conf_preprocessing(cc.config, cc.custom_env_path)
 
         if args.visual:
+            unmet = []
             try:
                 cc.set_dependencies()
-            except UnmetDependenciesException or CircularReferenceException:
+            except UnmetDependenciesException as e:
+                unmet = e.unmet_list
+            except CircularReferenceException:
                 pass
 
             if graph_enabled:
-                draw_graph(cc)
+                draw_graph(cc, unmet)
             else:
                 logger.error('This feature requires graphviz. To use it install hyperion with the GRAPH option '
                              "(pip install -e .['GRAPH'])")

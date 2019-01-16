@@ -25,13 +25,14 @@ class ComponentNotFoundException(Exception):
 
 class UnmetDependenciesException(Exception):
     """Exception to be thrown when a dependency in the configuration could not be found."""
-    def __init__(self):
+    def __init__(self, unmet_list):
         """Create exception with detailed message.
 
-        :param comp_id: Id of the component with a missing dependency
-        :param dep_id: Id of the missing dependency
+        :param unmet_list: List of unmet requirements
+        :type unmet_list: List of str
         """
         super(Exception, self).__init__("At least one component in the configuration has an unmet dependency")
+        self.unmet_list = unmet_list
 
 
 class CircularReferenceException(Exception):
