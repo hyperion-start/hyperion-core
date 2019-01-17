@@ -121,7 +121,7 @@ def dump_config(conf):
         dump(conf, outfile, default_flow_style=False)
 
 
-def conf_preprocessing(conf, custom_env=None):
+def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
     """Preprocess configuration file.
 
     - Set all component ids to comp_name@host
@@ -131,6 +131,8 @@ def conf_preprocessing(conf, custom_env=None):
     :type conf: dict
     :param custom_env: Path to custom environment to source before trying to evaluate env variables
     :type custom_env: str
+    :param exclude_tags: List of tags to exclude marked components from the config.
+    :type exclude_tags: list of str
     :return: None
     """
     if custom_env:
@@ -166,7 +168,17 @@ def conf_preprocessing(conf, custom_env=None):
     logging.debug("Pattern %s" % pattern)
 
     for group in conf['groups']:
+
+        exclude_from_group = []
         for comp in group['components']:
+            if exclude_tags and 'tags' in comp and comp.get('tags'):
+                for tag in comp.get('tags'):
+                    if tag in exclude_tags:
+                        logging.getLogger(__name__).debug(
+                            "Exclude component %s because of tag: %s" % (comp['name'], tag)
+                        )
+                        exclude_from_group.append(comp)
+                        break
 
             host = comp['host']
             match = re.compile(pattern).match(host)
@@ -190,6 +202,11 @@ def conf_preprocessing(conf, custom_env=None):
                             host_var = match.groups()[0]
                         comp['depends'][dep_index] = re.sub(pattern, host_var, dep)
                     dep_index += 1
+
+        if len(exclude_from_group) > 0:
+            c_list = group.get('components')
+            [c_list.remove(comp) for comp in exclude_from_group]
+            group['components'] = c_list
 
 
 def get_component_cmd(component, cmd_type):
@@ -268,6 +285,7 @@ class AbstractController(object):
         self.session = None
         self.server = None
         self.dev_mode = True
+        self.exclude_tags = None
 
     def broadcast_event(self, event):
         """Put a given event in all registered subscriber queues.
@@ -307,6 +325,10 @@ class AbstractController(object):
             else:
                 self.logger.critical("Env file %s could not be found!" % env)
                 raise exceptions.EnvNotFoundException("Env file %s could not be found!" % env)
+
+        if 'exclude' in self.config and self.config.get('exclude'):
+            self.exclude_tags = self.config.get('exclude')
+            self.logger.info("Following tags are excluded by configuration: %s" % self.exclude_tags)
 
         if 'shell_path' in self.config and self.config.get('shell_path'):
             config.SHELL_EXECUTABLE_PATH = self.config.get('shell_path')
@@ -928,7 +950,7 @@ class ControlCenter(AbstractController):
         else:
             if not setup_ssh_config():
                 self.cleanup(True, config.ExitStatus.MISSING_SSH_CONFIG)
-            conf_preprocessing(self.config, self.custom_env_path)
+            conf_preprocessing(self.config, self.custom_env_path, self.exclude_tags)
 
             for group in self.config['groups']:
                 for comp in group['components']:
@@ -979,7 +1001,7 @@ class ControlCenter(AbstractController):
             self.config = old_conf
             return
 
-        conf_preprocessing(self.config, self.custom_env_path)
+        conf_preprocessing(self.config, self.custom_env_path, self.exclude_tags)
 
         try:
             self.set_dependencies()

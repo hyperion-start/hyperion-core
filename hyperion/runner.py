@@ -399,7 +399,7 @@ def main():
     elif args.cmd == 'validate':
         logger.debug('Launching validation mode')
         cc = ControlCenter(args.config)
-        conf_preprocessing(cc.config, cc.custom_env_path)
+        conf_preprocessing(cc.config, cc.custom_env_path, cc.exclude_tags)
 
         if args.visual:
             unmet = []
