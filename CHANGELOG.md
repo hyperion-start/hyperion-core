@@ -5,6 +5,11 @@
 - If sourcing the custom environment file exited with an error while preprocessing, the user is informed via critical 
 log output.
 - Interactive CLI now supports showing server and slave logs on click of the hostname if it is connected.
+- Tagging components with a list of tags is possible by using the `tags` key in the component configuration.
+- Specifying a list of exclude tags is possible by using the `exclude` tag in the top level of the configuration. Each
+component tagged with a tag included in the exclude list will be removed from the loaded config. This is useful for
+dynamic configs (sim and robot specific components in one configured system, for instance) to switch between usage of 
+specific components.
 
 ### Changed
 - Parsing the environment file is more robust now (with exception handling).
@@ -13,6 +18,8 @@ log output.
 if necessary its forwarded to the server the component is running on, where the bash script for creating a local clone
  session is executed.
 - host_states and host_list usage is now consistent across client interfaces and manager instances.
+- Dependency model changed to requires/provides to enhance reusability of components. Use the keys `provides` and 
+`requires` in component configurations to model dependencies.
 
 ### Fixed
 - Bug in search component cmd, that would use a dictionary as command to run, when the requested cmd type could not be
