@@ -56,11 +56,9 @@ fileConfig('%s/data/default-logger.config' % BASE_DIR)
 ###################
 # GUI
 ###################
-def start_gui(control_center, ui):
+def start_gui(ui):
     """Start the PyQt4 guided interface.
 
-    :param control_center: Manager holding the configuration
-    :type control_center: ControlCenter
     :param ui: User interface to display
     :type ui: hyperGUI.UiMainWindow
     :return: None
@@ -68,7 +66,7 @@ def start_gui(control_center, ui):
 
     app = QtGui.QApplication(sys.argv)
     main_window = QtGui.QMainWindow()
-    ui.ui_init(main_window, control_center)
+    ui.ui_init(main_window)
     app.aboutToQuit.connect(ui.close)
     main_window.show()
     app.exec_()
@@ -311,10 +309,6 @@ def main():
     if args.cmd == 'ui':
         logger.debug('Chose ui mode')
 
-        if args.x_server:
-            logger.critical("PyQt gui is a work in progress and currently disabled!")
-            sys.exit(0)
-
         if args.no_socket:
 
             if not args.config:
@@ -347,10 +341,10 @@ def main():
             if gui_enabled:
                 logger.debug('Launching GUI runner mode')
 
-                ui = hyperGUI.UiMainWindow()
+                ui = hyperGUI.UiMainWindow(cc)
                 signal(SIGINT, SIG_DFL)
 
-                start_gui(cc, ui)
+                start_gui(ui)
             else:
                 logger.error('To use this feature you need PyQt4! Check the README.md for install instructions')
                 cc.cleanup(False, config.ExitStatus.MISSING_PYQT_INSTALL)
