@@ -1,11 +1,13 @@
 import hyperion.manager as manager
 from PyQt4 import QtCore, QtGui
 import sys
+import threading
 import subprocess
 import logging
 from functools import partial
 from time import sleep
 import hyperion.lib.util.config as config
+import hyperion.lib.util.events as events
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -34,32 +36,7 @@ except AttributeError:
 
 class UiMainWindow(object):
 
-    def close(self):
-        """Asks the user if a full shutdown is desired, then kills the manager instance and exits the GUI.
-
-        :return: None
-        """
-
-        msg = QtGui.QMessageBox()
-        msg.setIcon(QtGui.QMessageBox.Information)
-        msg.setText("Do you want to close all running processes?")
-        msg.setWindowTitle("Closing Application")
-        msg.setStandardButtons(QtGui.QMessageBox.Yes | QtGui.QMessageBox.No)
-        ret = msg.exec_()
-
-        self.event_manager.shutdown()
-        self.control_center.cleanup(ret == QtGui.QMessageBox.Yes)
-
-    def ui_init(self, main_window, control_center):
-        """Constructs the UI with all its components using information retrieved from ``control_center``.
-
-        :param main_window: Window the UI is constructed in
-        :type main_window: QtGui.QMainWindow
-        :param control_center: Managing interface holding all configuration information
-        :type control_center: manager.ControlCenter
-        :return: None
-        """
-
+    def __init__(self, control_center):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.terms = {}
@@ -67,18 +44,43 @@ class UiMainWindow(object):
         self.animations = {}
 
         self.control_center = control_center  # type: manager.ControlCenter
-        self.title = control_center.session_name
+        self.title = control_center.config['name']
 
-        self.logger.debug("title: %s" % self.title)
+        self.centralwidget = None
+        self.verticalLayout = None
+        self.tabWidget = None
+        self.force_mode = False
+        self.host_stats = None
+        self.is_shutting_down = False
+        self.event_manager = None
 
+    def close(self):
+        """Asks the user if a full shutdown is desired, then kills the manager instance and exits the GUI.
+
+        :return: None
+        """
+        msg = QtGui.QMessageBox()
+        msg.setIcon(QtGui.QMessageBox.Information)
+        msg.setText("Do you want to shutdown the backend too?")
+        msg.setWindowTitle("Closing PyQt GUI")
+        msg.setStandardButtons(QtGui.QMessageBox.Yes | QtGui.QMessageBox.No)
+        ret = msg.exec_()
+
+        self.control_center.cleanup(ret == QtGui.QMessageBox.Yes)
+
+    def ui_init(self, main_window):
+        """Constructs the UI with all its components using information retrieved from ``control_center``.
+
+        :param main_window: Window the UI is constructed in
+        :type main_window: QtGui.QMainWindow
+        :return: None
+        """
         main_window.setObjectName(self.title)
         main_window.setWindowTitle("Hyperion: %s" % self.title)
         self.centralwidget = QtGui.QWidget(main_window)
         self.centralwidget.setObjectName(_fromUtf8("centralwidget"))
         self.verticalLayout = QtGui.QVBoxLayout(self.centralwidget)
         self.verticalLayout.setObjectName(_fromUtf8("verticalLayout"))
-        self.tabWidget = QtGui.QTabWidget(self.centralwidget)
-        self.tabWidget.setObjectName(_fromUtf8("tabWidget"))
 
         self.create_tabs()
         self.create_host_bar()
@@ -97,15 +99,13 @@ class UiMainWindow(object):
 
         self.verticalLayout.addLayout(self.hostWidget)
 
-        event_manger = self.event_manager = EventManager()
+        event_manger = self.event_manager = EventManager(self.control_center)
         thread = QtCore.QThread()
-        event_manger.crash_signal.connect(self.handle_crash_signal)
-        event_manger.crash_signal.connect(self.check_button_callback)
-        event_manger.disconnect_signal.connect(self.handle_disconnect_signal)
+        event_manger.forward_event_signal.connect(self.handle_event_forward_signal)
 
         event_manger.moveToThread(thread)
         event_manger.done.connect(thread.quit)
-        thread.started.connect(partial(event_manger.start, self.control_center))
+        thread.started.connect(event_manger.start)
 
         thread.start()
         self.threads.append(thread)
@@ -125,20 +125,25 @@ class UiMainWindow(object):
 
         spacerItem = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
 
-        start_button = BlinkButton('start', self.centralwidget)
+        start_button = BlinkButton('Start', self.centralwidget)
         start_button.setObjectName("start_button_all")
         start_button.clicked.connect(lambda: self.control_center.start_all())
         start_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
-        stop_button = BlinkButton('stop', self.centralwidget)
+        stop_button = BlinkButton('Stop', self.centralwidget)
         stop_button.setObjectName("stop_button_all")
         stop_button.clicked.connect(lambda: self.handle_stop_all())
         stop_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
-        check_button = BlinkButton('check', self.centralwidget)
+        check_button = BlinkButton('Check', self.centralwidget)
         check_button.setObjectName("check_button_all")
         check_button.clicked.connect(lambda: self.handle_check_all())
         check_button.setFocusPolicy(QtCore.Qt.NoFocus)
+
+        reload_button = BlinkButton('Reload Config', self.centralwidget)
+        reload_button.setObjectName("reload_config_button")
+        reload_button.clicked.connect(lambda: self.handle_reload_config())
+        reload_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
         spacerItem2 = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
 
@@ -147,6 +152,8 @@ class UiMainWindow(object):
         container.addWidget(start_button)
         container.addWidget(stop_button)
         container.addWidget(check_button)
+        container.addWidget(reload_button)
+
         container.addItem(spacerItem2)
 
     def create_host_bar(self):
@@ -179,6 +186,13 @@ class UiMainWindow(object):
 
         :return: None
         """
+        if self.tabWidget:
+            index = self.tabWidget.count()
+            for i in range(index):
+                self.tabWidget.widget(i).deleteLater()
+
+        self.tabWidget = QtGui.QTabWidget(self.centralwidget)
+        self.tabWidget.setObjectName(_fromUtf8("tabWidget"))
 
         for group in self.control_center.config['groups']:
             groupTab = QtGui.QWidget()
@@ -218,22 +232,30 @@ class UiMainWindow(object):
         comp_label = QtGui.QLabel(scrollAreaWidgetContents)
         comp_label.setObjectName("comp_label_%s" % comp['id'])
 
+        separator = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
+
+        status_pre_label = QtGui.QLabel(scrollAreaWidgetContents)
+        status_pre_label.setText("Status: ")
+
+        status_label = QtGui.QLabel(scrollAreaWidgetContents)
+        status_label.setObjectName("comp_status_%s" % comp['id'])
+
         spacerItem = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
 
         start_button = BlinkButton('test', scrollAreaWidgetContents)
         start_button.setObjectName("start_button_%s" % comp['id'])
         start_button.setText("start")
-        start_button.clicked.connect(lambda: self.control_center.start_component(comp))
+        start_button.clicked.connect(lambda: self.handle_start_button(comp))
 
         stop_button = BlinkButton(scrollAreaWidgetContents)
         stop_button.setObjectName("stop_button_%s" % comp['id'])
         stop_button.setText("stop")
-        stop_button.clicked.connect(lambda: self.control_center.stop_component(comp))
+        stop_button.clicked.connect(lambda: self.handle_stop_button(comp))
 
         check_button = BlinkButton(scrollAreaWidgetContents)
         check_button.setObjectName("check_button_%s" % comp['id'])
         check_button.setText("check")
-        check_button.clicked.connect(lambda: self.control_center.check_component(comp))
+        check_button.clicked.connect(lambda: self.handle_check_button(comp))
 
         term_toggle = QtGui.QCheckBox(scrollAreaWidgetContents)
         term_toggle.setObjectName("term_toggle_%s" % comp['id'])
@@ -252,8 +274,16 @@ class UiMainWindow(object):
         comp_label.raise_()
         comp_label.setText(comp['id'])
 
+        status_label.raise_()
+        status_label.setAutoFillBackground(True)
+
+        status_label.setText("UNKNOWN")
+
         horizontalLayout_components.addWidget(comp_label)
+        #horizontalLayout_components.addItem(separator)
         horizontalLayout_components.addItem(spacerItem)
+        horizontalLayout_components.addWidget(status_pre_label)
+        horizontalLayout_components.addWidget(status_label)
         horizontalLayout_components.addWidget(start_button)
         horizontalLayout_components.addWidget(stop_button)
         horizontalLayout_components.addWidget(check_button)
@@ -280,7 +310,6 @@ class UiMainWindow(object):
         :type host: str
         :return: None
         """
-
         if self.control_center.is_localhost(host):
             self.logger.debug("Clicked host is localhost. Opening xterm")
             subprocess.Popen(['xterm'], stdout=subprocess.PIPE)
@@ -304,6 +333,12 @@ class UiMainWindow(object):
             msg.setStandardButtons(QtGui.QMessageBox.Close)
 
             msg.exec_()
+
+    def handle_reload_config(self):
+        self.logger.info("Clicked reload config")
+        threading.Thread(
+            target=self.control_center.reload_config, name='reload_config',
+        ).start()
 
     def handle_log_button(self, comp):
         """Handles a click on a components log button.
@@ -332,191 +367,58 @@ class UiMainWindow(object):
     def handle_start_all(self):
         """Handles a click on the start all button.
 
-        Starts a worker that runs a dependency based start of all components in a separate thread.
-        Also starts an animation for all start buttons tied to the execution of the worker to show the user feedback
-        about the running process.
-
         :return: None
         """
-
         self.logger.debug("Start all button pressed")
 
-        start_worker = StartWorker()
-        thread = QtCore.QThread()
-        start_worker.done.connect(self.start_all_callback)
-        start_worker.intermediate.connect(self.check_button_callback)
-
-        start_worker.moveToThread(thread)
-        start_worker.done.connect(thread.quit)
-        thread.started.connect(partial(start_worker.start_all, self.control_center))
-
-        deps = self.control_center.get_start_all_list()
-        for dep in deps:
-            start_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                        "start_button_%s" % dep.comp_id)  # type: QtGui.QPushButton
-            anim = QtCore.QPropertyAnimation(
-                start_button,
-                "color",
-            )
-
-            start_button.setStyleSheet("")
-
-            anim.setDuration(1000)
-            anim.setLoopCount(-1)
-            anim.setStartValue(QtGui.QColor(255, 255, 255))
-            anim.setEndValue(QtGui.QColor(0, 0, 0))
-            anim.start()
-
-            self.animations[("start_%s" % dep.comp_id)] = anim
-
-            start_button.setEnabled(False)
-
-        start_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                    "start_button_all")  # type: QtGui.QPushButton
-        anim = QtCore.QPropertyAnimation(
-            start_button,
-            "color",
-        )
-
-        start_button.setStyleSheet("")
-        start_button.setEnabled(False)
-
-        anim.setDuration(1000)
-        anim.setLoopCount(100)
-        anim.setStartValue(QtGui.QColor(255, 255, 255))
-        anim.setEndValue(QtGui.QColor(0, 0, 0))
-        anim.start()
-
-        start_worker.done.connect(lambda: self.threads.remove(thread))
-        self.animations["start_all"] = anim
-
-        thread.start()
-
-        # Need to keep a surviving reference to the thread to save it from garbage collection
-        self.threads.append(thread)
+        threading.Thread(
+            target=self.control_center.start_all, args=[],
+            name='start_all',
+        ).start()
 
     def handle_start_button(self, comp):
         """Handles a click on a components start button.
-
-        Starts a worker that runs a dependency based component start in a separate thread. Also starts an animation for
-        the clicked button tied to the execution of the worker to show the user feedback about the running process.
 
         :param comp: Component whose start button was clicked
         :type comp: dict
         :return: None
         """
-
-        self.logger.debug("%s start button pressed" % comp['id'])
-
-        start_worker = StartWorker()
-        thread = QtCore.QThread()
-        start_worker.done.connect(self.start_button_callback)
-        start_worker.intermediate.connect(self.check_button_callback)
-
-        start_worker.moveToThread(thread)
-        start_worker.done.connect(thread.quit)
-        thread.started.connect(partial(start_worker.run_start, self.control_center, comp))
-
-        deps = self.control_center.get_dep_list(comp)
-        for dep in deps:
-            start_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                        "start_button_%s" % dep.comp_id)  # type: QtGui.QPushButton
-            anim = QtCore.QPropertyAnimation(
-                start_button,
-                "color",
-            )
-
-            start_button.setStyleSheet("")
-
-            anim.setDuration(1000)
-            anim.setLoopCount(-1)
-            anim.setStartValue(QtGui.QColor(255, 255, 255))
-            anim.setEndValue(QtGui.QColor(0, 0, 0))
-            anim.start()
-
-            self.animations[("start_%s" % dep.comp_id)] = anim
-
-            start_button.setEnabled(False)
-
-        start_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                    "start_button_%s" % comp['id'])  # type: QtGui.QPushButton
-        anim = QtCore.QPropertyAnimation(
-            start_button,
-            "color",
-        )
-
-        start_button.setStyleSheet("")
-        start_button.setEnabled(False)
-
-        anim.setDuration(1000)
-        anim.setLoopCount(100)
-        anim.setStartValue(QtGui.QColor(255, 255, 255))
-        anim.setEndValue(QtGui.QColor(0, 0, 0))
-        anim.start()
-
-        start_worker.done.connect(lambda: self.threads.remove(thread))
-        self.animations[("start_%s" % comp['id'])] = anim
-
-        thread.start()
-
-        # Need to keep a surviving reference to the thread to save it from garbage collection
-        self.threads.append(thread)
+        self.logger.info("Clicked start %s" % comp['id'])
+        threading.Thread(
+            target=self.control_center.start_component, args=[comp, self.force_mode],
+            name='start_comp_%s' % comp['id'],
+        ).start()
 
     def handle_stop_button(self, comp):
         """Handles a click on a components stop button.
-
-        Starts a worker that stops a component in a separate thread and closes a `show term`, if it is active.
-        Also starts an animation for the clicked button tied to the execution of the worker to show the user feedback
-        about the running process.
 
         :param comp: Component whose stop button was clicked
         :type comp: dict
         :return: None
         """
-
-        self.logger.debug("%s stop button pressed" % comp['id'])
-
-        if comp['id'] in self.terms:
-            term = self.terms[comp['id']]
-            if term.poll() is None:
-                self.logger.debug("Term %s still running. Trying to kill it" % comp['id'])
-                if self.control_center.run_on_localhost(comp):
-                    self.control_center.kill_session_by_name("%s-clone-session" % comp['id'])
-                else:
-                    self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['id'], comp['host'])
-
-        stop_worker = StopWorker()
-        thread = QtCore.QThread()
-        stop_worker.moveToThread(thread)
-        stop_worker.done.connect(thread.quit)
-        stop_worker.done.connect(partial(self.handle_check_button, comp))
-
-        thread.started.connect(partial(stop_worker.run_stop, self.control_center, comp))
-
-        stop_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                   "stop_button_%s" % comp['id'])  # type: QtGui.QPushButton
-        anim = QtCore.QPropertyAnimation(
-            stop_button,
-            "color",
-        )
-
-        stop_button.setStyleSheet("")
-        stop_button.setEnabled(False)
-
-        anim.setDuration(1000)
-        anim.setLoopCount(100)
-        anim.setStartValue(QtGui.QColor(255, 255, 255))
-        anim.setEndValue(QtGui.QColor(0, 0, 0))
-        anim.start()
-
-        self.animations[("stop_%s" % comp['id'])] = anim
-
-        thread.start()
-        self.threads.append(thread)
+        self.logger.info("Clicked stop %s" % comp['id'])
+        threading.Thread(
+            target=self.stop_component, args=[comp],
+            name='stop_comp_%s' % comp['id'],
+        ).start()
 
         term_toggle = self.centralwidget.findChild(QtGui.QCheckBox, "term_toggle_%s" % comp['id'])
         if term_toggle.isChecked():
             term_toggle.setChecked(False)
+
+    def stop_component(self, comp):
+        """Stop component and run a component check right afterwards to update the ui status.
+
+        :param comp: Component that will be stopped
+        :type comp: dict
+        :return: None
+        """
+        self.control_center.stop_component(comp)
+        sleep(1)
+        threading.Thread(
+            target=self.control_center.check_component, args=[comp],
+            name='check_comp_%s' % comp['id'],
+        ).start()
 
     def handle_stop_all(self):
         """Handles a click on the `stop all` button.
@@ -525,91 +427,33 @@ class UiMainWindow(object):
 
         :return: None
         """
-
-        self.logger.debug("Clicked stop all")
-
-        nodes = self.control_center.get_start_all_list()
-        for node in nodes:
-            self.handle_stop_button(node.component)
+        self.logger.info("Clicked stop all")
+        threading.Thread(
+            target=self.control_center.stop_all, args=[],
+            name='stop_comp_all',
+        ).start()
 
     def handle_check_button(self, comp):
         """Handles a click on a components check button.
-
-        Starts a worker that checks a component in a separate thread . Also starts an animation for the clicked button
-        tied to the execution of the worker to show the user feedback about the running process.
 
         :param comp: Component whose check button was clicked
         :type comp: dict
         :return: None
         """
-
-        self.logger.debug("%s check button pressed" % comp['id'])
-
-        check_worker = CheckWorkerThread()
-        thread = QtCore.QThread()
-        check_worker.check_signal.connect(self.check_button_callback)
-
-        check_worker.moveToThread(thread)
-        check_worker.done.connect(thread.quit)
-        thread.started.connect(partial(check_worker.run_check, self.control_center, comp))
-
-        check_button = self.centralwidget.findChild(QtGui.QPushButton,
-                                                    "check_button_%s" % comp['id'])  # type: QtGui.QPushButton
-        anim = QtCore.QPropertyAnimation(
-            check_button,
-            "color",
-        )
-
-        check_button.setStyleSheet("")
-        check_button.setEnabled(False)
-
-        anim.setDuration(1000)
-        anim.setLoopCount(-1)
-        anim.setStartValue(QtGui.QColor(255, 255, 255))
-        anim.setEndValue(QtGui.QColor(0, 0, 0))
-        anim.start()
-
-        self.animations[("check_%s" % comp['id'])] = anim
-
-        check_worker.check_signal.connect(lambda: self.threads.remove(thread))
-        thread.start()
-
-        # Need to keep a surviving reference to the thread to save it from garbage collection
-        self.threads.append(thread)
+        self.logger.info("Clicked check %s" % comp['id'])
+        threading.Thread(
+            target=self.control_center.check_component, args=[comp],
+            name='check_comp_%s' % comp['id'],
+        ).start()
 
     def handle_check_all(self):
         """Handles a click on the `check all` button.
 
-        Executes a ``handle_check_button`` call for each component.
-
         :return: None
         """
-
-        self.logger.debug("Clicked check all")
-        check_button = self.centralwidget.findChild(QtGui.QPushButton, "check_button_all")
-
-        if not self.animations.has_key('check_all'):
-            anim = QtCore.QPropertyAnimation(
-                check_button,
-                "color",
-            )
-
-            check_button.setStyleSheet("")
-
-            anim.setDuration(2000)
-            anim.setStartValue(QtGui.QColor(0, 0, 0))
-            anim.setEndValue(QtGui.QColor(255, 255, 255))
-        else:
-            anim = self.animations.get('check_all')
-
-        anim.start()
-
-        self.animations['check_all'] = anim
-
-        nodes = self.control_center.get_start_all_list()
-
-        for node in nodes:
-            self.handle_check_button(node.component)
+        for group in self.control_center.config['groups']:
+            for comp in group['components']:
+                self.handle_check_button(comp)
 
     def handle_term_toggle_state_changed(self, comp, is_checked):
         """Handles toggle or de-toggle of a components show term checkbox.
@@ -664,6 +508,61 @@ class UiMainWindow(object):
                     self.control_center.kill_remote_session_by_name("%s-clone-session" % comp['id'], comp['host'])
             else:
                 self.logger.debug("Term already closed! Command must have crashed. Open log!")
+
+    @QtCore.pyqtSlot(events.BaseEvent)
+    def handle_event_forward_signal(self, event):
+        logger = logging.getLogger(__name__)
+
+        logger.debug("Got event: %s" % event)
+
+        if isinstance(event, events.CheckEvent):
+            logger.debug("Check event - comp %s; state %s" % (event.comp_id, event.check_state))
+            status_label = self.centralwidget.findChild(QtGui.QLabel, "comp_status_%s" % event.comp_id)
+            status_label.setStyleSheet(
+                "QLabel { background-color: %s; }" % config.STATE_CHECK_BUTTON_STYLE.get(event.check_state)
+            )
+            status_label.setText(config.SHORT_STATE_DESCRIPTION.get(event.check_state))
+        elif isinstance(event, events.StartingEvent):
+            status_label = self.centralwidget.findChild(QtGui.QLabel, "comp_status_%s" % event.comp_id)
+            status_label.setStyleSheet("")
+            status_label.setText("STARTING...")
+        elif isinstance(event, events.StoppingEvent):
+            status_label = self.centralwidget.findChild(QtGui.QLabel, "comp_status_%s" % event.comp_id)
+            status_label.setStyleSheet("")
+            status_label.setText("STOPPING...")
+        elif isinstance(event, events.CrashEvent):
+            logger.warning("Component %s crashed!" % event.comp_id)
+            status_label = self.centralwidget.findChild(QtGui.QLabel, "comp_status_%s" % event.comp_id)
+            status_label.setStyleSheet("")
+            status_label.setText("CRASHED")
+        elif isinstance(event, events.SlaveReconnectEvent):
+            logger.warn("Reconnected to slave on '%s'" % event.host_name)
+            self.create_host_bar()
+        elif isinstance(event, events.SlaveDisconnectEvent):
+            logger.warn("Connection to slave on '%s' lost" % event.host_name)
+            self.create_host_bar()
+        elif isinstance(event, events.DisconnectEvent):
+            logger.warning("Lost connection to host '%s'" % event.host_name)
+            self.create_host_bar()
+        elif isinstance(event, events.ReconnectEvent):
+            logger.info("Reconnected to host '%s'" % event.host_name)
+            self.create_host_bar()
+        elif isinstance(event, events.StartReportEvent):
+            logger.debug("START REPORT RECEIVED")
+            self.create_host_bar()
+        elif isinstance(event, events.ServerDisconnectEvent):
+            logger.critical("Server disconnected!")
+            # state_controller.handle_shutdown(None, False)
+            # TODO: Show custom popup with option to quit or cancel
+        elif isinstance(event, events.ConfigReloadEvent):
+            logger.debug("CONFIG RELOAD TRIGGERED")
+            self.verticalLayout.removeWidget(self.tabWidget)
+            self.create_tabs()
+            self.create_host_bar()
+            self.verticalLayout.insertWidget(0, self.tabWidget)
+        else:
+            logger.debug("Got unrecognized event of type: %s" % type(event))
+    sleep(.7)
 
     @QtCore.pyqtSlot(str, int, bool)
     def handle_crash_signal(self, check_status, comp_name, unused):
@@ -863,277 +762,39 @@ class UiMainWindow(object):
 
 class EventManager(QtCore.QObject):
     """Class that handles events sent by the main applications monitoring thread."""
-    crash_signal = QtCore.pyqtSignal(int, str, bool)
-    disconnect_signal = QtCore.pyqtSignal(str)
+    forward_event_signal = QtCore.pyqtSignal(events.BaseEvent)
     done = QtCore.pyqtSignal()
 
-    def __init__(self, parent=None, is_ending=False):
+    def __init__(self, control_center, parent=None, is_ending=False):
         super(self.__class__, self).__init__(parent)
         self.is_ending = is_ending
+        self.control_center = control_center
 
     def shutdown(self):
         """Shutown the event manager thread safely by setting the main loop condition to false.
 
         :return: None
         """
-
         self.is_ending = True
 
     @QtCore.pyqtSlot()
-    def start(self, control_center):
+    def start(self):
         """Starts the EventManager main loop and subscribes to the monitoring thread event queue.
 
         Emits signals to the UI thread to notify it about monitoring events.
         Signals its termination by emitting a ``done`` signal.
 
-        :param control_center: Reference to the core application
-        :type control_center: hyperion.ControlCenter
         :return: None
         """
-
-        logger = logging.getLogger(__name__)
-
         event_queue = queue.Queue()
-        control_center.add_subscriber(event_queue)
+        self.control_center.add_subscriber(event_queue)
 
         while not self.is_ending:
-            mon_event = event_queue.get()
-
-            if isinstance(mon_event, DisconnectEvent):
-                logger.warning("Got disconnect event from monitoring thread holding message: %s" % mon_event.message)
-                logger.debug("Retrying auto reconnect...")
-                if not control_center.reconnect_with_host(mon_event.hostname):
-                    logger.debug("... Failed! Showing disconnect popup")
-                    self.disconnect_signal.emit(mon_event.hostname)
-            elif isinstance(mon_event, LocalCrashEvent) or isinstance(mon_event, RemoteCrashEvent):
-                logger.warning("Received crash event from monitoring thread holding message: %s" % mon_event.message)
-                comp = control_center.get_component_by_id(mon_event.comp_id)
-                self.crash_signal.emit((control_center.check_component(comp)).value, mon_event.comp_id, True)
+            while not event_queue.empty():
+                event = event_queue.get_nowait()
+                self.forward_event_signal.emit(event)
+            sleep(.7)
         self.done.emit()
-
-
-class CheckWorkerThread(QtCore.QObject):
-    done = QtCore.pyqtSignal()
-    check_signal = QtCore.pyqtSignal(int, str, bool)
-
-    def __init__(self, parent=None):
-        super(self.__class__, self).__init__(parent)
-
-    @QtCore.pyqtSlot()
-    def run_check(self, control_center, comp):
-        """Runs a component check in the core application.
-
-        Sends an ``check_singal`` signal to notify the UI thread of the component check result and signals its
-        termination by sending a ``done`` signal.
-
-        :param control_center: Reference to the core application.
-        :type control_center: hyperion.ControlCenter
-        :param comp: Component that is being checked
-        :type comp: dict
-        :return: None
-        """
-
-        self.check_signal.emit((control_center.check_component(comp)).value, comp['id'], True)
-        self.done.emit()
-
-
-class StopWorker(QtCore.QObject):
-    done = QtCore.pyqtSignal()
-
-    def __init__(self, parent=None):
-        super(self.__class__, self).__init__(parent)
-
-    @QtCore.pyqtSlot()
-    def run_stop(self, control_center, comp):
-        """Stops a component in the core application.
-
-        Signals its termination by sending a ``done`` signal.
-
-        :param control_center: Reference to the core application.
-        :type control_center: hyperion.ControlCenter
-        :param comp: Component that is being stopped
-        :type comp: dict
-        :return: None
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug("Running stop")
-        control_center.stop_component(comp)
-        # Component wait time before check
-        logger.debug("Waiting component wait time")
-        sleep(manager.get_component_wait(comp))
-        logger.debug("Done stopping")
-        self.done.emit()
-
-
-class StartWorker(QtCore.QObject):
-    done = QtCore.pyqtSignal(int, dict, str)
-    intermediate = QtCore.pyqtSignal(int, str, bool)
-
-    def __init__(self, parent=None):
-        super(self.__class__, self).__init__(parent)
-
-    @QtCore.pyqtSlot()
-    def run_start(self, control_center, comp):
-        """Starts a component in the core application by starting all of its dependencies first.
-
-        Sends an ``intermediate`` signal for each started component and signals its termination by sending a ``done``
-        signal.
-
-        :param control_center: Reference to the core application.
-        :type control_center: hyperion.ControlCenter
-        :param comp: Component that is being started
-        :type comp: dict
-        :return: None
-        """
-
-        logger = logging.getLogger(__name__)
-        comps = control_center.get_dep_list(comp)
-        control_center = control_center
-        failed = False
-        failed_comp = ""
-
-        check = control_center.check_component(comp)
-        if (check is not config.CheckState.UNREACHABLE
-                and check is not config.CheckState.STOPPED
-                and check is not config.CheckState.NOT_INSTALLED):
-
-            for dep in comps:
-                ret = control_center.check_component(dep.component)
-                self.intermediate.emit(ret.value, dep.comp_id, True)
-
-            self.intermediate.emit(check.value, comp['id'], True)
-            self.done.emit(config.StartState.ALREADY_RUNNING.value, comp, failed_comp)
-
-            return
-
-        for dep in comps:
-            if not failed:
-                logger.debug("Checking dep %s" % dep.comp_id)
-                ret = control_center.check_component(dep.component)
-                if ret is not config.CheckState.STOPPED or \
-                        ret is not config.CheckState.UNREACHABLE or \
-                        ret is not config.CheckState.NOT_INSTALLED:
-                    logger.debug("Dep %s already running" % dep.comp_id)
-                    self.intermediate.emit(ret.value, dep.comp_id, True)
-                else:
-                    tries = 0
-                    logger.debug("Starting dep %s" % dep.comp_id)
-                    control_center.start_component_without_deps(dep.component)
-                    # Component wait time for startup
-                    sleep(manager.get_component_wait(dep.component))
-                    while True:
-                        sleep(.5)
-                        ret = control_center.check_component(dep.component)
-                        if (ret is config.CheckState.RUNNING or
-                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
-                            break
-                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
-                                config.CheckState.UNREACHABLE:
-                            failed = True
-                            failed_comp = dep.comp_id
-                            break
-                        tries = tries + 1
-                    self.intermediate.emit(ret.value, dep.comp_id, True)
-            else:
-                ret = control_center.check_component(dep.component)
-                if (ret is not config.CheckState.STOPPED or
-                        ret is not config.CheckState.UNREACHABLE or
-                        ret is not config.CheckState.NOT_INSTALLED):
-                    self.intermediate.emit(ret.value, dep.comp_id, True)
-                else:
-                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, dep.comp_id, True)
-
-        ret = config.CheckState.DEP_FAILED
-        if not failed:
-            logger.debug("Done starting dependencies. Now starting %s" % comp['id'])
-            control_center.start_component_without_deps(comp)
-
-            # Component wait time for startup
-            logger.debug("Waiting component startup wait time")
-            sleep(manager.get_component_wait(comp))
-
-            tries = 0
-            logger.debug("Running check to ensure start was successful")
-            while True:
-                sleep(.5)
-                ret = control_center.check_component(comp)
-                if (ret is config.CheckState.RUNNING or
-                    ret is config.CheckState.STOPPED_BUT_SUCCESSFUL or
-                    ret is config.CheckState.UNREACHABLE or
-                    ret is config.CheckState.NOT_INSTALLED) or tries > 9:
-                    break
-                logger.debug("Check was not successful. Will retry %s more times before giving up" % (9 - tries))
-                tries = tries + 1
-
-        self.intermediate.emit(ret.value, comp['id'], True)
-        self.done.emit(ret.value, comp, failed_comp)
-
-    @QtCore.pyqtSlot()
-    def start_all(self, control_center):
-        """Starts all components in the core application ordered by dependencies.
-
-        Sends an ``intermediate`` signal for each started component and signals its termination by sending a ``done``
-        signal.
-
-        :param control_center: Reference to the core application.
-        :type control_center: hyperion.ControlCenter
-        :return: None
-        """
-
-        logger = logging.getLogger(__name__)
-        comps = control_center.get_start_all_list()
-        failed_comps = {}
-
-        for comp in comps:
-
-            failed = False
-            deps = control_center.get_dep_list(comp.component)
-
-            for dep in deps:
-                if dep.comp_id in failed_comps:
-                    logger.debug("Comp %s failed, because dependency %s failed!" % (comp.comp_id, dep.comp_id))
-                    failed = True
-
-            if not failed:
-                logger.debug("Checking %s" % comp.comp_id)
-                ret = control_center.check_component(comp.component)
-                if ret is config.CheckState.RUNNING or ret is config.CheckState.STARTED_BY_HAND:
-                    logger.debug("Dep %s already running" % comp.comp_id)
-                    self.intermediate.emit(ret.value, comp.comp_id, False)
-                else:
-                    tries = 0
-                    logger.debug("Starting dep %s" % comp.comp_id)
-                    control_center.start_component_without_deps(comp.component)
-                    # Component wait time for startup
-                    sleep(manager.get_component_wait(comp.component))
-                    while True:
-                        sleep(.5)
-                        ret = control_center.check_component(comp.component)
-                        if (ret is config.CheckState.RUNNING or
-                                ret is config.CheckState.STOPPED_BUT_SUCCESSFUL):
-                            break
-                        if tries > 10 or ret is config.CheckState.NOT_INSTALLED or ret is \
-                                config.CheckState.UNREACHABLE:
-                            failed_comps[comp.comp_id] = ret
-                            break
-                        tries = tries + 1
-                    logger.info("Sending %s for %s" % (config.STATE_DESCRIPTION.get(ret), comp.comp_id))
-                    self.intermediate.emit(ret.value, comp.comp_id, False)
-            else:
-                ret = control_center.check_component(comp.component)
-                if ret is not config.CheckState.STOPPED:
-                    self.intermediate.emit(ret.value, comp.comp_id, False)
-                else:
-                    failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
-                    self.intermediate.emit(config.CheckState.DEP_FAILED.value, comp.comp_id, False)
-
-        if len(failed_comps) == 0:
-            result = config.StartState.STARTED.value
-        else:
-            result = config.StartState.FAILED.value
-
-        self.done.emit(result, failed_comps, 'none')
 
 
 class BlinkButton(QtGui.QPushButton):
