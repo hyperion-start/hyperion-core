@@ -1,8 +1,0 @@
-name: date
-
-cmd:
-  - start: date
-  - check: date  > /dev/null
-  - stop: echo "shutdown"
-
-host: Wintermute

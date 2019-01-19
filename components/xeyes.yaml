@@ -1,8 +1,0 @@
-name: xeyes
-
-cmd:
-  - start: xeyes
-  - check: pgrep xeyes > /dev/null
-  - stop: echo "shutdown"
-
-host: Wintermute
