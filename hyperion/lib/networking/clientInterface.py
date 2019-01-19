@@ -190,6 +190,7 @@ class RemoteSlaveInterface(BaseClient):
         except exceptions.HostUnknownException:
             self.logger.critical("Cannot connect to server: host '%s' unknown!" % host)
             self._quit()
+            sys.exit(config.ExitStatus.NO_MASTER_RUNNING)
 
         try:
             self.logger.debug('connecting to {} port {}'.format(*server_address))
