@@ -782,7 +782,7 @@ class AbstractController(object):
         :param full: Full shutdown
         :type full: bool
         :param exit_status: Exit status for the application
-        :type exit_status: int
+        :type exit_status: config.ExitStatus
         :return: None
         """
         raise NotImplementedError
@@ -851,9 +851,9 @@ class ControlCenter(AbstractController):
             try:
                 self._load_config(configfile)
             except IOError:
-                self.cleanup(status=1)
+                self.cleanup(status=config.ExitStatus.CONFIG_PARSING_ERROR)
             except exceptions.EnvNotFoundException:
-                self.cleanup(status=1)
+                self.cleanup(status=config.ExitStatus.ENVIRONMENT_FILE_MISSING)
             self.session_name = self.config["name"]
 
             self.logger.info("Loading config was successful")
@@ -891,7 +891,7 @@ class ControlCenter(AbstractController):
 
         else:
             if not setup_ssh_config():
-                self.cleanup(True, 1)
+                self.cleanup(True, config.ExitStatus.MISSING_SSH_CONFIG)
             conf_preprocessing(self.config, self.custom_env_path)
 
             for group in self.config['groups']:
@@ -908,7 +908,7 @@ class ControlCenter(AbstractController):
                 self.set_dependencies()
             except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
                 self.logger.debug("Error while setting up dependency tree. Initiating shutdown")
-                self.cleanup(True, 1)
+                self.cleanup(True, config.ExitStatus.DEPENDENCY_RESOLUTION_ERROR)
 
             if self.custom_env_path:
                 self.logger.debug("Sourcing custom environment in main window of master session")
@@ -954,7 +954,7 @@ class ControlCenter(AbstractController):
                 self.set_dependencies()
             except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
                 self.logger.critical("Resetting to old config failed!")
-                self.cleanup(True, 1)
+                self.cleanup(True, config.ExitStatus.CONFIG_RESET_FAILED)
 
         # Update hosts
         old_hostlist = self.host_list.copy()
@@ -1790,7 +1790,7 @@ class ControlCenter(AbstractController):
         self.logger.debug("received signal %s. Running cleanup" % signum)
         self.cleanup()
 
-    def cleanup(self, full=False, status=0):
+    def cleanup(self, full=False, status=config.ExitStatus.FINE):
         """Clean up for safe shutdown.
 
         Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
@@ -1798,9 +1798,10 @@ class ControlCenter(AbstractController):
 
         :param full: Whether everything shall be shutdown or not
         :type full: bool
+        :param status: Status context this function was invoked from. The application will exit with that status
+        :type status: config.ExitStatus
         :return: None
         """
-
         self.logger.info("Shutting down safely...")
 
         self.logger.debug("Killing monitoring thread")
@@ -1904,9 +1905,9 @@ class SlaveManager(AbstractController):
             try:
                 self._load_config(configfile)
             except IOError:
-                self.cleanup(exit_status=1)
+                self.cleanup(exit_status=config.ExitStatus.CONFIG_PARSING_ERROR)
             except exceptions.EnvNotFoundException:
-                self.cleanup(exit_status=1)
+                self.cleanup(exit_status=config.ExitStatus.ENVIRONMENT_FILE_MISSING)
             self.session_name = '%s-slave' % self.config["name"]
 
             self.logger.info("Loading config was successful")
@@ -1929,7 +1930,7 @@ class SlaveManager(AbstractController):
         else:
             self.config = None
 
-    def cleanup(self, full=False, exit_status=0):
+    def cleanup(self, full=False, exit_status=config.ExitStatus.FINE):
         """Clean up for safe shutdown.
 
         Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
@@ -1937,6 +1938,8 @@ class SlaveManager(AbstractController):
 
         :param full: Whether everything shall be shutdown or not
         :type full: bool
+        :param exit_status: Status context this function was invoked from. The application will exit with that status
+        :type exit_status: config.ExitStatus
         :return: None
         """
         self.logger.info("Shutting down safely...")

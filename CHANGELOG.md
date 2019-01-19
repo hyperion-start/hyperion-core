@@ -7,6 +7,7 @@ log output.
 
 ### Changed
 - Parsing the environment file is more robust now (with exception handling).
+- Add enum ExitState in config to define different exit states.
 
 ### Fixed
 - Bug in search component cmd, that would use a dictionary as command to run, when the requested cmd type could not be

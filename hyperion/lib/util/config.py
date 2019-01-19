@@ -2,6 +2,22 @@ from os.path import expanduser
 from enum import Enum
 
 
+class ExitStatus(Enum):
+    """Enum providing information about exit status"""
+    FINE = 0
+    CONFIG_NOT_FOUND = 1
+    MISSING_CONFIG = 2
+    ERRONEUS_CONFIG = 3
+    SSH_FAILED = 4
+    NO_MASTER_RUNNING = 5
+    MISSING_PYQT_INSTALL = 6
+    DEPENDENCY_RESOLUTION_ERROR = 7
+    CONFIG_PARSING_ERROR = 8
+    ENVIRONMENT_FILE_MISSING = 9
+    MISSING_SSH_CONFIG = 10
+    CONFIG_RESET_FAILED = 11
+
+
 class CheckState(Enum):
     """Enum that provides information about the status of a run check"""
     RUNNING = 0

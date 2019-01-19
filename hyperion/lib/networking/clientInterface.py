@@ -183,7 +183,7 @@ class RemoteSlaveInterface(BaseClient):
                     self.logger.critical("SSH connection to server can not be established - Quitting. "
                                          "Are ssh keys set up?")
                     self._quit()
-                    sys.exit(1)
+                    sys.exit(config.ExitStatus.SSH_FAILED)
                 tries += 1
                 time.sleep(.5)
             server_address = ('', local_port)
@@ -194,7 +194,7 @@ class RemoteSlaveInterface(BaseClient):
         except socket.error:
             self.logger.critical("Master session does not seem to be running. Quitting remote client")
             self._quit()
-            sys.exit(1)
+            sys.exit(config.ExitStatus.NO_MASTER_RUNNING)
         sock.setblocking(False)
 
         # Set up the selector to watch for when the socket is ready
@@ -364,7 +364,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         except socket.error:
             self.logger.critical("Master session does not seem to be running. Quitting remote client")
             self.cleanup()
-            sys.exit(1)
+            sys.exit(config.ExitStatus.NO_MASTER_RUNNING)
         sock.setblocking(False)
 
         # Set up the selector to watch for when the socket is ready
@@ -400,7 +400,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.keep_running = False
         self.cleanup(False)
 
-    def cleanup(self, full=False, exit_code=0):
+    def cleanup(self, full=False, exit_code=config.ExitStatus.FINE):
         if full:
             action = 'quit'
             message = actionSerializer.serialize_request(action, [full])

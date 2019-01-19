@@ -4,6 +4,7 @@ import argparse
 import sys
 import yaml
 import time
+import lib.util.config as config
 from signal import *
 from lib.util.setupParser import Loader
 from manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log, conf_preprocessing
@@ -284,11 +285,11 @@ def main():
                 conf_name = tmp_config['name']
                 if conf_name.find(' ') != -1:
                     logger.critical('Your config name contains at least one space, which is not allowed! Change it')
-                    sys.exit(1)
+                    sys.exit(config.ExitStatus.ERRONEUS_CONFIG)
                 log_name = '%s' % conf_name
         except IOError:
             logger.critical("No config file at '%s' found" % args.config)
-            sys.exit(1)
+            sys.exit(config.ExitStatus.CONFIG_NOT_FOUND)
 
     if args.cmd == 'server':
         log_file_path = '%s/localhost/server/%s.log' % (TMP_LOG_PATH, log_name)
@@ -305,7 +306,7 @@ def main():
         cc.init()
 
         s = server.Server(int(args.port), cc)
-        sys.exit(0)
+        sys.exit(config.ExitStatus.FINE)
 
     if args.cmd == 'ui':
         logger.debug('Chose ui mode')
@@ -347,7 +348,7 @@ def main():
                 start_gui(cc, ui)
             else:
                 logger.error('To use this feature you need PyQt4! Check the README.md for install instructions')
-                cc.cleanup(False, 1)
+                cc.cleanup(False, config.ExitStatus.MISSING_PYQT_INSTALL)
         else:
             # Urwid
             if interactive_enabled:
@@ -444,7 +445,7 @@ def main():
             try:
                 cc.set_dependencies()
             except UnmetDependenciesException or CircularReferenceException:
-                cc.cleanup(status=1)
+                cc.cleanup(status=config.ExitStatus.DEPENDENCY_RESOLUTION_ERROR)
         cc.cleanup()
 
     elif args.cmd == 'slave':
@@ -473,4 +474,4 @@ def main():
 
         logger.debug('Flushing memory handler!')
         memory_handler.close()
-        sys.exit(0)
+        sys.exit(config.ExitStatus.FINE)
