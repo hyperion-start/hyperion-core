@@ -1039,6 +1039,9 @@ class ControlCenter(AbstractController):
         for id in self.nodes:
             node = self.nodes.get(id)
 
+            if id == 'master_node':
+                continue
+
             # Add edges from each node to pseudo node
             master_node.add_edge(node)
 
