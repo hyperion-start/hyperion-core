@@ -21,7 +21,7 @@ if [ ! -z $exists ]
 fi
 
 # Check if target window exists
-winExists=`tmux list-windows -t "$session_name" | grep -oE "^([0-9][0-9]*: $comp_name)(\*|-)"`
+winExists=`tmux list-windows -t "$session_name" | grep -oE "^([0-9][0-9]*: $comp_name)"`
 if [ -z "$winExists" ]
   then
   tmux list-windows -t "$session_name"
