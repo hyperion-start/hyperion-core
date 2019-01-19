@@ -4,6 +4,7 @@
 - `verbose_checks` top level field in config. If set to true enables logging stdout and stderr of check commands.
 - If sourcing the custom environment file exited with an error while preprocessing, the user is informed via critical 
 log output.
+- Interactive CLI now supports showing server and slave logs on click of the hostname if it is connected.
 
 ### Changed
 - Parsing the environment file is more robust now (with exception handling).

@@ -22,7 +22,7 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
     def set_modified_callback(self, callback):
         pass
 
-    def __init__(self, name, comp=None):
+    def __init__(self, name, title):
         self.lines = []
         super(LogTextWalker, self).__init__(self.lines)
 
@@ -31,7 +31,7 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
         self.focus = 0
         self.end = False
         self.read_file()
-        self.comp = comp
+        self.title = title
         self.full_shutdown = False
 
     def get_focus(self):
@@ -108,7 +108,7 @@ class StateController(object):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         self.event_queue = event_queue
-        self.log_viewer = LogTextWalker(log_file_path)
+        self.log_viewer = LogTextWalker(log_file_path, "Main")
         self.tail_log = True
         self.states = {}
         self.host_stats = None
@@ -444,7 +444,7 @@ class StateController(object):
                 index = self.additional_content_grid.focus_position
                 if index > 0:  # Not 'All Components/Host Stats' Pile in Grid flow
                     # Grants LogTextWalker
-                    comp_id = self.additional_content_grid[index].body.comp['id']
+                    comp_id = self.additional_content_grid[index].body.title
                     log = self.comp_log_map[comp_id]
                     self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
                     self.comp_log_map[comp_id] = None
@@ -502,6 +502,20 @@ class StateController(object):
         if state and state == config.HostState.CONNECTED:
             self.logger.debug("Showing non-component log NIY")
             # TODO show server or slave log
+
+            if self.cc.is_localhost(host):
+                server_file_path = '%s/localhost/server/%s.log' % (config.TMP_LOG_PATH, self.cc.config['name'])
+                slave_file_path = '%s/localhost/slave/%s.log' % (config.TMP_LOG_PATH, self.cc.config['name'])
+            else:
+                server_file_path = '%s/%s/server/%s.log' % (config.TMP_LOG_PATH, host, self.cc.config['name'])
+                slave_file_path = '%s/%s/slave/%s.log' % (config.TMP_LOG_PATH, host, self.cc.config['name'])
+
+            if isfile(server_file_path):
+                self.show_log_file(server_file_path, 'Server on %s' % host)
+            elif isfile(slave_file_path):
+                self.show_log_file(slave_file_path, 'Slave on %s' % host)
+            else:
+                self.logger.error("Neither of the following paths exists! \n%s\n%s" % server_file_path, slave_file_path)
         else:
             threading.Thread(
                 target=self.cc.reconnect_with_host, args=[host],
@@ -550,29 +564,31 @@ class StateController(object):
             local_file_path = '%s/%s/component/%s/latest.log' % (config.TMP_LOG_PATH, comp['host'], comp['id'])
 
         self.logger.debug("Filepath: %s" % local_file_path)
+        self.show_log_file(local_file_path, comp['id'])
 
-        if isfile(local_file_path):
-            log = self.comp_log_map.get(comp['id'], None)
+    def show_log_file(self, log_path, title):
+        if isfile(log_path):
+            log = self.comp_log_map.get(title, None)
             if log:
-                self.logger.info("Closing '%s' log" % comp['id'])
+                self.logger.info("Closing '%s' log" % title)
                 self.additional_content_grid.contents.remove((log, self.additional_content_grid.options()))
-                self.comp_log_map[comp['id']] = None
+                self.comp_log_map[title] = None
             else:
-                self.logger.info("Opening '%s' log" % comp['id'])
+                self.logger.info("Opening '%s' log" % title)
                 log = urwid.AttrMap(
                     urwid.LineBox(urwid.BoxAdapter(
                         urwid.ListBox(
-                            LogTextWalker(local_file_path, comp)),
+                            LogTextWalker(log_path, title)),
                             10
-                        ), '%s Log' % comp['id']
+                        ), '%s Log' % title
                     ),
                     None,
                     focus_map='simple_button'
                 )
-                self.comp_log_map[comp['id']] = log
+                self.comp_log_map[title] = log
                 self.additional_content_grid.contents.append((log, self.additional_content_grid.options()))
         else:
-            self.logger.error("Log file '%s' does not exist!" % local_file_path)
+            self.logger.error("Log file '%s' does not exist!" % log_path)
 
     def handle_shutdown(self, button, full=False):
         self.full_shutdown = full
