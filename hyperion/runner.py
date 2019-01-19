@@ -316,6 +316,11 @@ def main():
             sys.exit(0)
 
         if args.no_socket:
+
+            if not args.config:
+                logger.critical("If you start in standalone mode you need to supply a configuration!")
+                sys.exit(config.ExitStatus.MISSING_CONFIG)
+
             log_file_path = '%s/localhost/standalone/%s.log' % (TMP_LOG_PATH, time.strftime("%H-%M-%S"))
             handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
 

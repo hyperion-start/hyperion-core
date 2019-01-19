@@ -12,6 +12,7 @@ log output.
 ### Fixed
 - Bug in search component cmd, that would use a dictionary as command to run, when the requested cmd type could not be
 found in the list of available commands.
+- Restrict usage of standalone mode to having to provide a configuration.
 
 ## [1.0.0-alpha] - 06.01.2019
 
