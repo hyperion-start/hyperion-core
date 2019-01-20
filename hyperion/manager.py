@@ -294,6 +294,8 @@ class AbstractController(object):
             self.logger.critical("No config file at '%s' found" % filename)
             raise e
 
+        self.session_name = self.config["name"]
+
         if 'env' in self.config and self.config.get('env'):
             env = self.config.get('env')
             if os.path.isfile(env):
@@ -773,6 +775,37 @@ class AbstractController(object):
 
         return False
 
+    ###################
+    # TMUX SESSION CONTROL
+    ###################
+
+    def kill_remote_session_by_name(self, name, host):
+        """Kill tmux session by name 'name' on host 'host'
+
+        :param name: Name of the session to kill
+        :type name: str
+        :param host: Host that the session runs on
+        :type host: str
+        :return: None
+        """
+
+        cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, name)
+        self._send_main_session_command(cmd)
+
+    def start_local_clone_session(self, comp):
+        """Start a local clone session of the master session and open the window of component `comp`.
+
+        Because the libtmux library does not provide functions to achieve this, a bash script is run to automatize the
+        process.
+
+        :param comp: Component whose window is to be shown in the cloned session
+        :type comp: dict
+        :returns None
+        """
+        comp_id = comp['id']
+        cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, self.session_name, comp_id)
+        call(cmd, shell=True)
+
     ####################
     # Do override in subclass
     ####################
@@ -785,6 +818,9 @@ class AbstractController(object):
         :type exit_status: config.ExitStatus
         :return: None
         """
+        raise NotImplementedError
+
+    def start_remote_clone_session(self, comp):
         raise NotImplementedError
 
     def add_subscriber(self, subscriber):
@@ -1727,56 +1763,6 @@ class ControlCenter(AbstractController):
             return False
 
     ###################
-    # TMUX
-    ###################
-    def kill_remote_session_by_name(self, name, host):
-        """Kill tmux session by name 'name' on host 'host'
-
-        :param name: Name of the session to kill
-        :type name: str
-        :param host: Host that the session runs on
-        :type host: str
-        :return: None
-        """
-
-        cmd = "ssh -F %s -t %s 'tmux kill-session -t %s'" % (config.CUSTOM_SSH_CONFIG_PATH, host, name)
-        self._send_main_session_command(cmd)
-
-    def start_local_clone_session(self, comp):
-        """Start a local clone session of the master session and open the window of component `comp`.
-
-        Because the libtmux library does not provide functions to achieve this, a bash script is run to automatize the
-        process.
-
-        :param comp: Component whose window is to be shown in the cloned session
-        :type comp: dict
-        :returns None
-        """
-
-        comp_id = comp['id']
-        cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, self.session_name, comp_id)
-        call(cmd, shell=True)
-
-    def start_remote_clone_session(self, comp):
-        """Start a clone session of the remote slave session and open the window of component `comp`.
-
-        Same as ``start_clone_session`` only that the bash script is fed into a ssh command issued over the main window
-        of the master session.
-
-        :param comp: Component whose window is to be shown in the clone session
-        :type comp: dict
-        :return:
-        """
-
-        session_name = '%s-slave' % self.config['name']
-        comp_id = comp['id']
-        hostname = comp['host']
-
-        remote_cmd = ("%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_id))
-        cmd = "ssh -F %s %s 'bash -s' < %s" % (config.CUSTOM_SSH_CONFIG_PATH, hostname, remote_cmd)
-        self._send_main_session_command(cmd)
-
-    ###################
     # Safe shutdown
     ###################
     def signal_handler(self, signum, frame):
@@ -1828,9 +1814,39 @@ class ControlCenter(AbstractController):
         self.logger.info("... Done")
         exit(status)
 
+    def start_remote_clone_session(self, comp):
+        """Start a clone session of the remote slave session and open the window of component `comp`.
+
+        :param comp: Component whose window is to be shown in the clone session
+        :type comp: dict
+        :return:
+        """
+        comp_id = comp['id']
+        host = comp['host']
+
+        self.logger.debug("Starting remote clone session for component '%s'" % comp_id)
+        if self.host_list.get(comp['host']) is not None:
+            if self.slave_server:
+                try:
+                    self.logger.debug("Issuing start command to slave server")
+                    self.slave_server.start_clone_session(comp_id, host)
+                except exceptions.SlaveNotReachableException as ex:
+                    self.logger.debug(ex.message)
+            else:
+                self.logger.error(
+                    "Host %s is reachable but slave is not - hyperion seems not to be installed" % comp['host'])
+        else:
+            self.logger.error(
+                "Host %s is unreachable. Can not start remote clone session for component %s!" % (comp['host'],
+                                                                                                  comp['id']))
+
 
 class SlaveManager(AbstractController):
     """Controller class that manages components on a slave machine."""
+
+    def start_remote_clone_session(self, comp):
+        self.logger.error("This function is disabled for slave managers!")
+        pass
 
     def _stop_remote_component(self, comp):
         self.logger.error("This function is disabled for slave managers!")
@@ -1847,6 +1863,13 @@ class SlaveManager(AbstractController):
     def start_all(self, force_mode=False):
         self.logger.error("This function is disabled for slave managers!")
         pass
+
+    def start_local_clone_session(self, comp):
+        session_name = '%s-slave' % self.config['name']
+        comp_id = comp['id']
+
+        cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_id)
+        call(cmd, shell=True)
 
     def reload_config(self):
 

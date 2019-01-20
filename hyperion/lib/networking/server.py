@@ -133,7 +133,8 @@ class Server(BaseServer):
             'quit': self.cc.cleanup,
             'reconnect_with_host': self.cc.reconnect_with_host,
             'unsubscribe': None,
-            'reload_config': self.cc.reload_config
+            'reload_config': self.cc.reload_config,
+            'start_clone_session': self._handle_start_clone_session
         }
 
         self.receiver_mapping = {
@@ -276,6 +277,14 @@ class Server(BaseServer):
             self.cc.stop_component(comp)
         except exceptions.ComponentNotFoundException as e:
             self.logger.error(e.message)
+
+    def _handle_start_clone_session(self, comp_id):
+        comp = self.cc.get_component_by_id(comp_id)
+
+        if self.cc.run_on_localhost(comp):
+            self.cc.start_local_clone_session(comp)
+        else:
+            self.cc.start_remote_clone_session(comp)
 
     def _send_config(self):
         return self.cc.config
@@ -536,6 +545,24 @@ class SlaveManagementServer(BaseServer):
                     self.send_queues.get(conn).put(message)
                 except socket.error:
                     self.logger.error("Existing connection to %s died. Could not send quit command" % hostname)
+
+    def start_clone_session(self, comp_id, hostname):
+        action = 'start_clone_session'
+        payload = [comp_id]
+
+        connection_queue = None
+
+        message = actionSerializer.serialize_request(action, payload)
+
+        for connection in self.send_queues:
+            if self.port_mapping.get(connection) == hostname:
+                connection_queue = self.send_queues.get(connection)
+                break
+
+        if connection_queue:
+            connection_queue.put(message)
+        else:
+            raise exceptions.SlaveNotReachableException("Slave at %s is not reachable!" % hostname)
 
     def start_component(self, comp_id, hostname):
         action = 'start'

@@ -210,7 +210,8 @@ class RemoteSlaveInterface(BaseClient):
             'stop': self._stop_wrapper,
             'quit': self._quit,
             'suspend': self._suspend,
-            'conf_reload': self.cc.reload_config
+            'conf_reload': self.cc.reload_config,
+            'start_clone_session': self._start_clone_session_wrapper
         }
         self._send_auth()
 
@@ -256,6 +257,9 @@ class RemoteSlaveInterface(BaseClient):
             func(*args)
         except TypeError:
             self.logger.error("Ignoring unrecognized slave action '%s'" % action)
+
+    def _start_clone_session_wrapper(self, comp_id):
+        self.cc.start_local_clone_session(self.cc.get_component_by_id(comp_id))
 
     def _start_wrapper(self, comp_id):
         self.cc.start_component(self.cc.get_component_by_id(comp_id))
@@ -382,9 +386,17 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             self.logger.debug("Waiting for config")
             time.sleep(0.5)
 
+        self.session_name = self.config['name']
+
         for host in self.host_list:
             if not self.is_localhost(host):
                 self._mount_host(host)
+
+    def start_remote_clone_session(self, comp):
+        action = 'start_clone_session'
+        payload = [comp['id']]
+        message = actionSerializer.serialize_request(action, payload)
+        self.send_queue.put(message)
 
     def request_config(self):
         action = 'get_conf'
