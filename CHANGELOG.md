@@ -1,4 +1,4 @@
-## [Unreleased]
+## [2.0.0-alpha] - 31.01.2019 
 
 ### Added
 - `verbose_checks` top level field in config. If set to true enables logging stdout and stderr of check commands.
