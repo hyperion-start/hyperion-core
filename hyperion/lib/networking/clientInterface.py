@@ -75,7 +75,6 @@ class BaseClient(object):
         :return: Whether 'host' resolves to localhost or not
         :rtype: bool
         """
-
         if hostname == 'localhost':
             hostname = self.host
 
@@ -171,22 +170,26 @@ class RemoteSlaveInterface(BaseClient):
         self.event_queue = queue.Queue()
         self.cc.add_subscriber(self.event_queue)
 
-        if not self.is_localhost(host):
-            if not setup_ssh_config():
-                self._quit()
-
-            local_port = None
-            tries = 0
-            while not local_port:
-                local_port = self.forward_over_ssh()
-                if tries == 5:
-                    self.logger.critical("SSH connection to server can not be established - Quitting. "
-                                         "Are ssh keys set up?")
+        try:
+            if not self.is_localhost(host):
+                if not setup_ssh_config():
                     self._quit()
-                    sys.exit(config.ExitStatus.SSH_FAILED)
-                tries += 1
-                time.sleep(.5)
-            server_address = ('', local_port)
+
+                local_port = None
+                tries = 0
+                while not local_port:
+                    local_port = self.forward_over_ssh()
+                    if tries == 5:
+                        self.logger.critical("SSH connection to server can not be established - Quitting. "
+                                             "Are ssh keys set up?")
+                        self._quit()
+                        sys.exit(config.ExitStatus.SSH_FAILED)
+                    tries += 1
+                    time.sleep(.5)
+                server_address = ('', local_port)
+        except exceptions.HostUnknownException:
+            self.logger.critical("Cannot connect to server: host '%s' unknown!" % host)
+            self._quit()
 
         try:
             self.logger.debug('connecting to {} port {}'.format(*server_address))

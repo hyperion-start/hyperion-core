@@ -17,6 +17,7 @@ if necessary its forwarded to the server the component is running on, where the 
 - Bug in search component cmd, that would use a dictionary as command to run, when the requested cmd type could not be
 found in the list of available commands.
 - Restrict usage of standalone mode to having to provide a configuration.
+- Safe shutdown is invoked when a slave raises a HostUnknownException while trying to connect to its master server.
 
 ## [1.0.0-alpha] - 06.01.2019
 
