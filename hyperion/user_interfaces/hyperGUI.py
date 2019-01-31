@@ -1,13 +1,15 @@
 import hyperion.manager as manager
-from PyQt4 import QtCore, QtGui
 import sys
 import threading
 import subprocess
 import logging
-from functools import partial
-from time import sleep
 import hyperion.lib.util.config as config
 import hyperion.lib.util.events as events
+import hyperion.lib.util.exception as exceptions
+from PyQt4 import QtCore, QtGui
+from functools import partial
+from time import sleep
+from os.path import isfile
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
@@ -173,13 +175,27 @@ class UiMainWindow(object):
                 host_button.clicked.connect(partial(self.handle_host_button, host))
                 host_button.setFocusPolicy(QtCore.Qt.NoFocus)
 
-                if self.control_center.host_list.get(host):
+                hs = self.control_center.host_states.get(host)
+                if hs == config.HostState.CONNECTED:
                     host_button.setStyleSheet("background-color: green")
-                else:
+                elif hs == config.HostState.DISCONNECTED:
                     host_button.setStyleSheet("background-color: darkred")
+                elif hs == config.HostState.SSH_ONLY:
+                    host_button.setStyleSheet("background-color: saddlebrown")
 
                 container.addWidget(host_button)
         container.addStretch(0)
+
+    def refresh_host(self, hostname):
+        host_button = self.centralwidget.findChild(BlinkButton, "host_button_%s" % hostname)
+
+        hs = self.control_center.host_states.get(hostname)
+        if hs == config.HostState.CONNECTED:
+            host_button.setStyleSheet("background-color: green")
+        elif hs == config.HostState.DISCONNECTED:
+            host_button.setStyleSheet("background-color: darkred")
+        elif hs == config.HostState.SSH_ONLY:
+            host_button.setStyleSheet("background-color: saddlebrown")
 
     def create_tabs(self):
         """Creates a tab entry for every group.
@@ -232,8 +248,6 @@ class UiMainWindow(object):
         comp_label = QtGui.QLabel(scrollAreaWidgetContents)
         comp_label.setObjectName("comp_label_%s" % comp['id'])
 
-        separator = QtGui.QSpacerItem(20, 5, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
-
         status_pre_label = QtGui.QLabel(scrollAreaWidgetContents)
         status_pre_label.setText("Status: ")
 
@@ -280,7 +294,6 @@ class UiMainWindow(object):
         status_label.setText("UNKNOWN")
 
         horizontalLayout_components.addWidget(comp_label)
-        #horizontalLayout_components.addItem(separator)
         horizontalLayout_components.addItem(spacerItem)
         horizontalLayout_components.addWidget(status_pre_label)
         horizontalLayout_components.addWidget(status_label)
@@ -314,25 +327,20 @@ class UiMainWindow(object):
             self.logger.debug("Clicked host is localhost. Opening xterm")
             subprocess.Popen(['xterm'], stdout=subprocess.PIPE)
         elif self.control_center.host_list.get(host):
-            self.logger.debug("Clicked host remote host. Opening xterm with ssh")
-            cmd = 'ssh -F %s %s' % (config.CUSTOM_SSH_CONFIG_PATH, host)
-            subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
-        elif self.control_center.reconnect_with_host(host):
-            self.logger.debug("Clicked remote host is up again! Opening xterm with ssh")
-            host_button = self.centralwidget.findChild(QtGui.QPushButton, "host_button_%s" % host)
-            host_button.setStyleSheet("background-color: green")
-            cmd = 'ssh -F %s %s' % (config.CUSTOM_SSH_CONFIG_PATH, host)
-            subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
+            status = self.control_center.host_list.get(host)
+
+            if status == config.HostState.CONNECTED:
+                self.logger.debug("Opening xterm with ssh to clicked host '%s'" % host)
+                cmd = 'ssh -F %s %s' % (config.CUSTOM_SSH_CONFIG_PATH, host)
+                subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
+            elif self.control_center.reconnect_with_host(host):
+                self.logger.debug("Clicked remote host is up again! Opening xterm with ssh")
+                host_button = self.centralwidget.findChild(QtGui.QPushButton, "host_button_%s" % host)
+                host_button.setStyleSheet("background-color: green")
+                cmd = 'ssh -F %s %s' % (config.CUSTOM_SSH_CONFIG_PATH, host)
+                subprocess.Popen(['xterm', '-e', '%s' % cmd], stdout=subprocess.PIPE)
         else:
-            self.logger.error("Clicked remote host is down!")
-
-            msg = QtGui.QMessageBox()
-            msg.setIcon(QtGui.QMessageBox.Warning)
-            msg.setText("Could not connect to host '%s'" % host)
-            msg.setWindowTitle("Error")
-            msg.setStandardButtons(QtGui.QMessageBox.Close)
-
-            msg.exec_()
+            self.logger.exception("Host '%s' not in list of hosts. This really should not happen" % host)
 
     def handle_reload_config(self):
         self.logger.info("Clicked reload config")
@@ -349,20 +357,37 @@ class UiMainWindow(object):
         :type comp: dict
         :return: None
         """
-
         self.logger.debug("%s show log button pressed" % comp['id'])
 
-        cmd = "tail -n +1 -F %s/%s/latest.log" % (config.TMP_LOG_PATH, comp['id'])
+        try:
+            on_localhost = self.control_center.run_on_localhost(comp)
+        except exceptions.HostUnknownException:
+            self.logger.warn("Host '%s' is unknown and therefore not reachable!" % comp['host'])
+            return
 
-        if self.control_center.run_on_localhost(comp):
-            subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title', 'log of %s' % comp['id'],
-                              '-e', '%s' % cmd], stdout=subprocess.PIPE)
-
+        if on_localhost:
+            local_file_path = '%s/localhost/component/%s/latest.log' % (config.TMP_LOG_PATH, comp['id'])
         else:
-            subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title',
-                              'log of %s on %s' % (comp['id'], comp['host']),
-                              '-e', "ssh %s -t 'bash -c \"%s\"'" % (comp['host'], cmd)],
-                             stdout=subprocess.PIPE)
+            local_file_path = '%s/%s/component/%s/latest.log' % (config.TMP_LOG_PATH, comp['host'], comp['id'])
+
+        self.show_log(local_file_path, comp['id'])
+
+    def show_log(self, log_path, title):
+        """Open log from path in a new xterm window.
+
+        :param log_path: Path where the log file is located
+        :type log_path: str
+        :param title: Title of the log window
+        :type title: str
+        :return: None
+        """
+        if isfile(log_path):
+            cmd = "tail -n +1 -F %s" % log_path
+
+            subprocess.Popen(['xterm', '-fg', 'white', '-bg', 'darkblue', '-title', '%s log' % title,
+                              '-e', '%s' % cmd], stdout=subprocess.PIPE)
+        else:
+            self.logger.error("Log file '%s' does not exist!" % log_path)
 
     def handle_start_all(self):
         """Handles a click on the start all button.
@@ -535,31 +560,19 @@ class UiMainWindow(object):
             status_label = self.centralwidget.findChild(QtGui.QLabel, "comp_status_%s" % event.comp_id)
             status_label.setStyleSheet("")
             status_label.setText("CRASHED")
-        elif isinstance(event, events.SlaveReconnectEvent):
-            logger.warn("Reconnected to slave on '%s'" % event.host_name)
-            self.create_host_bar()
-        elif isinstance(event, events.SlaveDisconnectEvent):
-            logger.warn("Connection to slave on '%s' lost" % event.host_name)
-            self.create_host_bar()
-        elif isinstance(event, events.DisconnectEvent):
-            logger.warning("Lost connection to host '%s'" % event.host_name)
-            self.create_host_bar()
-        elif isinstance(event, events.ReconnectEvent):
-            logger.info("Reconnected to host '%s'" % event.host_name)
-            self.create_host_bar()
         elif isinstance(event, events.StartReportEvent):
             logger.debug("START REPORT RECEIVED")
             self.create_host_bar()
-        elif isinstance(event, events.ServerDisconnectEvent):
-            logger.critical("Server disconnected!")
-            # state_controller.handle_shutdown(None, False)
-            # TODO: Show custom popup with option to quit or cancel
         elif isinstance(event, events.ConfigReloadEvent):
             logger.debug("CONFIG RELOAD TRIGGERED")
             self.verticalLayout.removeWidget(self.tabWidget)
             self.create_tabs()
             self.create_host_bar()
             self.verticalLayout.insertWidget(0, self.tabWidget)
+        elif isinstance(event, events.ReconnectEvent) \
+                or isinstance(event, events.DisconnectEvent) \
+                or isinstance(event, events.ServerDisconnectEvent):
+            self.handle_host_event(event)
         else:
             logger.debug("Got unrecognized event of type: %s" % type(event))
     sleep(.7)
@@ -586,39 +599,51 @@ class UiMainWindow(object):
 
             self.logger.debug("Component %s stopped!" % comp_name)
 
-    @QtCore.pyqtSlot(str)
-    def handle_disconnect_signal(self, hostname):
-        """Handles a disconnect signal event that informs the user of a connection loss to a host.
+    def handle_host_event(self, event):
+        """Handles a host related event.
 
-        :param hostname: Name of the host the connection to was lost
-        :type hostname: str
+        :param event: Host event to handle
+        :type event: events.BaseEvent
         :return: None
         """
+        if isinstance(event, events.SlaveReconnectEvent):
+            self.logger.warn("Reconnected to slave on '%s'" % event.host_name)
+            self.refresh_host(event.host_name)
+        elif isinstance(event, events.SlaveDisconnectEvent):
+            self.logger.warn("Connection to slave on '%s' lost" % event.host_name)
+            self.refresh_host(event.host_name)
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("Lost connection to slave on '%s'!" % event.host_name)
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
 
-        host_button = self.centralwidget.findChild(QtGui.QPushButton, "host_button_%s" % hostname)
-        host_button.setStyleSheet("background-color: darkred")
+            msg.exec_()
+        elif isinstance(event, events.DisconnectEvent):
+            self.logger.warning("Lost connection to host '%s'" % event.host_name)
+            self.refresh_host(event.host_name)
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("Lost connection to slave on '%s'!" % event.host_name)
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Close)
 
-        msg = QtGui.QMessageBox()
-        msg.setIcon(QtGui.QMessageBox.Critical)
-        msg.setText("Lost connection to '%s'!" % hostname)
-        msg.setWindowTitle("Error")
-        msg.setStandardButtons(QtGui.QMessageBox.Retry | QtGui.QMessageBox.Close)
+            msg.exec_()
+        elif isinstance(event, events.ReconnectEvent):
+            self.logger.info("Reconnected to host '%s'" % event.host_name)
+            self.refresh_host(event.host_name)
+        elif isinstance(event, events.ServerDisconnectEvent):
+            self.logger.critical("Server disconnected!")
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Critical)
+            msg.setText("Lost connection server. Shutting down GUI!")
+            msg.setWindowTitle("Error")
+            msg.setStandardButtons(QtGui.QMessageBox.Ok)
 
-        retval = msg.exec_()
+            msg.exec_()
 
-        if retval == QtGui.QMessageBox.Retry:
-            self.logger.debug("Chose retry connecting to %s" % hostname)
-            if not self.control_center.reconnect_with_host(hostname):
-                msg = QtGui.QMessageBox()
-                msg.setIcon(QtGui.QMessageBox.Critical)
-                msg.setText("Could not establish connection to '%s'. Will retry periodically in background." % hostname)
-                msg.setWindowTitle("Error")
-                msg.setStandardButtons(QtGui.QMessageBox.Close)
-
-                msg.exec_()
-            else:
-                host_button.setStyleSheet("background-color: green")
-                self.logger.debug("Reconnect successful")
+            self.control_center.cleanup()
+            sys.exit()
 
     @QtCore.pyqtSlot(int, str, bool)
     def check_button_callback(self, check_state, comp_name, popup):
