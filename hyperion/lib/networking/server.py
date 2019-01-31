@@ -257,6 +257,9 @@ class Server(BaseServer):
                 message_queue = self.send_queues.get(key)
                 message_queue.put(message)
 
+            if isinstance(event, events.DisconnectEvent):
+                self.cc.host_states[event.host_name] = config.HostState.DISCONNECTED
+
     def _start_component_wrapper(self, comp_id, force_mode=False):
         try:
             comp = self.cc.get_component_by_id(comp_id)

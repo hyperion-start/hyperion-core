@@ -344,6 +344,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         BaseClient.__init__(self, host, port)
 
         self.host_list = None
+        self.host_states = None
         self.config = None
         self.mounted_hosts = []
 
@@ -492,6 +493,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
 
     def _set_host_list(self, host_list):
         self.host_list = host_list
+        self.host_states = host_list
         self.logger.debug("Updated host list")
 
     def _forward_event(self, event):
@@ -500,19 +502,19 @@ class RemoteControllerInterface(AbstractController, BaseClient):
 
         # Special events handling
         if isinstance(event, events.SlaveReconnectEvent):
-            self.host_list[event.host_name] = config.HostState.CONNECTED
+            self.host_states[event.host_name] = config.HostState.CONNECTED
         elif isinstance(event, events.SlaveDisconnectEvent):
-            self.host_list[event.host_name] = config.HostState.SSH_ONLY
+            self.host_states[event.host_name] = config.HostState.SSH_ONLY
         elif isinstance(event, events.DisconnectEvent):
-            self.host_list[event.host_name] = config.HostState.DISCONNECTED
+            self.host_states[event.host_name] = config.HostState.DISCONNECTED
             self._unmount_host(event.host_name)
         elif isinstance(event, events.ReconnectEvent):
-            self.host_list[event.host_name] = config.HostState.SSH_ONLY
+            self.host_states[event.host_name] = config.HostState.SSH_ONLY
             self._mount_host(event.host_name)
         elif isinstance(event, events.ConfigReloadEvent):
             self.logger.debug("Updating config and host list")
             self.config = event.config
-            self.host_list = event.host_states
+            self.host_states = event.host_states
 
     def _loop(self):
         # Keep alive until shutdown is requested and no messages are left to send
@@ -569,7 +571,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         # First unmount to prevent unknown permissions issue on disconnected mountpoint
         self._unmount_host(hostname)
 
-        state = self.host_list[hostname]
+        state = self.host_states[hostname]
         if not state or state == config.HostState.DISCONNECTED:
             self.logger.error("'%s' seems not to be connected. Aborting mount! Logs will not be available" % hostname)
             return

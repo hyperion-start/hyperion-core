@@ -12,6 +12,7 @@ log output.
 - Starting remote tmux client sessions is not done over ssh anymore but communicated from a client to the server where,
 if necessary its forwarded to the server the component is running on, where the bash script for creating a local clone
  session is executed.
+- host_states and host_list usage is now consistent across client interfaces and manager instances.
 
 ### Fixed
 - Bug in search component cmd, that would use a dictionary as command to run, when the requested cmd type could not be
