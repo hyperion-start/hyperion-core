@@ -113,8 +113,8 @@ class Server(BaseServer):
             self.logger.debug("Starting server on localhost:%s" % server.getsockname()[1])
         except socket.error as e:
             if e.errno == 98:
-                self.logger.critical("Server adress is already in use! Try waiting a few seconds if you are sure there"
-                                     " is no other instance running")
+                self.logger.critical("Server adress '%s' is already in use! Try waiting a few seconds if you are sure "
+                                     "there is no other instance running" % (server_address,))
                 # Simulate sigint
                 self._handle_sigint(None, None)
             else:
