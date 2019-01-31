@@ -289,9 +289,9 @@ class StateController(object):
         :return None
         """
         hosts = []
-        for host in self.cc.host_list:
+        for host in self.cc.host_states:
             host_object = SimpleButton(host, self.handle_host_clicked, user_data=host)
-            state = self.cc.host_list[host]
+            state = self.cc.host_states[host]
             if state == config.HostState.CONNECTED:
                 host_object = urwid.AttrMap(host_object, 'host', focus_map='reversed')
             elif state == config.HostState.SSH_ONLY:
@@ -498,11 +498,8 @@ class StateController(object):
 
     def handle_host_clicked(self, button, host):
         self.logger.info("Clicked host '%s'" % host)
-        state = self.cc.host_list[host]
+        state = self.cc.host_states[host]
         if state and state == config.HostState.CONNECTED:
-            self.logger.debug("Showing non-component log NIY")
-            # TODO show server or slave log
-
             if self.cc.is_localhost(host):
                 server_file_path = '%s/localhost/server/%s.log' % (config.TMP_LOG_PATH, self.cc.config['name'])
                 slave_file_path = '%s/localhost/slave/%s.log' % (config.TMP_LOG_PATH, self.cc.config['name'])
