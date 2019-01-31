@@ -24,6 +24,7 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
 
     def __init__(self, name, title):
         self.lines = []
+        self.keep_reading = True
         super(LogTextWalker, self).__init__(self.lines)
 
         self.file_name = name
@@ -32,7 +33,6 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
         self.end = False
         self.read_file()
         self.title = title
-        self.full_shutdown = False
 
     def get_focus(self):
         return self._get_at_pos(self.focus)
@@ -49,8 +49,19 @@ class LogTextWalker(urwid.SimpleFocusListWalker):
 
     def read_file(self):
 
-        while True:
-            next_line = self.file.readline()
+        next_line = None
+        while self.keep_reading:
+            try:
+                next_line = self.file.readline()
+            except IOError as e:
+                if e.errno == 107:
+                    logging.getLogger(__name__).error(
+                        "File '%s' does not exists anymore and can't be read. Probably was connected over sshfs and"
+                        " connection was lost" % self.file_name
+                    )
+                else:
+                    logging.getLogger(__name__).error("Unknown IO error while reading file '%s'" % self.file_name)
+                self.keep_reading = False
 
             if not next_line or next_line[-1:] != '\n':
                 # no newline on last line of file

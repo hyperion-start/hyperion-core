@@ -1,3 +1,8 @@
+## [Unreleased]
+
+### Fixed
+- Logs opened in cli interface that are accessed over ssh won't cause a crash of the UI on connection loss anymore.
+
 ## [2.0.0-alpha] - 31.01.2019 
 
 ### Added
