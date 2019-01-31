@@ -515,7 +515,7 @@ class StateController(object):
             elif isfile(slave_file_path):
                 self.show_log_file(slave_file_path, 'Slave on %s' % host)
             else:
-                self.logger.error("Neither of the following paths exists! \n%s\n%s" % server_file_path, slave_file_path)
+                self.logger.error("Neither of the following paths exists! \n%s\n%s" % (server_file_path, slave_file_path))
         else:
             threading.Thread(
                 target=self.cc.reconnect_with_host, args=[host],
