@@ -47,10 +47,15 @@ def draw_graph(control_center, unmet):
                     node_attr={'style': 'filled', 'color': 'white'}
                 )
 
+            shape = "box"
+
+            if 'noauto'in current.component:
+                shape = "doubleoctagon"
+
             subgraphs.get(current.component['host']).node(
                 current.comp_id,
                 label='<%s<BR /><FONT POINT-SIZE="8" color="darkgreen">%s</FONT>>' % tuple(current.comp_id.split('@')),
-                _attributes={'style': 'filled', 'color': 'white', 'shape': 'box'}
+                _attributes={'style': 'filled', 'color': 'white', 'shape': shape}
             )
 
             for requirement in unmet:
