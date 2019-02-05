@@ -1449,7 +1449,13 @@ class ControlCenter(AbstractController):
 
         :return: None
         """
-        comps = self.get_start_all_list()
+        try:
+            comps = self.get_start_all_list()
+        except exceptions.CircularReferenceException:
+            # If circular dependency is given this no components can be started and this is happening in cleanup, so we
+            # can safely return without action.
+            return
+
         comps = list(reversed(comps))
 
         for comp in comps:

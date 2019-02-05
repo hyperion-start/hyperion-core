@@ -11,6 +11,10 @@
 ### Fixed
 - Logs opened in cli interface that are accessed over ssh won't cause a crash of the UI on connection loss anymore.
 - Correct behaivor on component stop: C-c is sent to a window even if a custom stop command is not given.
+- Ignore circular dependency error on cleanup. This is triggered by getting the start oder of components for clean
+shutdown. When this exception occurs we can assume that no component is running, because a server will not start with 
+an invalid config nor reload a config that becomes invalid, meaning the cleanup function is called directly after a 
+failed server start so it is okay to ignore the exception in this case.
 
 ## [2.0.0-alpha] - 31.01.2019 
 
