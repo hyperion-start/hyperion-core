@@ -484,11 +484,12 @@ class AbstractController(object):
                 self.logger.debug("window '%s' found running" % comp['id'])
                 self.logger.debug("Shutting down window...")
 
+                if self._is_window_busy(window):
+                    window.cmd("send-keys", "", "C-c")
+
                 stop = get_component_cmd(comp, 'stop')
                 if stop:
                     self.logger.debug("Found custom stop command")
-                    if self._is_window_busy(window):
-                        window.cmd("send-keys", "", "C-c")
                     window.cmd('send-keys', stop, "Enter")
 
                     end_t = time() + 2
