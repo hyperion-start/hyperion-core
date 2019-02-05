@@ -14,6 +14,9 @@ from lib.util.graph_generator import draw_graph
 from logging.config import fileConfig
 from lib.util.exception import *
 
+import pkg_resources  # part of setuptools
+__version__ = pkg_resources.require("hyperion")[0].version
+
 ###########################
 # Optional feature imports
 ###########################
@@ -81,6 +84,9 @@ def main():
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     parser = argparse.ArgumentParser()
+
+    # Version option  for parser
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
 
     # Create top level parser
     parser.add_argument('--config', '-c', type=str,
