@@ -34,10 +34,10 @@ class BasicManagerTests(unittest.TestCase):
         self.assertIsNotNone(self.cc.get_component_by_id('host_test@resolved-host'))
 
         self.assertEqual(
-            'host_test@resolved-host',
-            host_test_comp['depends'][0],
-            msg="Dependency host resolution failed. Expected 'host_test@resolved-host' but got '%s'" %
-                host_test_comp['depends'][0]
+            'host_test',
+            host_test_comp['requires'][0],
+            msg="Dependency host resolution failed. Expected 'host_test' but got '%s'" %
+                host_test_comp['requires'][0]
         )
 
     def test_initialization(self):
@@ -69,16 +69,16 @@ class BasicManagerTests(unittest.TestCase):
         window.cmd("send-keys", 'ls', "Enter")
         self.cc._wait_until_window_not_busy(window)
         # Wait for log to be created
-        time.sleep(.1)
+        time.sleep(1)
         self.assertTrue(os.path.isfile(log_file))
 
     def test_missing_dep(self):
-        self.cc.config['groups'][0]['components'][0]['depends'][0] = 'dependency@missing'
+        self.cc.config['groups'][0]['components'][0]['requires'][0] = 'dependency'
         with self.assertRaises(exceptions.UnmetDependenciesException):
             self.cc.set_dependencies()
 
     def test_circular_dep(self):
-        self.cc.config['groups'][1]['components'][1]['depends'] = ['top@localhost']
+        self.cc.config['groups'][1]['components'][1]['requires'] = ['top']
         with self.assertRaises(exceptions.CircularReferenceException):
             self.cc.set_dependencies()
 
@@ -92,6 +92,7 @@ class BasicManagerTests(unittest.TestCase):
 
         # Restore for tearDown()
         self.cc = manager.ControlCenter('%s/data/test-config.yaml' % manager.BASE_DIR)
+        self.cc.init()
 
 
 class ComponentTest(unittest.TestCase):
@@ -122,12 +123,12 @@ class ComponentTest(unittest.TestCase):
         window = self.cc.session.new_window('unit test')
         self.cc._start_window(window, self.ls, '/tmp/Hyperion/unit-test/test.log')
         window.cmd('send-keys', '$env_test', 'Enter')
-        time.sleep(0.2)
+        time.sleep(1)
         self.assertFalse(self.cc._find_window('unit test'))
 
     def test_multi_start(self):
         self.cc.start_component_without_deps(self.tail)
-        time.sleep(0.3)
+        time.sleep(0.7)
         self.cc.start_component_without_deps(self.tail)
 
         ret = self.cc.check_component(self.tail)
