@@ -1455,9 +1455,6 @@ class ControlCenter(AbstractController):
         for comp in comps:
             self.stop_component(comp.component)
 
-        for comp in comps:
-            self.check_component(comp.component)
-
     ###################
     # Check
     ###################
@@ -1842,6 +1839,10 @@ class ControlCenter(AbstractController):
         self.logger.debug("Killing monitoring thread")
         self.mon_thread.kill()
 
+        if full:
+            self.logger.debug("Stopping all components")
+            self.stop_all()
+
         if self.slave_server:
             self.slave_server.kill_slaves(full)
             self.slave_server.stop()
@@ -1855,7 +1856,7 @@ class ControlCenter(AbstractController):
                 if window:
                     self.logger.debug("Killing remote slave session of host %s" % host)
                     self.kill_remote_session_by_name("slave-session", host)
-                    self.logger.debug("Close ssh-master window of host %s" % host)
+                    self.logger.debug("Closing ssh-master window of host %s" % host)
                     self._kill_window(window)
 
             self.kill_session_by_name(self.session_name)
