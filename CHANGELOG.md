@@ -6,6 +6,7 @@
 ### Changed
 - Moved graph generation to extra python file.
 - Before slave sessions and the main session are terminated on full shutdown, each component is stopped.
+- Tmux windows for components now start with the shell configured by `shell_path` (defaults to `bin/bash`).
 
 ### Fixed
 - Logs opened in cli interface that are accessed over ssh won't cause a crash of the UI on connection loss anymore.

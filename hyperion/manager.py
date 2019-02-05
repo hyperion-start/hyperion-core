@@ -447,7 +447,7 @@ class AbstractController(object):
                 self._start_window(window, comp, log_file)
             else:
                 self.logger.debug("creating window '%s'" % comp_id)
-                window = self.session.new_window(comp_id)
+                window = self.session.new_window(window_name=comp_id, window_shell=config.SHELL_EXECUTABLE_PATH)
                 self._start_window(window, comp, log_file)
 
     ###################
