@@ -44,9 +44,11 @@ class HostState(Enum):
     SSH_ONLY = 3
 
 
+MONITORING_RATE = 1
+"""Rate in Hz at which the monitoring thread runs checks"""
+
 SHOW_CHECK_OUTPUT = False
 """Bool whether to show check command output"""
-
 
 SHELL_EXECUTABLE_PATH = '/bin/bash'
 """Path to shell executable"""

@@ -334,6 +334,10 @@ class AbstractController(object):
             config.SHELL_EXECUTABLE_PATH = self.config.get('shell_path')
             self.logger.info("Changed default shell to: '%s'" % config.SHELL_EXECUTABLE_PATH)
 
+        if 'monitoring_rate' in self.config and self.config.get('monitoring_rate'):
+            config.MONITORING_RATE = self.config.get('monitoring_rate')
+            self.logger.info("Changed monitoring rate to: '%s Hz'" % config.MONITORING_RATE)
+
         if 'verbose_checks' in self.config and self.config.get('verbose_checks'):
             config.SHOW_CHECK_OUTPUT = self.config.get('verbose_checks')
             self.logger.info("Set verbose checks to: '%s'" % config.SHOW_CHECK_OUTPUT)

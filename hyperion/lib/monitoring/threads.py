@@ -265,10 +265,8 @@ class MonitoringThread(Thread):
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)
             for mon_job in jobs:
-                #logger.debug(mon_job.info())
                 ret = mon_job.run_check()
                 if ret is True:
-                    #logger.debug("S'all good man")
                     # If job is ok, put it back for the next iteration
                     self.job_queue.put(mon_job)
                 else:
@@ -278,4 +276,4 @@ class MonitoringThread(Thread):
                     for subscriber in self.subscribed_queues:
                         subscriber.put(ret)
 
-            time.sleep(1)
+            time.sleep(1/config.MONITORING_RATE)

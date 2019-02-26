@@ -1,3 +1,8 @@
+## [UNRELEASED] - (2.2.0)
+
+### Added
+- Enable configuration of rate at which the monitoring thread checks on components/hosts.
+
 ## [2.1.0] - 23.02.2019
 
 ### Added
