@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup, find_packages
 
-VERSION = '2.0.0-alpha'
+VERSION = '2.1.0'
 
 setup(
     name='hyperion',
