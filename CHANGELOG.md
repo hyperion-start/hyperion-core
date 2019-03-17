@@ -2,6 +2,8 @@
 
 ### Added
 - Enable configuration of rate at which the monitoring thread checks on components/hosts.
+- Add possibility to specify optional requirements for components. This is useful for combination with the exclude
+feature.
 
 ## Fixed
 - Having requires or depends defined as empty list does not cause an exception anymore.

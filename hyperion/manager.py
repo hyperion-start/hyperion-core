@@ -1094,6 +1094,7 @@ class ControlCenter(AbstractController):
 
         provides = {}
         requires = {}
+        optional = {}
 
         for group in self.config['groups']:
             for comp in group['components']:
@@ -1126,11 +1127,31 @@ class ControlCenter(AbstractController):
                     else:
                         self.logger.warn("%s has an empty requires list!" % comp['id'])
 
+                if 'optional-requires' in comp:
+                    if comp.get('optional-requires'):
+                        for entry in comp.get('optional-requires'):
+                            if optional.get(entry):
+                                optional[entry].append(comp['id'])
+                            else:
+                                optional[entry] = [comp['id']]
+                    else:
+                        self.logger.warn("%s has an empty optional requires list!" % comp['id'])
+
+        met_optionals = [k for k in optional if k in provides]
         unmet = [k for k in requires if k not in provides]
 
         if len(unmet) > 0:
             self.logger.critical("Unmet requirements were detected! %s" % unmet)
             unmet_deps = True
+
+        if len(optional) > 0:
+            self.logger.debug("Detected the following optional requirements available: %s" % met_optionals)
+
+            for entry in met_optionals:
+                if requires.get(entry):
+                    requires[entry].extend(optional[entry])
+                else:
+                    requires[entry] = optional[entry]
 
         # Add a pseudo node that depends on all other nodes, to get a starting point to be able to iterate through all
         # nodes with simple algorithms
