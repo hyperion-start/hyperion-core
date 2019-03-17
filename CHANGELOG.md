@@ -3,6 +3,9 @@
 ### Added
 - Enable configuration of rate at which the monitoring thread checks on components/hosts.
 
+## Fixed
+- Having requires or depends defined as empty list does not cause an exception anymore.
+
 ## [2.1.0] - 23.02.2019
 
 ### Added

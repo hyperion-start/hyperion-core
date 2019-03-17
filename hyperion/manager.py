@@ -1101,24 +1101,30 @@ class ControlCenter(AbstractController):
 
                 # collect provides
                 if 'provides' in comp:
-                    for entry in comp.get('provides'):
-                        if provides.get(entry):
-                            provides[entry].append(comp['id'])
-                        else:
-                            provides[entry] = [comp['id']]
-                    if 'noauto' in comp:
-                        self.logger.warn(
-                            '%s is a "noauto" component and a provider for "%s", this is considered bad practice. '
-                            'noauto components should not have depending components!'
-                            % (comp['id'], entry))
+                    if comp.get('provides'):
+                        for entry in comp.get('provides'):
+                            if provides.get(entry):
+                                provides[entry].append(comp['id'])
+                            else:
+                                provides[entry] = [comp['id']]
+                        if 'noauto' in comp:
+                            self.logger.warn(
+                                '%s is a "noauto" component and a provider for "%s", this is considered bad practice. '
+                                'noauto components should not have depending components!'
+                                % (comp['id'], entry))
+                    else:
+                        self.logger.warn("%s has an empty provides list!" % comp['id'])
 
                 # collect requires
                 if 'requires' in comp:
-                    for entry in comp.get('requires'):
-                        if requires.get(entry):
-                            requires[entry].append(comp['id'])
-                        else:
-                            requires[entry] = [comp['id']]
+                    if comp.get('requires'):
+                        for entry in comp.get('requires'):
+                            if requires.get(entry):
+                                requires[entry].append(comp['id'])
+                            else:
+                                requires[entry] = [comp['id']]
+                    else:
+                        self.logger.warn("%s has an empty requires list!" % comp['id'])
 
         unmet = [k for k in requires if k not in provides]
 
