@@ -16,6 +16,7 @@ class ExitStatus(Enum):
     ENVIRONMENT_FILE_MISSING = 9
     MISSING_SSH_CONFIG = 10
     CONFIG_RESET_FAILED = 11
+    MISSING_URWID_INSTALL = 12
 
 
 class CheckState(Enum):

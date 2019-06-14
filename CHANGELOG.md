@@ -5,8 +5,9 @@
 - Add possibility to specify optional requirements for components. This is useful for combination with the exclude
 feature.
 
-## Fixed
+### Fixed
 - Having requires or depends defined as empty list does not cause an exception anymore.
+- Program will exit with correct exit code on missing urwid installation after showing the error output.
 
 ## [2.1.0] - 23.02.2019
 

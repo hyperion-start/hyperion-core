@@ -243,8 +243,8 @@ def main():
 
                 start_gui(ui)
             else:
-                logger.error('To use this feature you need PyQt4! Check the README.md for install instructions')
                 cc.cleanup(False, config.ExitStatus.MISSING_PYQT_INSTALL)
+                logger.error('To use this feature you need PyQt4! Check the README.md for install instructions')
         else:
             # Urwid
             if interactive_enabled:
@@ -257,7 +257,10 @@ def main():
 
                 cc.cleanup(interactiveCLI.main(cc, log_file_path))
             else:
-                logger.error('To use this feature you need urwid! Check the README.md for install instructions')
+                cc.cleanup(False, config.ExitStatus.MISSING_URWID_INSTALL)
+                logger.error('To use this feature you need urwid! Check the README.md for install instructions. If you'
+                             ' already ran the installation try adding site-packages of your installation prefix to'
+                             ' your PYTHONPATH environment variable.')
 
     if args.cmd == 'edit':
         logger.debug('Launching editor mode')
@@ -311,13 +314,13 @@ def main():
                 logger.debug('Chose show log of %s' % args.component)
                 if len(comps) > 1:
                     logger.warning('The show log option only supports a single component as argument. Only the first is'
-                                   'used!')
+                                   ' used!')
                 cc.show_comp_log(comps[0])
             if args.comp_term:
                 logger.debug('Chose show term of %s' % args.component)
                 if len(comps) > 1:
-                    logger.warning('The show term option only supports a single component as argument. Only the first '
-                                   'is used!')
+                    logger.warning('The show term option only supports a single component as argument. Only the first'
+                                   ' is used!')
                 cc.start_clone_session_and_attach(comps[0])
             cc.cleanup()
 
@@ -339,7 +342,8 @@ def main():
                 draw_graph(cc, unmet)
             else:
                 logger.error('This feature requires graphviz. To use it install hyperion with the GRAPH option '
-                             "(pip install -e .['GRAPH'])")
+                             "(pip install -e .['GRAPH']). If you already ran the installation try adding site-packages"
+                             " of your installation prefix to your PYTHONPATH environment variable.")
         else:
             try:
                 cc.set_dependencies()
