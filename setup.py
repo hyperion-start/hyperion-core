@@ -1,9 +1,11 @@
 #!/usr/bin/env python
-from setuptools import setup, find_packages
+from setuptools import find_packages
+from distutils.core import setup
+from catkin_pkg.python_setup import generate_distutils_setup
 
 VERSION = '2.2.0'
 
-setup(
+setup_args = generate_distutils_setup(
     name='hyperion',
     packages=find_packages(),
     entry_points={
@@ -30,6 +32,7 @@ setup(
     url='https://github.com/DavidPL1/Hyperion.git',
     keywords=['libtmux'],
     classifiers=[],
-    include_package_data=True,
-    zip_safe=False
+    include_package_data=True
 )
+
+setup(**setup_args)
