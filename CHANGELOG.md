@@ -1,9 +1,12 @@
-## [UNRELEASED] - (2.2.0)
+## [2.2.0] - 19.06.2019
 
 ### Added
-- Enable configuration of rate at which the monitoring thread checks on components/hosts.
-- Add possibility to specify optional requirements for components. This is useful for combination with the exclude
+- Enabled configuration of rate at which the monitoring thread checks on components/hosts.
+- Added possibility to specify optional requirements for components. This is useful for combination with the exclude
 feature.
+
+### Changed
+- Moved user interfaces and graph drawing to external libraries
 
 ### Fixed
 - Having requires or depends defined as empty list does not cause an exception anymore.

@@ -10,7 +10,6 @@ from lib.util.setupParser import Loader
 from manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log, conf_preprocessing
 from lib.networking import clientInterface, server
 from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, FORMAT
-from lib.util.graph_generator import draw_graph
 from logging.config import fileConfig
 from lib.util.exception import *
 
@@ -20,27 +19,35 @@ __version__ = pkg_resources.require("hyperion")[0].version
 ###########################
 # Optional feature imports
 ###########################
-try:
-    from PyQt4 import QtGui
-except ImportError:
-    gui_enabled = False
-else:
-    import user_interfaces.hyperGUI as hyperGUI
+gui_enabled = False
+graph_enabled = False
+interactive_enabled = False
+
+ui_plugins = {}
+for ui_plugin in pkg_resources.iter_entry_points('hyperion.user_interfaces'):
+    try:
+        ui_plugins.update({ui_plugin.name: ui_plugin.load()})
+        print("Loaded entry point '%s'" % ui_plugin.name)
+    except ImportError as e:
+        print("Could not load entry point '%s'" % ui_plugin.name)
+        print(e.message)
+
+if 'urwid' in ui_plugins:
+    interactive_enabled = True
+
+if 'pyqt' in ui_plugins:
     gui_enabled = True
 
-try:
-    import graphviz
-except ImportError:
-    graph_enabled = False
-else:
-    graph_enabled = True
+vis_plugins = {}
+for vis_plugin in pkg_resources.iter_entry_points('hyperion.visualisation'):
+    try:
+        vis_plugins.update({vis_plugin.name: vis_plugin.load()})
+        print("Loaded entry point '%s'" % vis_plugin.name)
+    except ImportError:
+        print("Could not load entry point '%s'" % vis_plugin.name)
 
-try:
-    import user_interfaces.interactiveCLI as interactiveCLI
-except ImportError:
-    interactive_enabled = False
-else:
-    interactive_enabled = True
+if 'graph_gen' in vis_plugins:
+    graph_enabled = True
 
 ensure_dir('%s/any.log' % TMP_LOG_PATH)
 
@@ -59,22 +66,6 @@ fileConfig('%s/data/default-logger.config' % BASE_DIR)
 ###################
 # GUI
 ###################
-def start_gui(ui):
-    """Start the PyQt4 guided interface.
-
-    :param ui: User interface to display
-    :type ui: hyperGUI.UiMainWindow
-    :return: None
-    """
-
-    app = QtGui.QApplication(sys.argv)
-    main_window = QtGui.QMainWindow()
-    ui.ui_init(main_window)
-    app.aboutToQuit.connect(ui.close)
-    main_window.show()
-    app.exec_()
-
-
 def main():
     """Parse the command line arguments and start hyperion with the specified configuration in the desired mode.
 
@@ -238,10 +229,10 @@ def main():
             if gui_enabled:
                 logger.debug('Launching GUI runner mode')
 
-                ui = hyperGUI.UiMainWindow(cc)
+                ui = ui_plugins['pyqt'].UiMainWindow(cc)
                 signal(SIGINT, SIG_DFL)
 
-                start_gui(ui)
+                ui_plugins['pyqt'].start_gui(ui)
             else:
                 cc.cleanup(False, config.ExitStatus.MISSING_PYQT_INSTALL)
                 logger.error('To use this feature you need PyQt4! Check the README.md for install instructions')
@@ -255,12 +246,12 @@ def main():
                         remove.append(handler)
                 [root_logger.removeHandler(h) for h in remove]
 
-                cc.cleanup(interactiveCLI.main(cc, log_file_path))
+                cc.cleanup(ui_plugins['urwid'].main(cc, log_file_path))
             else:
-                cc.cleanup(False, config.ExitStatus.MISSING_URWID_INSTALL)
-                logger.error('To use this feature you need urwid! Check the README.md for install instructions. If you'
-                             ' already ran the installation try adding site-packages of your installation prefix to'
-                             ' your PYTHONPATH environment variable.')
+                cc.cleanup(False, config.ExitStatus.MISSING_UI_INSTALL)
+                logger.error('To use this feature you need hyperion-uis installed! Check the README.md for install '
+                             'instructions. If you already ran the installation try adding site-packages of your '
+                             'installation prefix to your PYTHONPATH environment variable.')
 
     if args.cmd == 'edit':
         logger.debug('Launching editor mode')
@@ -339,11 +330,11 @@ def main():
                 pass
 
             if graph_enabled:
-                draw_graph(cc, unmet)
+                vis_plugins['graph_gen'].draw_graph(cc, unmet)
             else:
-                logger.error('This feature requires graphviz. To use it install hyperion with the GRAPH option '
-                             "(pip install -e .['GRAPH']). If you already ran the installation try adding site-packages"
-                             " of your installation prefix to your PYTHONPATH environment variable.")
+                logger.error('To use this feature you need hyperion-graph-vis installed! Check the README.md for '
+                             'install instructions. If you already ran the installation try adding site-packages of '
+                             'your installation prefix to your PYTHONPATH environment variable.')
         else:
             try:
                 cc.set_dependencies()

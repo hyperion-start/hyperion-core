@@ -12,16 +12,13 @@ Inspired by [vdemo](https://code.cor-lab.org/projects/vdemo) and [TMuLE](https:/
 Hyperion (like TMuLE) is written in Python and utilizes the [tmux library for python](https://github.com/tmux-python/libtmux) to start components in detached sessions. For each host defined in the components a master session is created, in which each component will be started in a window. Components are managed by a main server that delegates commands to slave server instances on remote machines and forwards information to subscribed user interfaces.
 
 ## Installation
-This package strictly separates optional content from the core which reflects in the install options.
-The minimal Hyperion package can be installed via setuptools ```python setup.py install``` or via pip ```pip install .```
+The Hyperion core package can be installed via setuptools ```python setup.py install``` or via pip ```pip install .```
 
-To enable dependency graph visualisation, you need to install via pip with ```pip install -e .[GRAPH]``` (if you are running zsh, you need to escape the brackets: ```pip install -e .\[GRAPH\]```).
+To enable dependency graph visualisation, you need to install the [graph visualisation extension](https://github.com/hyperion-start/hyperion-graph-visualisation)
 
-If you want to use the interactive cli based on urwid, install with ```pip install -e .[I-CLI]```.
+If you want to use the interactive cli based on urwid, you need to install the [user interfaces extension](https://github.com/hyperion-start/hyperion-ui).
 
-If you wish to use the PyQt gui, Qt4 for python has to be installed via a package manager (```apt install python-qt4``` on debian based distributions). This is due to the fact, that the PyQt4 package can not be managed by pip. Hyperion is able to detect if PyQt4 is installed at runtime and if so enable the GUI features.
-
-To make use of all optional features, run the install with ```pip install -e .[FULL]```. Note that to use the PyQt gui you still need to install the python-qt4 package manually.
+If you wish to use the PyQt gui, additionally to the ui extension Qt4 for python has to be installed via a package manager (```apt install python-qt4``` on debian based distributions). This is due to the fact, that the PyQt4 package can not be managed by pip. Hyperion is able to detect if PyQt4 is installed at runtime and if so enable the GUI features.
 
 ## Quick Guide
 
