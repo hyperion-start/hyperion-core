@@ -365,7 +365,8 @@ class SlaveManagementServer(BaseServer):
 
     def stop(self):
         self._quit()
-        self.thread.join()
+        if self.thread.is_alive():
+            self.thread.join()
         self.logger.info("Slave server successfully shutdown!")
 
     def _quit(self):
