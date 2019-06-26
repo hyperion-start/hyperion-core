@@ -1,3 +1,12 @@
+## [UNRELEASED] - (2.3.0)
+
+### Changed
+- No need to have a ssh config beforehand. If none exists the config for Hyperion is created from scratch.
+
+### Fixed
+- Error on shutdown before config was finished where no master node for dependency was found now is handled.
+- On shutdown before the server thread was started, joining the thread made the program crash.
+
 ## [2.2.0] - 19.06.2019
 
 ### Added

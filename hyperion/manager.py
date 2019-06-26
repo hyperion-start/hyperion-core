@@ -251,8 +251,8 @@ def setup_ssh_config():
         ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH)
         shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
     except IOError:
-        logger.critical("Could not copy ssh config! Make sure you have a config in your users .ssh folder!")
-        return False
+        logger.warn("Could not copy ssh config! Creating config from scratch!")
+        os.mknod(config.CUSTOM_SSH_CONFIG_PATH)
 
     try:
         conf = open(config.CUSTOM_SSH_CONFIG_PATH, 'a')
