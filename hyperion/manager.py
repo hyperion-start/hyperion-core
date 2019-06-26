@@ -252,6 +252,8 @@ def setup_ssh_config():
         shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
     except IOError:
         logger.warn("Could not copy ssh config! Creating config from scratch!")
+        if os.path.isfile(config.CUSTOM_SSH_CONFIG_PATH):
+            os.remove(config.CUSTOM_SSH_CONFIG_PATH)
         os.mknod(config.CUSTOM_SSH_CONFIG_PATH)
 
     try:
