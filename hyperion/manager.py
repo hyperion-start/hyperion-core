@@ -1701,6 +1701,10 @@ class ControlCenter(AbstractController):
         """
 
         node = self.nodes.get('master_node')
+
+        if node is None:
+            return []
+
         res = []
         unres = []
         dep_resolve(node, res, unres)
