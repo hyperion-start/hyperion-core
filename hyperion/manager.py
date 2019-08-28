@@ -493,6 +493,16 @@ class AbstractController(object):
                 if self._is_window_busy(window):
                     window.cmd("send-keys", "", "C-c")
 
+                    end_t = time() + 10
+                    wait = True
+                    while wait:
+                        if not self._is_window_busy(window):
+                            wait = False
+                        elif time() < end_t:
+                            wait = False
+                            self.logger.warn("C-c running for over 10 seconds, "
+                                             "killing off process of window %s" % comp['id'])
+
                 stop = get_component_cmd(comp, 'stop')
                 if stop:
                     self.logger.debug("Found custom stop command")
