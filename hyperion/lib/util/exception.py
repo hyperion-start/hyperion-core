@@ -74,3 +74,10 @@ class SlaveNotReachableException(Exception):
 
     def __init__(self, message):
         self.message = message
+
+
+class MissingComponentDefinitionException(Exception):
+    """Exception to be thrown when a file included in a yaml config file could not be found."""
+
+    def __init__(self, filename):
+        self.filename = filename

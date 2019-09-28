@@ -1,6 +1,6 @@
 import yaml
 import os.path
-
+import exception as exceptions
 
 # This is a solution provided by Josh Bode in stackoverflow to provide import
 # https://stackoverflow.com/questions/528281/how-can-i-include-an-yaml-file-inside-another
@@ -13,8 +13,11 @@ class Loader(yaml.SafeLoader):
 
     def include(self, node):
         filename = os.path.join(self._root, self.construct_scalar(node))
-        with open(filename, 'r') as f:
-            return yaml.load(f, Loader)
+        try:
+            with open(filename, 'r') as f:
+                return yaml.load(f, Loader)
+        except IOError:
+            raise exceptions.MissingComponentDefinitionException(filename)
 
 
 Loader.add_constructor('!include', Loader.include)
