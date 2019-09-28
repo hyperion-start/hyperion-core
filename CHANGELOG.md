@@ -11,6 +11,7 @@ reusable.
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.
+- Single line definition of requirements instead of lists get detected and an appropriate hint is shown in the log.
 
 ## [2.2.0] - 19.06.2019
 

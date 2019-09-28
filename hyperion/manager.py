@@ -1163,6 +1163,16 @@ class ControlCenter(AbstractController):
 
         if len(unmet) > 0:
             self.logger.critical("Unmet requirements were detected! %s" % unmet)
+            single_char = 0
+
+            for deps in unmet:
+                if len(unmet):
+                    single_char += 1
+                    if single_char > 1:
+                        self.logger.critical("Detected unmet dependencies with single char ids. Check that requirement "
+                                             "definitions in your config are in list-form, even if it is only a single "
+                                             "component.")
+                        break
             unmet_deps = True
 
         if len(optional) > 0:
