@@ -313,6 +313,9 @@ class AbstractController(object):
         except IOError as e:
             self.logger.critical("No config file at '%s' found" % filename)
             raise e
+        except exceptions.MissingComponentDefinitionException as err:
+            self.logger.critical("File '%s' included by config not found!" % err)
+            raise err
 
         self.session_name = self.config["name"]
 
@@ -925,6 +928,8 @@ class ControlCenter(AbstractController):
         if configfile:
             try:
                 self._load_config(configfile)
+            except exceptions.MissingComponentDefinitionException:
+                self.cleanup(status=config.ExitStatus.CONFIG_PARSING_ERROR)
             except IOError:
                 self.cleanup(status=config.ExitStatus.CONFIG_PARSING_ERROR)
             except exceptions.EnvNotFoundException:
@@ -1010,8 +1015,12 @@ class ControlCenter(AbstractController):
         old_conf = self.config.copy()
         try:
             self._load_config(self.configfile)
+        except exceptions.MissingComponentDefinitionException as err:
+            self.logger.debug("Reloading failed with error! Included file '%s' not found!" % err.filename)
+            self.config = old_conf
+            return
         except IOError as err:
-            self.logger.debug("Exact exception: %s" % err.message)
+            self.logger.debug("Reloading failed with error: %s" % err.message)
             self.config = old_conf
             return
         except exceptions.EnvNotFoundException:
@@ -1980,6 +1989,10 @@ class SlaveManager(AbstractController):
 
         try:
             self._load_config(self.configfile)
+        except exceptions.MissingComponentDefinitionException as err:
+            self.logger.error("Included file '%s' not found!" % err.filename)
+            self.logger.error("Reloading config failed - falling back to old config!")
+            self.config = old_conf
         except IOError:
             self.logger.error("Reloading config failed - falling back to old config!")
             self.config = old_conf
@@ -2030,7 +2043,7 @@ class SlaveManager(AbstractController):
         if configfile:
             try:
                 self._load_config(configfile)
-            except IOError:
+            except (IOError, exceptions.MissingComponentDefinitionException):
                 self.cleanup(exit_status=config.ExitStatus.CONFIG_PARSING_ERROR)
             except exceptions.EnvNotFoundException:
                 self.cleanup(exit_status=config.ExitStatus.ENVIRONMENT_FILE_MISSING)

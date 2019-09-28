@@ -173,6 +173,9 @@ def main():
                     logger.critical('Your config name contains at least one space, which is not allowed! Change it')
                     sys.exit(config.ExitStatus.ERRONEUS_CONFIG)
                 log_name = '%s' % conf_name
+        except MissingComponentDefinitionException as err:
+            logger.critical("Included file '%s' not found!" % err.filename)
+            sys.exit(config.ExitStatus.CONFIG_NOT_FOUND)
         except IOError:
             logger.critical("No config file at '%s' found" % args.config)
             sys.exit(config.ExitStatus.CONFIG_NOT_FOUND)
