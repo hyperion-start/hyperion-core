@@ -2,7 +2,9 @@
 
 ### Changed
 - No need to have a ssh config beforehand. If none exists the config for Hyperion is created from scratch.
-
+- Now using "SO_REUSEADDR" option for the server socket. After quitting the server the server port is immediately 
+reusable.
+    
 ### Fixed
 - Error on shutdown before config was finished where no master node for dependency was found now is handled.
 - On shutdown before the server thread was started, joining the thread made the program crash.

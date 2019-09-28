@@ -107,6 +107,7 @@ class Server(BaseServer):
 
         server_address = ('localhost', port)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.setblocking(False)
         try:
             server.bind(server_address)
