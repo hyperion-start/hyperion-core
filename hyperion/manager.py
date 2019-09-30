@@ -1112,9 +1112,7 @@ class ControlCenter(AbstractController):
         window = self._find_window('ssh-%s' % hostname)
         config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config['name'])
 
-        self.host_stats = {
-            hostname: ['N/A', 'N/A', 'N/A']
-        }
+        self.host_stats[hostname] = ['N/A', 'N/A', 'N/A']
 
         if window and self.host_list[hostname] and self.slave_server:
             if self.slave_server.start_slave(hostname, config_path, self.config['name'], window, custom_messages):
@@ -1834,9 +1832,7 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
             self.host_states[hostname] = config.HostState.DISCONNECTED
-            self.host_stats = {
-                hostname: ['N/A', 'N/A', 'N/A']
-            }
+            self.host_stats[hostname] = ['N/A', 'N/A', 'N/A']
             self.host_list_lock.release()
             return False
 
@@ -1849,9 +1845,7 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
             self.host_states[hostname] = config.HostState.DISCONNECTED
-            self.host_stats = {
-                hostname: ['N/A', 'N/A', 'N/A']
-            }
+            self.host_stats[hostname] = ['N/A', 'N/A', 'N/A']
             self.host_list_lock.release()
             return False
 
@@ -1876,9 +1870,7 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
             self.host_states[hostname] = config.HostState.DISCONNECTED
-            self.host_stats = {
-                hostname: ['N/A', 'N/A', 'N/A']
-            }
+            self.host_stats[hostname] = ['N/A', 'N/A', 'N/A']
             self.host_list_lock.release()
             return False
 
