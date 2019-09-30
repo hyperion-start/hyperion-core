@@ -357,6 +357,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.host_list = None
         self.host_states = None
         self.config = None
+        self.host_stats = {}
         self.mounted_hosts = []
 
         self.function_mapping = {
@@ -526,6 +527,8 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             self.logger.debug("Updating config and host list")
             self.config = event.config
             self.host_states = event.host_states
+        elif isinstance(event, events.StatResponseEvent):
+            self.host_stats[event.hostname] = ["%s" % event.load, "%s%%" % event.cpu, "%s%%" % event.mem]
 
     def _loop(self):
         # Keep alive until shutdown is requested and no messages are left to send

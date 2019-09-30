@@ -1,10 +1,11 @@
 from threading import Thread, Lock
+import os
+import psutil
 import logging
 import sys
 import time
 import hyperion.lib.util.config as config
 import hyperion.lib.util.events as events
-from os import system
 from subprocess import call
 from psutil import Process, NoSuchProcess
 
@@ -137,6 +138,45 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
                                                                                  self.hostname)
 
 
+class LocalStatMonitorJob(object):
+    """Abstract class that represents a host statistics monitoring job (local or remote)."""
+
+    def __init__(self, hostname):
+        """Initializes local component monitoring job."""
+        self.hostname = hostname
+
+    def request_stats(self):
+        """You need to override this function in monitoring subclasses. It is called in the main monitoring thread.
+
+        :return: Stat response
+        :rtype: events.StatResponseEvent
+        """
+
+        load = os.getloadavg()[0]
+        cpu = psutil.cpu_percent(0.5)
+        mem = psutil.virtual_memory().percent
+        stat_event = events.StatResponseEvent(load, cpu, mem, self.hostname)
+
+        return stat_event
+
+
+class RemoteStatMonitoringJob(object):
+    """Class that represents a remote component monitoring job."""
+
+    def __init__(self):
+        """Initializes remote component monitoring job."""
+
+    @staticmethod
+    def request_stats():
+        """Request stat response from all hosts in use except for ui clients.
+
+        :return: Always returns a StatRequestEvent.
+        :rtype: events.StatRequestEvent
+        """
+
+        return events.StatRequestEvent()
+
+
 class HostMonitorJob(object):
     """Class representing a host monitoring job."""
     def __init__(self, pid, hostname, host_status, host_lock):
@@ -234,7 +274,7 @@ class MonitoringThread(Thread):
 
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
-        logger.debug("Started run funtion")
+        logger.debug("Started run function")
         while not self.end:
 
             comp_jobs = []
@@ -253,6 +293,8 @@ class MonitoringThread(Thread):
                 if isinstance(mon_job, CancellationJob) and mon_job.comp_id not in already_removed:
                     cancellations.append(mon_job)
                     already_removed[mon_job.comp_id] = True
+                if isinstance(mon_job, RemoteStatMonitoringJob) or isinstance(mon_job, LocalStatMonitorJob):
+                    jobs.append(mon_job)
 
             # Remove all jobs that received a cancellation from the job list
             remove = []
@@ -265,15 +307,20 @@ class MonitoringThread(Thread):
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)
             for mon_job in jobs:
-                ret = mon_job.run_check()
-                if ret is True:
-                    # If job is ok, put it back for the next iteration
+                if isinstance(mon_job, RemoteStatMonitoringJob) or isinstance(mon_job, LocalStatMonitorJob):
+                    for subscriber in self.subscribed_queues:
+                        subscriber.put(mon_job.request_stats())
                     self.job_queue.put(mon_job)
                 else:
-                    # If job is not ok, notify subscribers
-                    logger.error(mon_job.error_msg)
-                    logger.debug("Notifying mon subscribers about failed check")
-                    for subscriber in self.subscribed_queues:
-                        subscriber.put(ret)
+                    ret = mon_job.run_check()
+                    if ret is True:
+                        # If job is ok, put it back for the next iteration
+                        self.job_queue.put(mon_job)
+                    else:
+                        # If job is not ok, notify subscribers
+                        logger.error(mon_job.error_msg)
+                        logger.debug("Notifying mon subscribers about failed check")
+                        for subscriber in self.subscribed_queues:
+                            subscriber.put(ret)
 
             time.sleep(1/config.MONITORING_RATE)

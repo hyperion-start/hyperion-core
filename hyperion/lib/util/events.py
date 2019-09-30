@@ -19,6 +19,31 @@ class ComponentEvent(BaseEvent):
         self.comp_id = comp_id
 
 
+class StatRequestEvent(BaseEvent):
+    """Signal a host stat request event."""
+    def __init__(self):
+        BaseEvent.__init__(self)
+
+
+class StatResponseEvent(BaseEvent):
+    """Event to pass the results of stat request."""
+    def __init__(self, load, cpu, mem, hostname):
+        """Create stat response event with avg load, cpu and memory information.
+
+        :param load: Average load
+        :type load: float
+        :param cpu: CPU usage in percent
+        :type cpu: int
+        :param mem: Memory usage in percent
+        :type mem: int
+        """
+        BaseEvent.__init__(self)
+        self.load = load
+        self.cpu = cpu
+        self.mem = mem
+        self.hostname = hostname
+
+
 class CheckEvent(ComponentEvent):
     """Inform about the result of a run check for a component."""
     def __init__(self, comp_id, check_state):
