@@ -1834,6 +1834,9 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
             self.host_states[hostname] = config.HostState.DISCONNECTED
+            self.host_stats = {
+                hostname: ['N/A', 'N/A', 'N/A']
+            }
             self.host_list_lock.release()
             return False
 
@@ -1846,6 +1849,9 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
             self.host_states[hostname] = config.HostState.DISCONNECTED
+            self.host_stats = {
+                hostname: ['N/A', 'N/A', 'N/A']
+            }
             self.host_list_lock.release()
             return False
 
@@ -1870,6 +1876,9 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list[hostname] = None
             self.host_states[hostname] = config.HostState.DISCONNECTED
+            self.host_stats = {
+                hostname: ['N/A', 'N/A', 'N/A']
+            }
             self.host_list_lock.release()
             return False
 

@@ -136,6 +136,7 @@ class Server(BaseServer):
             'stop': self._stop_component_wrapper,
             'get_conf': self._send_config,
             'get_host_list': self._send_host_list,
+            'get_host_stats': self._send_host_stats,
             'quit': self.cc.cleanup,
             'reconnect_with_host': self.cc.reconnect_with_host,
             'unsubscribe': None,
@@ -145,7 +146,8 @@ class Server(BaseServer):
 
         self.receiver_mapping = {
             'get_conf': 'single',
-            'get_host_list': 'single'
+            'get_host_list': 'single',
+            'get_host_stats': 'single'
         }
 
         self.sel.register(server, selectors.EVENT_READ, self.accept)
@@ -300,6 +302,9 @@ class Server(BaseServer):
 
     def _send_host_list(self):
         return self.cc.host_states
+
+    def _send_host_stats(self):
+        return self.cc.host_stats
 
     def _handle_sigint(self, signum, frame):
         self.logger.debug("Received C-c")

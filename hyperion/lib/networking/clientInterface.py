@@ -363,6 +363,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.function_mapping = {
             'get_conf_response': self._set_config,
             'get_host_list_response': self._set_host_list,
+            'get_host_stats_response': self._set_host_stats,
             'queue_event': self._forward_event
         }
 
@@ -507,6 +508,10 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.host_list = host_list
         self.host_states = host_list
         self.logger.debug("Updated host list")
+
+    def _set_host_stats(self, host_stats):
+        self.host_stats = host_stats
+        self.logger.debug("Set host stats")
 
     def _forward_event(self, event):
         if self.monitor_queue:
