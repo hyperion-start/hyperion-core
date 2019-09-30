@@ -4,6 +4,7 @@
 - No need to have a ssh config beforehand. If none exists the config for Hyperion is created from scratch.
 - Now using "SO_REUSEADDR" option for the server socket. After quitting the server the server port is immediately 
 reusable.
+- Restructured monitoring with base class and stat monitoring and comp/host monitoring as extra thread extensions.
     
 ### Fixed
 - Error on shutdown before config was finished where no master node for dependency was found now is handled.
@@ -15,7 +16,7 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 ### Added
 - More informative logging output when a file included in the configuration could not be found.
 - Single line definition of requirements instead of lists get detected and an appropriate hint is shown in the log.
-- Local host stats monitoring and display of it in interactive cli.
+- Local host stats monitoring.
 
 ## [2.2.0] - 19.06.2019
 

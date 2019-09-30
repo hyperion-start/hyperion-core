@@ -14,7 +14,8 @@ from threading import Lock
 from time import sleep, time, strftime
 from hyperion.lib.util.setupParser import Loader
 from hyperion.lib.util.depTree import Node, dep_resolve
-from hyperion.lib.monitoring.threads import LocalComponentMonitoringJob, HostMonitorJob, MonitoringThread, CancellationJob, LocalStatMonitorJob, RemoteStatMonitoringJob
+from hyperion.lib.monitoring.threads import StatMonitor, ComponentMonitor, CancellationJob, \
+    HostMonitorJob, LocalComponentMonitoringJob, RemoteComponentMonitoringJob
 import hyperion.lib.util.exception as exceptions
 import hyperion.lib.util.config as config
 import hyperion.lib.util.events as events
@@ -284,6 +285,7 @@ class AbstractController(object):
         self.monitor_queue = queue.Queue()
         self.custom_env_path = None
         self.subscribers = []
+        self.stat_thread = StatMonitor()
         self.config = None
         self.session = None
         self.server = None
@@ -347,6 +349,14 @@ class AbstractController(object):
         if 'verbose_checks' in self.config and self.config.get('verbose_checks'):
             config.SHOW_CHECK_OUTPUT = self.config.get('verbose_checks')
             self.logger.info("Set verbose checks to: '%s'" % config.SHOW_CHECK_OUTPUT)
+
+        if 'local_stat_rate' in self.config and self.config.get('local_stat_rate'):
+            config.LOCAL_STAT_MONITOR_RATE = self.config.get('local_stat_rate')
+            self.logger.info("Changed local stat monitoring rate to: '%s Hz'" % config.LOCAL_STAT_MONITOR_RATE)
+
+        if 'remote_stat_rate' in self.config and self.config.get('remote_stat_rate'):
+            config.REMOTE_STAT_MONITOR_RATE = self.config.get('remote_stat_rate')
+            self.logger.info("Changed remote stat monitoring rate to: '%s Hz'" % config.REMOTE_STAT_MONITOR_RATE)
 
     ###################
     # Component Management
@@ -925,7 +935,7 @@ class ControlCenter(AbstractController):
             '%s' % socket.gethostname(): ['N/A', 'N/A', 'N/A']
         }
         self.monitor_queue = queue.Queue()
-        self.mon_thread = MonitoringThread(self.monitor_queue)
+        self.mon_thread = ComponentMonitor(self.monitor_queue)
         if monitor_enabled:
             self.mon_thread.start()
 
@@ -952,7 +962,7 @@ class ControlCenter(AbstractController):
                     })
 
                     self.logger.info('found running session by name "%s" on server' % self.session_name)
-                    session_ready = False
+                    session_ready = True
             except LibTmuxException:
                 self.logger.debug("Exception in libtmux while looking up sessions. Maybe no session is running. Trying "
                                   "to create a new one")
@@ -965,8 +975,8 @@ class ControlCenter(AbstractController):
                 )
 
             if config.MONITOR_LOCAL_STATS:
-                self.logger.debug("Putting local stat monitor job in queue")
-                self.monitor_queue.put(LocalStatMonitorJob(socket.gethostname()))
+                self.stat_thread.start()
+
         else:
             self.config = None
 
@@ -1113,6 +1123,10 @@ class ControlCenter(AbstractController):
         config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config['name'])
 
         self.host_stats[hostname] = ['N/A', 'N/A', 'N/A']
+
+        if config.MONITOR_REMOTE_STATS:
+            custom_messages.append(actionSerializer.serialize_request('stat_monitoring',
+                                                                      [config.REMOTE_STAT_MONITOR_RATE]))
 
         if window and self.host_list[hostname] and self.slave_server:
             if self.slave_server.start_slave(hostname, config_path, self.config['name'], window, custom_messages):
@@ -1286,6 +1300,7 @@ class ControlCenter(AbstractController):
         """
         self.subscribers.append(subscriber_queue)
         self.mon_thread.add_subscriber(subscriber_queue)
+        self.stat_thread.add_subscriber(subscriber_queue)
 
     def remove_subscriber(self, subscriber_queue):
         """Remove a queue from the list of subscribers for manager and monitoring thread events.
@@ -1296,6 +1311,7 @@ class ControlCenter(AbstractController):
         """
         self.subscribers.remove(subscriber_queue)
         self.mon_thread.remove_subscriber(subscriber_queue)
+        self.stat_thread.remove_subscriber(subscriber_queue)
 
     ###################
     # Stop
@@ -1930,6 +1946,7 @@ class ControlCenter(AbstractController):
 
         self.logger.debug("Killing monitoring thread")
         self.mon_thread.kill()
+        self.stat_thread.kill()
 
         if full:
             self.logger.debug("Stopping all components")
@@ -2067,7 +2084,7 @@ class SlaveManager(AbstractController):
             '%s' % socket.gethostname(): True
         }
         self.monitor_queue = queue.Queue()
-        self.mon_thread = MonitoringThread(self.monitor_queue)
+        self.mon_thread = ComponentMonitor(self.monitor_queue)
         self.mon_thread.start()
 
         if configfile:
@@ -2121,6 +2138,7 @@ class SlaveManager(AbstractController):
 
         self.logger.debug("Killing monitoring thread")
         self.mon_thread.kill()
+        self.stat_thread.kill()
 
         if full:
             self.logger.info("Chose full shutdown. Killing tmux sessions")
@@ -2138,3 +2156,4 @@ class SlaveManager(AbstractController):
         """
         self.subscribers.append(subscriber)
         self.mon_thread.add_subscriber(subscriber)
+        self.stat_thread.add_subscriber(subscriber)

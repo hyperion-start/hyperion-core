@@ -225,7 +225,8 @@ class RemoteSlaveInterface(BaseClient):
             'quit': self._quit,
             'suspend': self._suspend,
             'conf_reload': self.cc.reload_config,
-            'start_clone_session': self._start_clone_session_wrapper
+            'start_clone_session': self._start_clone_session_wrapper,
+            'stat_monitoring': self._start_monitoring
         }
         self._send_auth()
 
@@ -303,13 +304,11 @@ class RemoteSlaveInterface(BaseClient):
                 connection = key.fileobj
 
                 if mask & selectors.EVENT_READ:
-                    self.logger.debug("Got read event")
                     raw_msglen = connection.recv(4)
                     if raw_msglen:
                         # A readable client socket has data
                         msglen = struct.unpack('>I', raw_msglen)[0]
                         data = recvall(connection, msglen)
-                        self.logger.debug("Received message")
                         action, args = actionSerializer.deserialize(data)
                         self._interpret_message(action, args)
 
@@ -329,6 +328,12 @@ class RemoteSlaveInterface(BaseClient):
             self._process_events()
             time.sleep(.5)
         self.logger.debug("Exiting messaging loop")
+
+    def _start_monitoring(self, rate):
+        self.logger.debug("Starting stat monitor with rate %s" % rate)
+        config.LOCAL_STAT_MONITOR_RATE = rate
+        self.cc.stat_thread.start()
+        self.cc.stat_thread.add_subscriber()
 
 
 class RemoteControllerInterface(AbstractController, BaseClient):
@@ -516,6 +521,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
     def _set_host_stats(self, host_stats):
         self.host_stats = host_stats
         self.logger.debug("Set host stats")
+        self.logger.debug(host_stats)
 
     def _forward_event(self, event):
         if self.monitor_queue:
@@ -546,13 +552,11 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                 connection = key.fileobj
 
                 if mask & selectors.EVENT_READ:
-                    self.logger.debug("Got read event")
                     raw_msglen = connection.recv(4)
                     if raw_msglen:
                         # A readable client socket has data
                         msglen = struct.unpack('>I', raw_msglen)[0]
                         data = recvall(connection, msglen)
-                        self.logger.debug("Received message")
                         action, args = actionSerializer.deserialize(data)
                         self._interpret_message(action, args)
 

@@ -19,12 +19,6 @@ class ComponentEvent(BaseEvent):
         self.comp_id = comp_id
 
 
-class StatRequestEvent(BaseEvent):
-    """Signal a host stat request event."""
-    def __init__(self):
-        BaseEvent.__init__(self)
-
-
 class StatResponseEvent(BaseEvent):
     """Event to pass the results of stat request."""
     def __init__(self, load, cpu, mem, hostname):
