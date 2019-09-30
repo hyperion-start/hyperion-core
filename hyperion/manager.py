@@ -356,9 +356,19 @@ class AbstractController(object):
             config.SHOW_CHECK_OUTPUT = self.config.get('verbose_checks')
             self.logger.info("Set verbose checks to: '%s'" % config.SHOW_CHECK_OUTPUT)
 
+        if 'local_monitor' in self.config:
+            config.MONITOR_LOCAL_STATS = self.config.get('local_monitor')
+            if not config.MONITOR_LOCAL_STATS:
+                self.logger.info("Disabled local stat monitoring")
+
         if 'local_stat_rate' in self.config and self.config.get('local_stat_rate'):
             config.LOCAL_STAT_MONITOR_RATE = self.config.get('local_stat_rate')
             self.logger.info("Changed local stat monitoring rate to: '%s Hz'" % config.LOCAL_STAT_MONITOR_RATE)
+
+        if 'remote_monitor' in self.config:
+            config.MONITOR_REMOTE_STATS = self.config.get('remote_monitor')
+            if not config.MONITOR_REMOTE_STATS:
+                self.logger.info("Disabled remote stat monitoring")
 
         if 'remote_stat_rate' in self.config and self.config.get('remote_stat_rate'):
             config.REMOTE_STAT_MONITOR_RATE = self.config.get('remote_stat_rate')
