@@ -17,8 +17,8 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 ### Added
 - More informative logging output when a file included in the configuration could not be found.
 - Single line definition of requirements instead of lists get detected and an appropriate hint is shown in the log.
-- Local and remote host stats monitoring. Parameters in the configuration can now also be used to tune the rates at 
-which monitoring is executed. 
+- Local and remote host stats monitoring. Parameters in the configuration can now also be used to enable or disable stat
+monitoring and tune the rates at which monitoring is executed. 
 
 ## [2.2.0] - 19.06.2019
 
