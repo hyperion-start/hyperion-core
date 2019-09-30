@@ -1,4 +1,4 @@
-import config
+from hyperion.lib.util import config
 
 
 class BaseEvent(object):

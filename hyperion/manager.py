@@ -12,13 +12,13 @@ from psutil import Process, NoSuchProcess
 from subprocess import call, Popen, PIPE
 from threading import Lock
 from time import sleep, time, strftime
-from lib.util.setupParser import Loader
-from lib.util.depTree import Node, dep_resolve
-from lib.monitoring.threads import LocalComponentMonitoringJob, HostMonitorJob, MonitoringThread, CancellationJob
-import lib.util.exception as exceptions
-import lib.util.config as config
-import lib.util.events as events
-import lib.util.actionSerializer as actionSerializer
+from hyperion.lib.util.setupParser import Loader
+from hyperion.lib.util.depTree import Node, dep_resolve
+from hyperion.lib.monitoring.threads import LocalComponentMonitoringJob, HostMonitorJob, MonitoringThread, CancellationJob
+import hyperion.lib.util.exception as exceptions
+import hyperion.lib.util.config as config
+import hyperion.lib.util.events as events
+import hyperion.lib.util.actionSerializer as actionSerializer
 
 is_py2 = sys.version[0] == '2'
 if is_py2:

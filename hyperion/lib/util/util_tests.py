@@ -1,8 +1,8 @@
 import unittest
 import struct
-import actionSerializer
-import depTree
-import exception
+import hyperion.lib.util.actionSerializer as actionSerializer
+import hyperion.lib.util.depTree as depTree
+import hyperion.lib.util.exception as exception
 
 
 class ActionSerializerTest(unittest.TestCase):

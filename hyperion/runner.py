@@ -4,14 +4,14 @@ import argparse
 import sys
 import yaml
 import time
-import lib.util.config as config
+import hyperion.lib.util.config as config
 from signal import *
-from lib.util.setupParser import Loader
-from manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log, conf_preprocessing
-from lib.networking import clientInterface, server
-from lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, FORMAT
+from hyperion.lib.util.setupParser import Loader
+from hyperion.manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log, conf_preprocessing
+from hyperion.lib.networking import clientInterface, server
+from hyperion.lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, FORMAT
 from logging.config import fileConfig
-from lib.util.exception import *
+from hyperion.lib.util.exception import *
 
 import pkg_resources  # part of setuptools
 __version__ = pkg_resources.require("hyperion")[0].version
