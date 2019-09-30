@@ -425,6 +425,10 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
+        action = 'get_host_stats'
+        message = actionSerializer.serialize_request(action, payload)
+        self.send_queue.put(message)
+
     def _quit(self):
         self.keep_running = False
         self.cleanup(False)
