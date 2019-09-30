@@ -45,6 +45,12 @@ class HostState(Enum):
     SSH_ONLY = 3
 
 
+LOCAL_STAT_MONITOR_RATE = 1
+"""Rate at which local stats are fetched in amount per second"""
+
+REMOTE_STAT_MONITOR_RATE = 1
+"""Rate at which remote stats are fetched in amount per second"""
+
 MONITOR_REMOTE_STATS = True
 """Bool whether to monitor remote system stats."""
 

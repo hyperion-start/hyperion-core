@@ -259,7 +259,6 @@ class Server(BaseServer):
 
         while not self.event_queue.empty():
             event = self.event_queue.get_nowait()
-            self.logger.debug("Forwarding event: %s" % event)
             message = actionSerializer.serialize_request('queue_event', [event])
             for key in self.send_queues:
                 message_queue = self.send_queues.get(key)
