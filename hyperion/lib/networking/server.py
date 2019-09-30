@@ -411,14 +411,14 @@ class SlaveManagementServer(BaseServer):
 
         :return: None
         """
-        self.logger.debug("Forwarding slave client event: %s" % event)
+        # self.logger.debug("Forwarding slave client event: %s" % event)
         self.notify_queue.put(event)
 
         if isinstance(event, events.CheckEvent):
             self.check_buffer[event.comp_id] = event.check_state
 
     def _interpret_message(self, action, args, connection):
-        self.logger.debug("Action: %s, args: %s" % (action, args))
+        # self.logger.debug("Action: %s, args: %s" % (action, args))
         func = self.function_mapping.get(action)
 
         if action == 'unsubscribe':
