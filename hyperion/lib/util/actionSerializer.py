@@ -21,8 +21,9 @@ def serialize_request(action, payload):
     encoded = {'action': action}
     for i in range(len(payload)):
         encoded['arg_%s' % i] = payload[i]
-    # logger.debug("Encoded to %s" % encoded)
-    pickled = pickle.dumps(encoded)
+    # Protocols 0 to 2 are compatible with python 2.
+    # TODO: Remove once python 2 support is dropped
+    pickled = pickle.dumps(encoded, protocol=2)
     return struct.pack('>I', len(pickled)) + pickled
 
 

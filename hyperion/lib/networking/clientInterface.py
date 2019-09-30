@@ -292,7 +292,7 @@ class RemoteSlaveInterface(BaseClient):
         """
         while not self.event_queue.empty():
             event = self.event_queue.get_nowait()
-            self.logger.debug("Forwarding event '%s' to slave manager server" % event)
+            # self.logger.debug("Forwarding event '%s' to slave manager server" % event)
             message = actionSerializer.serialize_request('queue_event', [event])
             self.send_queue.put(message)
 

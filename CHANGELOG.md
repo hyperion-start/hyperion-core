@@ -12,11 +12,13 @@ reusable.
 - If no tmux session existed in some OS/tmux configurations, a tmux error was thrown while searching for a maybe already 
 active session. This should not happen anymore. (Did not happen on Xenial but on Arch with both running tmux 2.1)
 - Switched to full package path imports, since python3 seems not be able to handle those otherwise.
+- For compatibility between python2 and python3 processes, pickle now uses protocol 2.
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.
 - Single line definition of requirements instead of lists get detected and an appropriate hint is shown in the log.
-- Local host stats monitoring.
+- Local and remote host stats monitoring. Parameters in the configuration can now also be used to tune the rates at 
+which monitoring is executed. 
 
 ## [2.2.0] - 19.06.2019
 

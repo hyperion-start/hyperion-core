@@ -157,7 +157,13 @@ def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
         keys = []
         values = []
         for line in data.splitlines():
-            entry = line.split("=", 1)
+
+            # Python version specifics
+            if is_py2:
+                entry = line.split("=", 1)
+            else:
+                entry = line.decode("utf-8").split("=", 1)
+
             if len(entry) == 2:
                 keys.append(entry[0])
                 values.append(entry[1])
@@ -656,6 +662,8 @@ class AbstractController(object):
             if hn_out == '127.0.0.1' or hn_out == '127.0.1.1' or hn_out == '::1':
                 self.logger.debug("Host '%s' is localhost" % hostname)
                 return True
+            elif hostname == socket.gethostname():
+                self.logger.debug("Host '%s' is localhost, but has no loopback definition!" % hostname)
             else:
                 self.logger.debug("Host '%s' is not localhost" % hostname)
                 return False
