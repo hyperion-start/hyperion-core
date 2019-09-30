@@ -1,6 +1,6 @@
 import yaml
 import os.path
-import exception as exceptions
+import hyperion.lib.util.exception as exceptions
 
 # This is a solution provided by Josh Bode in stackoverflow to provide import
 # https://stackoverflow.com/questions/528281/how-can-i-include-an-yaml-file-inside-another

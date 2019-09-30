@@ -1,9 +1,9 @@
 import unittest
-import manager
+import hyperion.manager
 import libtmux
-import lib.util.exception
+import hyperion.lib.util.exception
 import os.path
-from lib.networking import server, clientInterface
+from hyperion.lib.networking import server, clientInterface
 import hyperion.lib.util.exception as exceptions
 from hyperion.lib.monitoring.threads import *
 

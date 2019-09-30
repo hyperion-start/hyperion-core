@@ -23,7 +23,12 @@ else:
 try:
     import selectors
 except ImportError:
-    import selectors2 as selectors
+    logging.warn("Module selectors not found! Trying to load selectors2")
+    try:
+        import selectors2 as selectors
+    except ImportError as err:
+        logging.critical("Neither selectors or selectors2 is installed. You need one of these packages to run hyperion! Err: %s" % err)
+        raise err
 
 
 def recvall(connection, n):

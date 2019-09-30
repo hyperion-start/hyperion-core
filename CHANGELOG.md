@@ -10,6 +10,7 @@ reusable.
 - On shutdown before the server thread was started, joining the thread made the program crash.
 - If no tmux session existed in some OS/tmux configurations, a tmux error was thrown while searching for a maybe already 
 active session. This should not happen anymore. (Did not happen on Xenial but on Arch with both running tmux 2.1)
+- Switched to full package path imports, since python3 seems not be able to handle those otherwise.
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.

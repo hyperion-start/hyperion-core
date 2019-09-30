@@ -1,4 +1,4 @@
-from exception import CircularReferenceException
+from hyperion.lib.util.exception import CircularReferenceException
 
 
 class Node(object):

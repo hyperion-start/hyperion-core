@@ -1,4 +1,3 @@
-import selectors2 as selectors
 import socket
 import time
 import logging
@@ -13,6 +12,17 @@ from hyperion.manager import AbstractController, setup_ssh_config
 import hyperion.lib.util.events as events
 from signal import *
 from subprocess import Popen, PIPE
+
+try:
+    import selectors
+except ImportError:
+    logging.warn("Module selectors not found! Trying to load selectors2")
+    try:
+        import selectors2 as selectors
+    except ImportError as err:
+        logging.critical("Neither selectors or selectors2 is installed. You need one of these packages to run hyperion! Err: %s" % err)
+        raise err
+
 
 is_py2 = sys.version[0] == '2'
 if is_py2:
