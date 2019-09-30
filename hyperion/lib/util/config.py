@@ -45,6 +45,12 @@ class HostState(Enum):
     SSH_ONLY = 3
 
 
+MONITOR_REMOTE_STATS = True
+"""Bool whether to monitor remote system stats."""
+
+MONITOR_LOCAL_STATS = True
+"""Bool whether to monitor local system stats."""
+
 MONITORING_RATE = 1
 """Rate in Hz at which the monitoring thread runs checks"""
 

@@ -14,7 +14,7 @@ from threading import Lock
 from time import sleep, time, strftime
 from hyperion.lib.util.setupParser import Loader
 from hyperion.lib.util.depTree import Node, dep_resolve
-from hyperion.lib.monitoring.threads import LocalComponentMonitoringJob, HostMonitorJob, MonitoringThread, CancellationJob
+from hyperion.lib.monitoring.threads import LocalComponentMonitoringJob, HostMonitorJob, MonitoringThread, CancellationJob, LocalStatMonitorJob, RemoteStatMonitoringJob
 import hyperion.lib.util.exception as exceptions
 import hyperion.lib.util.config as config
 import hyperion.lib.util.events as events
@@ -921,6 +921,9 @@ class ControlCenter(AbstractController):
         self.host_states = {
             '%s' % socket.gethostname(): config.HostState.CONNECTED
         }
+        self.host_stats = {
+            '%s' % socket.gethostname(): ['N/A', 'N/A', 'N/A']
+        }
         self.monitor_queue = queue.Queue()
         self.mon_thread = MonitoringThread(self.monitor_queue)
         if monitor_enabled:
@@ -961,6 +964,9 @@ class ControlCenter(AbstractController):
                     window_name="Main"
                 )
 
+            if config.MONITOR_LOCAL_STATS:
+                self.logger.debug("Putting local stat monitor job in queue")
+                self.monitor_queue.put(LocalStatMonitorJob(socket.gethostname()))
         else:
             self.config = None
 
@@ -1105,6 +1111,10 @@ class ControlCenter(AbstractController):
 
         window = self._find_window('ssh-%s' % hostname)
         config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config['name'])
+
+        self.host_stats = {
+            hostname: ['N/A', 'N/A', 'N/A']
+        }
 
         if window and self.host_list[hostname] and self.slave_server:
             if self.slave_server.start_slave(hostname, config_path, self.config['name'], window, custom_messages):
