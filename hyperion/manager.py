@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+from libtmux.exc import LibTmuxException
 from libtmux import Server, Window
 from yaml import load, dump
 import re
@@ -940,18 +941,26 @@ class ControlCenter(AbstractController):
 
             self.server = Server()
 
-            if self.server.has_session(self.session_name):
-                self.session = self.server.find_where({
-                    "session_name": self.session_name
-                })
+            session_ready = False
+            try:
+                if self.server.has_session(self.session_name):
+                    self.session = self.server.find_where({
+                        "session_name": self.session_name
+                    })
 
-                self.logger.info('found running session by name "%s" on server' % self.session_name)
-            else:
+                    self.logger.info('found running session by name "%s" on server' % self.session_name)
+                    session_ready = False
+            except LibTmuxException:
+                self.logger.debug("Exception in libtmux while looking up sessions. Maybe no session is running. Trying "
+                                  "to create a new one")
+
+            if not session_ready:
                 self.logger.info('starting new session by name "%s" on server' % self.session_name)
                 self.session = self.server.new_session(
                     session_name=self.session_name,
                     window_name="Main"
                 )
+
         else:
             self.config = None
 
@@ -2063,13 +2072,19 @@ class SlaveManager(AbstractController):
 
             self.server = Server()
 
-            if self.server.has_session(self.session_name):
-                self.session = self.server.find_where({
-                    "session_name": self.session_name
-                })
+            session_ready = False
+            try:
+                if self.server.has_session(self.session_name):
+                    self.session = self.server.find_where({
+                        "session_name": self.session_name
+                    })
 
-                self.logger.info('found running session by name "%s" on server' % self.session_name)
-            else:
+                    self.logger.info('found running session by name "%s" on server' % self.session_name)
+                    session_ready=True
+            except LibTmuxException:
+                self.logger.debug("Exception in libtmux while looking up sessions. Maybe no session is running. Trying "
+                                  "to create a new one")
+            if not session_ready:
                 self.logger.info('starting new session by name "%s" on server' % self.session_name)
                 self.session = self.server.new_session(
                     session_name=self.session_name,
