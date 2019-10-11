@@ -30,7 +30,6 @@ for ui_plugin in pkg_resources.iter_entry_points('hyperion.user_interfaces'):
         print("Loaded entry point '%s'" % ui_plugin.name)
     except ImportError as e:
         print("Could not load entry point '%s'" % ui_plugin.name)
-        print(e.message)
 
 if 'urwid' in ui_plugins:
     interactive_enabled = True
