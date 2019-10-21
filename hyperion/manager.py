@@ -1059,14 +1059,15 @@ class ControlCenter(AbstractController):
         try:
             self._load_config(self.configfile)
         except exceptions.MissingComponentDefinitionException as err:
-            self.logger.debug("Reloading failed with error! Included file '%s' not found!" % err.filename)
+            self.logger.error("Reloading failed with error! Included file '%s' not found!" % err.filename)
             self.config = old_conf
             return
         except IOError as err:
-            self.logger.debug("Reloading failed with error: %s" % err.message)
+            self.logger.error("Reloading failed with error: %s" % err.message)
             self.config = old_conf
             return
         except exceptions.EnvNotFoundException:
+            self.logger.error("Specified environment could not be found. Config reload aborted!")
             self.config = old_conf
             return
 
