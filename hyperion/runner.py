@@ -79,12 +79,11 @@ def main():
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
 
     # Create top level parser
-    parser.add_argument('--config', '-c', type=str,
-                        help='YAML config file. see sample-config.yaml.')
     subparsers = parser.add_subparsers(dest='cmd')
 
     # Create parser for server
     subparser_server = subparsers.add_parser('server', help='Starts hyperion backend')
+    subparser_server.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
     subparser_server.add_argument('-p', '--port',
                                   help='Define the tcp port on which the backend will listen for clients. '
                                        'Default: %s' % DEFAULT_TCP_PORT,
@@ -95,10 +94,13 @@ def main():
     # Create parser for the editor command
     subparser_editor = subparsers.add_parser('edit', help='Launches the editor to edit or create new systems and '
                                                           'components')
+    subparser_editor.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
+
     # Create parser for the run command
     subparser_cli = subparsers.add_parser('execute', help='initialize the configured system with the executing host as '
                                                           'controlling instance. It offers to run a specific action for'
                                                           ' a single component or a list of components')
+    subparser_cli.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
 
     subparser_cli.add_argument('-C', '--component', metavar='COMP', help='single component or list of components '
                                                                          'specific action', default='all', nargs='+')
@@ -121,6 +123,7 @@ def main():
 
     subparser_ui = subparsers.add_parser('ui', help='Launches the setup specified by the --config argument and '
                                                     'start with user interface')
+    subparser_ui.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=False)
 
     subparser_ui.add_argument('-p', '--port',
                               help='Specify port to connect to. Defaults to %s' % DEFAULT_TCP_PORT,
@@ -141,12 +144,14 @@ def main():
 
     # Create parser for validator
     subparser_val = subparsers.add_parser('validate', help='Validate the setup specified by the --config argument')
+    subparser_val.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
     subparser_val.add_argument('--visual', help='Generate and show a graph image', action='store_true')
 
     subparser_remote = subparsers.add_parser('slave', help='Run a component locally without controlling it. The '
                                                            'control is taken care of the remote master invoking '
                                                            'this command.\nIf run with the --kill flag, the '
                                                            'passed component will be killed')
+    subparser_remote.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
 
     subparser_remote.add_argument('-p', '--port',
                                   help='specify port of the master server to connect to',

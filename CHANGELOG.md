@@ -5,6 +5,8 @@
 - Now using "SO_REUSEADDR" option for the server socket. After quitting the server the server port is immediately 
 reusable.
 - Restructured monitoring with base class and stat monitoring and comp/host monitoring as extra thread extensions.
+- Moved the positional `--config` to each subparser so specifying the config before the operation mode is not required 
+anymore.
     
 ### Fixed
 - Error on shutdown before config was finished where no master node for dependency was found now is handled.
