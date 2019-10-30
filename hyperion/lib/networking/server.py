@@ -518,7 +518,7 @@ class SlaveManagementServer(BaseServer):
         slave_log_handler.setFormatter(logging.Formatter(config.FORMAT))
         self.slave_log_handlers[hn] = slave_log_handler
 
-        cmd = 'hyperion --config %s slave -H %s -p %s' % (config_path, socket.gethostname(), self.port)
+        cmd = 'hyperion slave --config %s -H %s -p %s' % (config_path, socket.gethostname(), self.port)
         tmux_cmd = 'tmux new -d -s "%s-slave" "%s"' % (config_name, cmd)
         window.cmd('send-keys', tmux_cmd, 'Enter')
 
