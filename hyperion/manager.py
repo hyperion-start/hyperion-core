@@ -1564,9 +1564,9 @@ class ControlCenter(AbstractController):
         :return: None
         """
         try:
-            comps = self.get_start_all_list()
+            comps = self.get_start_all_list(exclude_no_auto=False)
         except exceptions.CircularReferenceException:
-            # If circular dependency is given this no components can be started and this is happening in cleanup, so we
+            # If circular dependency is given no components can be started and this is happening in cleanup, so we
             # can safely return without action.
             return
 
@@ -1776,7 +1776,7 @@ class ControlCenter(AbstractController):
 
         return res
 
-    def get_start_all_list(self):
+    def get_start_all_list(self, exclude_no_auto=True):
         """Get a list of all components ordered by dependency (from dependency to depends on).
 
         :return: List of components
@@ -1794,7 +1794,8 @@ class ControlCenter(AbstractController):
         res.remove(node)
 
         it = list(res)
-        [res.remove(entry) if 'noauto' in entry.component else '' for entry in it]
+        if exclude_no_auto:
+            [res.remove(entry) if 'noauto' in entry.component else '' for entry in it]
 
         return res
 
