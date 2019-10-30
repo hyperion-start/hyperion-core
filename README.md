@@ -39,7 +39,7 @@ Server mode starts a component manager as master that listens for clients on the
 ### Execute mode [CORE]
 
 ```
-usage: hyperion --config CONFIG execute [-h] { -l | ([-C COMP [COMP ...]] ( -s | -k | -c | -L | -T))}
+usage: hyperion execute --config CONFIG [-h] { -l | ([-C COMP [COMP ...]] ( -s | -k | -c | -L | -T))}
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -78,7 +78,7 @@ Visit [Interactive CLI](/DavidPL1/Hyperion/wiki/Interactive-CLI-Mode) for detail
 ### Validation mode
 
 ```
-hyperion --config systems/demo.yaml validate [-h] [--visual]
+hyperion validate --config systems/demo.yaml [-h] [--visual]
 
 optional arguments:
   -h, --help  show this help message and exit
@@ -105,7 +105,7 @@ By specifying the visual argument, the command will generate an image of the the
 ### Editor mode (NIY)
 
 ```
-hyperion --config systems/demo.yaml edit
+hyperion edit --config systems/demo.yaml
 ```
 
 The editor mode is planned to provide an editor GUI to create and edit components, groups and systems.

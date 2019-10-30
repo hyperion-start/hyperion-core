@@ -19,6 +19,7 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 - Switched to full package path imports, since python3 seems not be able to handle those otherwise.
 - For compatibility between python2 and python3 processes, pickle now uses protocol 2.
 - Fixed python3 crash on entry point warning log output
+- Fixed command to start slaves, since the config argument moved behind the mode argument. 
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.
