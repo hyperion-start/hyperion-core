@@ -8,6 +8,8 @@ reusable.
 - Moved the positional `--config` to each subparser so specifying the config before the operation mode is not required 
 anymore.
 - 'Stop all' command now includes no auto components.
+- After 'stop all' a check for all components is triggered on the master server with broadcast option to inform all 
+connected clients.
     
 ### Fixed
 - Error on shutdown before config was finished where no master node for dependency was found now is handled.
