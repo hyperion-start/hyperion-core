@@ -352,6 +352,8 @@ def main():
                 cc.set_dependencies()
             except UnmetDependenciesException or CircularReferenceException:
                 cc.cleanup(status=config.ExitStatus.DEPENDENCY_RESOLUTION_ERROR)
+            except Exception as err:
+                logger.error("CATCHED EXCEPTION! %s" % type(err))
         cc.cleanup()
 
     elif args.cmd == 'slave':
