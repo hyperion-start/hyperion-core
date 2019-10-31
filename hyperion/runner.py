@@ -335,6 +335,7 @@ def main():
             except UnmetDependenciesException as e:
                 unmet = e.unmet_list
             except CircularReferenceException:
+                circular_err_detected = True
                 pass
 
             if graph_enabled:
