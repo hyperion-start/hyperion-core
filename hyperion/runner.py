@@ -328,6 +328,7 @@ def main():
         conf_preprocessing(cc.config, cc.custom_env_path, cc.exclude_tags)
 
         if args.visual:
+            circular_err_detected = False
             unmet = []
             try:
                 cc.set_dependencies()
@@ -342,6 +343,10 @@ def main():
                 logger.error('To use this feature you need hyperion-graph-vis installed! Check the README.md for '
                              'install instructions. If you already ran the installation try adding site-packages of '
                              'your installation prefix to your PYTHONPATH environment variable.')
+
+            if circular_err_detected or len(unmet) > 0:
+                cc.cleanup(status=config.ExitStatus.DEPENDENCY_RESOLUTION_ERROR)
+
         else:
             try:
                 cc.set_dependencies()

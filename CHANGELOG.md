@@ -21,6 +21,7 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 - Fixed python3 crash on entry point warning log output
 - Fixed command to start slaves, since the config argument moved behind the mode argument. 
 - Fixed catching unknown host exception inside component check.
+- Exit status in visual validation now matches status non-visual validation.
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.
