@@ -22,6 +22,7 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 - Fixed command to start slaves, since the config argument moved behind the mode argument. 
 - Fixed catching unknown host exception inside component check.
 - Exit status in visual validation now matches status non-visual validation.
+- Fixed multiple exception catches with more than one exceptions in a single catch statement.
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.
