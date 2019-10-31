@@ -590,7 +590,7 @@ class AbstractController(object):
         # Create queue event for external notification and return for inner purpose
         # But only broadcast if it was a local check or no answer was received, because remote events will be
         # forwarded automatically
-        if (on_localhost or ret_val == config.CheckState.UNREACHABLE) and broadcast:
+        if (ret_val == config.CheckState.UNREACHABLE or on_localhost) and broadcast:
             self.broadcast_event(events.CheckEvent(comp['id'], ret_val))
         return ret_val
 
