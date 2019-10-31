@@ -1029,7 +1029,7 @@ class ControlCenter(AbstractController):
 
             try:
                 self.set_dependencies()
-            except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
+            except (exceptions.UnmetDependenciesException, exceptions.CircularReferenceException) as ex:
                 self.logger.debug("Error while setting up dependency tree. Initiating shutdown")
                 self.cleanup(True, config.ExitStatus.DEPENDENCY_RESOLUTION_ERROR)
 
@@ -1075,12 +1075,12 @@ class ControlCenter(AbstractController):
 
         try:
             self.set_dependencies()
-        except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
+        except (exceptions.UnmetDependenciesException, exceptions.CircularReferenceException) as ex:
             self.logger.error("Error while setting up dependency tree. Rolling back to working config")
             self.config = old_conf
             try:
                 self.set_dependencies()
-            except exceptions.UnmetDependenciesException or exceptions.CircularReferenceException as ex:
+            except (exceptions.UnmetDependenciesException, exceptions.CircularReferenceException) as ex:
                 self.logger.critical("Resetting to old config failed!")
                 self.cleanup(True, config.ExitStatus.CONFIG_RESET_FAILED)
 
