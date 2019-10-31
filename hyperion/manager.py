@@ -570,8 +570,8 @@ class AbstractController(object):
         :return: State of the component
         :rtype: config.CheckState
         """
-        on_localhost = self.run_on_localhost(comp)
         try:
+            on_localhost = self.run_on_localhost(comp)
             if on_localhost:
                 ret = self._check_local_component(comp)
 
