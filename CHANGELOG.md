@@ -23,6 +23,7 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 - Fixed catching unknown host exception inside component check.
 - Exit status in visual validation now matches status non-visual validation.
 - Fixed multiple exception catches with more than one exceptions in a single catch statement.
+- Introduced check if at least one group is defined. If not, the application is shut down with an config parsing error.
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.

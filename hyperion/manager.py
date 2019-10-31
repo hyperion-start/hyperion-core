@@ -1013,6 +1013,10 @@ class ControlCenter(AbstractController):
             self.logger.error(" Config not loaded yet!")
 
         else:
+            if not self.config.get('groups') or len(self.config.get('groups') < 1):
+                self.logger.critical("At least one group needs to be defined in your config!")
+                self.cleanup(True, config.ExitStatus.CONFIG_PARSING_ERROR)
+
             if not setup_ssh_config():
                 self.cleanup(True, config.ExitStatus.MISSING_SSH_CONFIG)
             conf_preprocessing(self.config, self.custom_env_path, self.exclude_tags)
