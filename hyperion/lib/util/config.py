@@ -1,3 +1,4 @@
+import logging
 from os.path import expanduser
 from enum import Enum
 
@@ -44,6 +45,9 @@ class HostState(Enum):
     DISCONNECTED = 2
     SSH_ONLY = 3
 
+
+DEFAULT_LOG_LEVEL = logging.INFO
+"""Default log level for all modules"""
 
 LOCAL_STAT_MONITOR_RATE = 1
 """Rate at which local stats are fetched in amount per second"""

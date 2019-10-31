@@ -201,7 +201,7 @@ class BaseMonitorThread(Thread):
     def __init__(self):
         super(BaseMonitorThread, self).__init__()
         self.logger = logger = logging.getLogger(__name__)
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(config.DEFAULT_LOG_LEVEL)
         self.subscribed_queues = []
         self.end = False
         logger.debug("Initialized thread")
