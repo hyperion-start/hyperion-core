@@ -11,6 +11,8 @@ anymore.
 - After 'stop all' a check for all components is triggered on the master server with broadcast option to inform all 
 connected clients.
 - Introduced default log level in config (set to INFO). This value is only overridden by the '--verbose' start parameter.
+- `--no-socket` argument is no longer needed for ui mode. If a config us supplied, the ui will be started in standalone 
+mode.
     
 ### Fixed
 - Error on shutdown before config was finished where no master node for dependency was found now is handled.
