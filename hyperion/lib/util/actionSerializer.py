@@ -1,6 +1,7 @@
 import pickle
 import struct
 import logging
+import hyperion.lib.util.config as config
 
 
 def serialize_request(action, payload):
@@ -17,7 +18,7 @@ def serialize_request(action, payload):
     :rtype: str
     """
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(config.DEFAULT_LOG_LEVEL)
     encoded = {'action': action}
     for i in range(len(payload)):
         encoded['arg_%s' % i] = payload[i]
@@ -38,7 +39,7 @@ def deserialize(message):
     :rtype: tuple of str and list of Object
     """
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(config.DEFAULT_LOG_LEVEL)
     unpickled = pickle.loads(message)
 
     # logger.debug("Decoding message: %s" % unpickled)

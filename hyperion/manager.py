@@ -286,7 +286,7 @@ class AbstractController(object):
 
     def __init__(self, configfile):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(config.DEFAULT_LOG_LEVEL)
         self.configfile = configfile
         self.monitor_queue = queue.Queue()
         self.custom_env_path = None

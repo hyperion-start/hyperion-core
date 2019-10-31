@@ -59,7 +59,7 @@ class BaseServer(object):
         self.sel = selectors.DefaultSelector()
         self.keep_running = True
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(config.DEFAULT_LOG_LEVEL)
         self.send_queues = {}
         signal(SIGINT, self._handle_sigint)
 

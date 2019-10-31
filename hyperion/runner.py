@@ -72,7 +72,6 @@ def main():
     """
 
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
     parser = argparse.ArgumentParser()
 
     # Version option  for parser
@@ -83,6 +82,7 @@ def main():
 
     # Create parser for server
     subparser_server = subparsers.add_parser('server', help='Starts hyperion backend')
+    subparser_server.add_argument('--verbose', action='store_true')
     subparser_server.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
     subparser_server.add_argument('-p', '--port',
                                   help='Define the tcp port on which the backend will listen for clients. '
@@ -94,12 +94,14 @@ def main():
     # Create parser for the editor command
     subparser_editor = subparsers.add_parser('edit', help='Launches the editor to edit or create new systems and '
                                                           'components')
+    subparser_editor.add_argument('--verbose', action='store_true')
     subparser_editor.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
 
     # Create parser for the run command
     subparser_cli = subparsers.add_parser('execute', help='initialize the configured system with the executing host as '
                                                           'controlling instance. It offers to run a specific action for'
                                                           ' a single component or a list of components')
+    subparser_cli.add_argument('--verbose', action='store_true')
     subparser_cli.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
 
     subparser_cli.add_argument('-C', '--component', metavar='COMP', help='single component or list of components '
@@ -123,6 +125,7 @@ def main():
 
     subparser_ui = subparsers.add_parser('ui', help='Launches the setup specified by the --config argument and '
                                                     'start with user interface')
+    subparser_ui.add_argument('--verbose', action='store_true')
     subparser_ui.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=False)
 
     subparser_ui.add_argument('-p', '--port',
@@ -144,6 +147,7 @@ def main():
 
     # Create parser for validator
     subparser_val = subparsers.add_parser('validate', help='Validate the setup specified by the --config argument')
+    subparser_val.add_argument('--verbose', action='store_true')
     subparser_val.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
     subparser_val.add_argument('--visual', help='Generate and show a graph image', action='store_true')
 
@@ -162,6 +166,9 @@ def main():
                                   required=True)
 
     args = parser.parse_args()
+    if args.verbose:
+        config.DEFAULT_LOG_LEVEL = logging.DEBUG
+    logger.setLevel(config.DEFAULT_LOG_LEVEL)
     logger.debug(args)
 
     root_logger = logging.getLogger()
