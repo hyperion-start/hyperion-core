@@ -126,7 +126,6 @@ def main():
     subparser_ui = subparsers.add_parser('ui', help='Launches the setup specified by the --config argument and '
                                                     'start with user interface')
     subparser_ui.add_argument('--verbose', action='store_true')
-    subparser_ui.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=False)
 
     subparser_ui.add_argument('-p', '--port',
                               help='Specify port to connect to. Defaults to %s' % DEFAULT_TCP_PORT,
@@ -135,8 +134,8 @@ def main():
 
     ui_mutex = subparser_ui.add_mutually_exclusive_group(required=False)
     ui_mutex.add_argument('-H', '--host', help='Specify host to connect to. Defaults to localhost', default='localhost')
-    ui_mutex.add_argument('--no-socket', help='Start in standalone mode without connecting to a running backend',
-                          action='store_true')
+    ui_mutex.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml. If a config file '
+                                                           'is supplied, ui will start in standalone mode!')
 
     subparser_ui.add_argument(
         '-x',
@@ -211,12 +210,7 @@ def main():
     if args.cmd == 'ui':
         logger.debug('Chose ui mode')
 
-        if args.no_socket:
-
-            if not args.config:
-                logger.critical("If you start in standalone mode you need to supply a configuration!")
-                sys.exit(config.ExitStatus.MISSING_CONFIG)
-
+        if args.config:
             log_file_path = '%s/localhost/standalone/%s.log' % (TMP_LOG_PATH, time.strftime("%H-%M-%S"))
             handler = logging.handlers.RotatingFileHandler(log_file_path, 'w')
 
