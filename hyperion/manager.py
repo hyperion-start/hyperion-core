@@ -1268,7 +1268,7 @@ class ControlCenter(AbstractController):
             self.logger.debug("Dependency tree for start all: %s" % dep_string)
         except exceptions.CircularReferenceException as ex:
             self.logger.error("Detected circular dependency reference between %s and %s!" % (ex.node1, ex.node2))
-            raise ex
+            raise exceptions.CircularReferenceException(ex.node1, ex.node2)
         if unmet_deps:
             raise exceptions.UnmetDependenciesException(unmet)
 
