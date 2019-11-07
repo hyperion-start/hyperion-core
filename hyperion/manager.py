@@ -625,8 +625,11 @@ class AbstractController(object):
 
             pids = []
             for p in procs:
-                if p.name() != 'tee':
-                    pids.append(p.pid)
+                try:
+                    if p.name() != 'tee':
+                        pids.append(p.pid)
+                except NoSuchProcess:
+                    pass
             logger.debug("Window is running %s non-logger child processes: %s" % (len(pids), pids))
 
             if len(pids) < 1:
