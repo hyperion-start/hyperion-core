@@ -148,10 +148,14 @@ def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
         data, err_lines = pipe.communicate()
 
         if err_lines and len(err_lines) > 0:
+            if is_py2:
+                err_lines = "".join(err_lines)
+            else:
+                err_lines = err_lines.decode("utf-8")
             logging.getLogger(__name__).critical(
                 "Sourcing the custom environment file of this config returned with an error! "
                 "Is it suitable for the selected shell executable ('%s')? "
-                "Full stderr output:\n%s" % (config.SHELL_EXECUTABLE_PATH, "".join(err_lines))
+                "Full stderr output:\n%s" % (config.SHELL_EXECUTABLE_PATH, err_lines)
             )
 
         keys = []
