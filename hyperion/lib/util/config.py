@@ -46,6 +46,9 @@ class HostState(Enum):
     SSH_ONLY = 3
 
 
+DEFAULT_LOG_UMASK = 0o000
+"""Default permission mask for log files (results in 0777)"""
+
 DEFAULT_LOG_LEVEL = logging.INFO
 """Default log level for all modules"""
 

@@ -1,5 +1,5 @@
 import unittest
-import hyperion.manager
+from hyperion import manager
 import libtmux
 import hyperion.lib.util.exception
 import os.path
@@ -46,7 +46,7 @@ class BasicManagerTests(unittest.TestCase):
     def test_component_fetch(self):
         tail = self.cc.get_component_by_id('tail@localhost')
         self.assertEqual(tail['name'], 'tail')
-        with self.assertRaises(lib.util.exception.ComponentNotFoundException):
+        with self.assertRaises(hyperion.lib.util.exception.ComponentNotFoundException):
             self.cc.get_component_by_id('do fail')
 
         lst = self.cc.get_start_all_list()

@@ -48,16 +48,16 @@ for vis_plugin in pkg_resources.iter_entry_points('hyperion.visualisation'):
 if 'graph_gen' in vis_plugins:
     graph_enabled = True
 
-ensure_dir('%s/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
 
-ensure_dir('%s/localhost/any.log' % TMP_LOG_PATH)
-ensure_dir('%s/localhost/client/any.log' % TMP_LOG_PATH)
-ensure_dir('%s/localhost/component/any.log' % TMP_LOG_PATH)
-ensure_dir('%s/localhost/server/any.log' % TMP_LOG_PATH)
-ensure_dir('%s/localhost/slave/any.log' % TMP_LOG_PATH)
-ensure_dir('%s/localhost/standalone/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/localhost/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
+ensure_dir('%s/localhost/client/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
+ensure_dir('%s/localhost/component/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
+ensure_dir('%s/localhost/server/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
+ensure_dir('%s/localhost/slave/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
+ensure_dir('%s/localhost/standalone/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
 
-ensure_dir('%s/remote/slave/any.log' % TMP_LOG_PATH)
+ensure_dir('%s/remote/slave/any.log' % TMP_LOG_PATH, mask=config.DEFAULT_LOG_UMASK)
 
 fileConfig('%s/data/default-logger.config' % BASE_DIR)
 

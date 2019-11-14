@@ -13,6 +13,8 @@ connected clients.
 - Introduced default log level in config (set to INFO). This value is only overridden by the '--verbose' start parameter.
 - `--no-socket` argument is no longer needed for ui mode. If a config us supplied, the ui will be started in standalone 
 mode.
+- Introduced option to set the default log umask, meaning the directory permissions for the log and config dirs created
+in tmp. To set this option manually add an octal entry (e.g. `0o000` for 775) by key `log_umask` to the system config.
     
 ### Fixed
 - Error on shutdown before config was finished where no master node for dependency was found now is handled.
