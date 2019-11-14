@@ -57,7 +57,7 @@ def setup_log(window, filepath, comp_id, start_tee=True):
     """
 
     clear_log(filepath, comp_id)
-    ensure_dir(filepath)
+    ensure_dir(filepath, mask=config.DEFAULT_LOG_UMASK)
 
     if start_tee:
         # Reroute stderr to log file
@@ -96,20 +96,26 @@ def clear_log(file_path, log_name):
     """
     if os.path.isfile(file_path):
         directory = os.path.dirname(file_path)
+        old_mask = os.umask(config.DEFAULT_LOG_UMASK)
         os.rename(file_path, "%s/%s_%s.log" % (directory, log_name, strftime("%H-%M-%S")))
+        os.umask(old_mask)
 
 
-def ensure_dir(file_path):
+def ensure_dir(file_path, mask=0o777):
     """If not already existing, recursively create parent directory of file_path.
 
     :param file_path: log file path
     :type file_path: str
+    :param mask: Umask to create directories with.
+    :type mask: int
     :return: None
     """
 
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
+        prev_mask = os.umask(mask)
         os.makedirs(directory)
+        os.umask(prev_mask)
 
 
 def dump_config(conf):
@@ -259,8 +265,8 @@ def setup_ssh_config():
     try:
         logger.debug("Trying to copy ssh config from %s to %s" % (config.SSH_CONFIG_PATH,
                                                                   config.CUSTOM_SSH_CONFIG_PATH))
-        ensure_dir(config.CUSTOM_SSH_CONFIG_PATH)
-        ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH)
+        ensure_dir(config.CUSTOM_SSH_CONFIG_PATH, mask=config.DEFAULT_LOG_UMASK)
+        ensure_dir('%s/somefile' % config.SSH_CONTROLMASTERS_PATH, mask=config.DEFAULT_LOG_UMASK)
         shutil.copy(config.SSH_CONFIG_PATH, config.CUSTOM_SSH_CONFIG_PATH)
     except IOError:
         logger.warn("Could not copy ssh config! Creating config from scratch!")
@@ -377,6 +383,10 @@ class AbstractController(object):
         if 'remote_stat_rate' in self.config and self.config.get('remote_stat_rate'):
             config.REMOTE_STAT_MONITOR_RATE = self.config.get('remote_stat_rate')
             self.logger.info("Changed remote stat monitoring rate to: '%s Hz'" % config.REMOTE_STAT_MONITOR_RATE)
+
+        if 'log_umask' in self.config and self.config.get('log_umask'):
+            config.DEFAULT_LOG_UMASK = self.config.get('log_umask')
+            self.logger.info("Changed default log umask to '%s'" % config.DEFAULT_LOG_UMASK)
 
     ###################
     # Component Management
@@ -1292,7 +1302,7 @@ class ControlCenter(AbstractController):
         """
         self.logger.debug("Dumping config to tmp")
         tmp_conf_path = ('%s/%s.yaml' % (config.TMP_CONF_DIR, self.config['name']))
-        ensure_dir(tmp_conf_path)
+        ensure_dir(tmp_conf_path, mask=config.DEFAULT_LOG_UMASK)
 
         with open(tmp_conf_path, 'w') as outfile:
             clone = self.config.copy()
