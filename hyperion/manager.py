@@ -385,7 +385,7 @@ class AbstractController(object):
             self.logger.info("Changed remote stat monitoring rate to: '%s Hz'" % config.REMOTE_STAT_MONITOR_RATE)
 
         if 'log_umask' in self.config and self.config.get('log_umask'):
-            config.DEFAULT_LOG_UMASK = int(self.config.get('log_umask'))
+            config.DEFAULT_LOG_UMASK = int(self.config.get('log_umask'), 8)
             self.logger.info("Changed default log umask to '%s'" % config.DEFAULT_LOG_UMASK)
 
     ###################
