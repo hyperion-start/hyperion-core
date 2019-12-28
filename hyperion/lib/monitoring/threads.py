@@ -31,6 +31,7 @@ class ComponentMonitorJob(object):
         self.pid = pid
         self.comp_id = comp_id
         self.error_msg = "Component '%s' crashed!" % comp_id
+        self.is_cancelled = False
 
     def run_check(self):
         """You need to override this function in monitoring subclasses. It is called in the main monitoring thread.
@@ -82,6 +83,8 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
                 return True
         except NoSuchProcess:
             pass
+        if self.is_cancelled:
+            return events.CheckEvent(self.comp_id, config.CheckState.STOPPED)
         return events.CrashEvent(self.comp_id)
 
     def info(self):
@@ -304,8 +307,10 @@ class ComponentMonitor(BaseMonitorThread):
             for mon_job in cancellations:
                 for comp_job in comp_jobs:
                     if mon_job.comp_id is comp_job.comp_id:
-                        remove.append(comp_job)
-            [comp_jobs.remove(job) for job in remove]
+                        comp_job.is_cancelled = True
+                        # Previous way of cancelling jobs. Lets keep this for now
+                       # remove.append(comp_job)
+           # [comp_jobs.remove(job) for job in remove]
 
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)

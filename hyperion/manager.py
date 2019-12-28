@@ -1596,8 +1596,8 @@ class ControlCenter(AbstractController):
         for comp in comps:
             self.stop_component(comp.component)
 
-        for comp in comps:
-            self.check_component(comp.component)
+        # for comp in comps:
+        #     self.check_component(comp.component)
 
     ###################
     # Check
@@ -1694,9 +1694,9 @@ class ControlCenter(AbstractController):
             return
         logger.info("Stopping component '%s' ..." % comp_id)
         self.stop_component(comp)
-        sleep(2)
-        ret = self.check_component(comp)
-        logger.info("Check returned status: %s" % ret.name)
+        # sleep(2)
+        # ret = self.check_component(comp)
+        # logger.info("Check returned status: %s" % ret.name)
 
     def check_by_cli(self, comp_id):
         """Interface function for checking component by name `comp_name` from the cli.
