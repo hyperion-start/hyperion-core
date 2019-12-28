@@ -1604,8 +1604,8 @@ class ControlCenter(AbstractController):
         for comp in comps:
             self.stop_component(comp.component)
 
-        # for comp in comps:
-        #     self.check_component(comp.component)
+        for comp in comps:
+            self.check_component(comp.component)
 
     ###################
     # Check
