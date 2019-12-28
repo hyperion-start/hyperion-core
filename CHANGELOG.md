@@ -15,6 +15,9 @@ connected clients.
 mode.
 - Introduced option to set the default log umask, meaning the directory permissions for the log and config dirs created
 in tmp. To set this option manually add an octal entry (e.g. `0o000` for 775) by key `log_umask` to the system config.
+- On stopping a component the monitoring job responsible for the component is not removed anymore, but converted to send
+itself a check event, once the component has finished running. This solves the problem of needing to start a check at
+the right moment, in order to notify users of a successful component stop.
     
 ### Fixed
 - Error on shutdown before config was finished where no master node for dependency was found now is handled.
