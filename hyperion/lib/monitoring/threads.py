@@ -321,7 +321,8 @@ class ComponentMonitor(BaseMonitorThread):
                     self.job_queue.put(mon_job)
                 else:
                     # If job is not ok, notify subscribers
-                    self.logger.error(mon_job.error_msg)
+                    if not mon_job.is_cancelled:
+                        self.logger.error(mon_job.error_msg)
                     self.logger.debug("Notifying mon subscribers about failed check")
                     for subscriber in self.subscribed_queues:
                         subscriber.put(ret)
