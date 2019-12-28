@@ -185,7 +185,11 @@ def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
     pattern2 = '.*@\\${(.*)}'
     logging.debug("Pattern %s" % pattern)
 
+    duplicate_check_list = []
     for group in conf['groups']:
+        if group['name'] in duplicate_check_list:
+            raise exceptions.DuplicateGroupDefinitionException(group['name'])
+        duplicate_check_list.append(group['name'])
 
         exclude_from_group = []
         for comp in group['components']:
@@ -1036,7 +1040,11 @@ class ControlCenter(AbstractController):
 
             if not setup_ssh_config():
                 self.cleanup(True, config.ExitStatus.MISSING_SSH_CONFIG)
-            conf_preprocessing(self.config, self.custom_env_path, self.exclude_tags)
+            try:
+                conf_preprocessing(self.config, self.custom_env_path, self.exclude_tags)
+            except exceptions.DuplicateGroupDefinitionException as ex:
+                self.logger.critical(ex.message)
+                self.cleanup(True, config.ExitStatus.CONFIG_PARSING_ERROR)
 
             for group in self.config['groups']:
                 for comp in group['components']:

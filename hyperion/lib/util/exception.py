@@ -35,6 +35,13 @@ class UnmetDependenciesException(Exception):
         self.unmet_list = unmet_list
 
 
+class DuplicateGroupDefinitionException(Exception):
+    """Exception to be thrown when a duplicate group definition is found in the sys config"""
+    def __init__(self, duplicate_name):
+        """Create DuplicateGroupDefinitionException"""
+        self.message = "Config is corrupted. Found multiple definitions of component group '%s'" % duplicate_name
+
+
 class CircularReferenceException(Exception):
     """Exception to be thrown when a circular dependency is detected in the dependency graph."""
     def __init__(self, node1, node2):
