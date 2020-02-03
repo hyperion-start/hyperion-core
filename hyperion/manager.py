@@ -505,6 +505,7 @@ class AbstractController(object):
             else:
                 self.logger.debug("creating window '%s'" % comp_id)
                 window = self.session.new_window(window_name=comp_id, window_shell=config.SHELL_EXECUTABLE_PATH)
+                window.rename_window(comp_id)
                 self._start_window(window, comp, log_file)
 
     ###################
@@ -1026,8 +1027,9 @@ class ControlCenter(AbstractController):
             if window == None:
                 self.logger.error("No Main window found. Trying to create one manually")
                 window = self.session.new_window('Main')
-                window_test = self._find_window('Main')
+                window.rename_window("Main")
 
+                window_test = self._find_window('Main')
                 if window_test == None:
                     self.logger.critical("Unable to start Main window in session. Rerun with '--verbose' option and "
                                          "provide your log in an issue")
@@ -1900,6 +1902,7 @@ class ControlCenter(AbstractController):
         else:
             self.logger.debug("Connecting to '%s' in new window" % hostname)
             window = self.session.new_window('ssh-%s' % hostname)
+            window.rename_window('ssh-%s' % hostname)
             window.cmd("send-keys", cmd, "Enter")
 
         t_end = time() + config.SSH_CONNECTION_TIMEOUT
