@@ -822,6 +822,7 @@ class AbstractController(object):
         self.logger.debug("Sending command to master session main window: %s" % cmd)
         window = self._find_window('Main')
         if window == None:
+            self.logger.error("No Main window found in tmux session. Shutting down...")
             self.cleanup(True, config.ExitStatus.MAIN_TMUX_WINDOW_NOT_FOUND)
 
         self._wait_until_window_not_busy(window)
@@ -1020,6 +1021,18 @@ class ControlCenter(AbstractController):
                     window_name="Main"
                 )
 
+            self.logger.debug("Session should be available now. Double checking if it has a window called 'Main' ...")
+            window = self._find_window('Main')
+            if window == None:
+                self.logger.error("No Main window found. Trying to create one manually")
+                window = self.session.new_window('Main')
+                window_test = self._find_window('Main')
+
+                if window_test == None:
+                    self.logger.critical("Unable to start Main window in session. Rerun with '--verbose' option and "
+                                         "provide your log in an issue")
+                    self.cleanup(True, config.ExitStatus.MAIN_TMUX_WINDOW_NOT_FOUND)
+
             if config.MONITOR_LOCAL_STATS:
                 self.logger.debug("Launching stat monitor thread")
                 self.stat_thread.start()
@@ -1059,6 +1072,7 @@ class ControlCenter(AbstractController):
                 for comp in group['components']:
                     try:
                         if comp['host'] != "localhost" and not self.run_on_localhost(comp):
+                            self.logger.info("Trying to connect to remote host %s" % comp['host'])
                             if comp['host'] not in self.host_list:
                                 if self._establish_master_connection(comp['host']):
                                     self.logger.info("Master connection to %s established!" % comp['host'])
@@ -1066,6 +1080,7 @@ class ControlCenter(AbstractController):
                         self.logger.error(ex.message)
 
             try:
+                self.logger.debug("Resolving dependencies")
                 self.set_dependencies()
             except (exceptions.UnmetDependenciesException, exceptions.CircularReferenceException) as ex:
                 self.logger.debug("Error while setting up dependency tree. Initiating shutdown")
@@ -1857,7 +1872,7 @@ class ControlCenter(AbstractController):
         :rtype: bool
         """
 
-        self.logger.debug("Establishing master connection to host %s" % hostname)
+        self.logger.debug("Establishing master ssh connection to host %s" % hostname)
 
         cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
                                                                       hostname, config.SSH_CONNECTION_TIMEOUT)
