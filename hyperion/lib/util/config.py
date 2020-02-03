@@ -18,6 +18,7 @@ class ExitStatus(Enum):
     MISSING_SSH_CONFIG = 10
     CONFIG_RESET_FAILED = 11
     MISSING_UI_INSTALL = 12
+    MAIN_TMUX_WINDOW_NOT_FOUND = 13
 
 
 class CheckState(Enum):

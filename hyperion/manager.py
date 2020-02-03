@@ -143,7 +143,9 @@ def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
     :type exclude_tags: list of str
     :return: None
     """
+    logging.getLogger(__name__).debug("Starting config preprocessing")
     if custom_env:
+        logging.getLogger(__name__).debug("Trying to load custom environment")
         pipe = Popen(
             '. %s > /dev/null; env' % custom_env,
             stdout=PIPE,
@@ -183,7 +185,7 @@ def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
 
     pattern = '\\${(.*)}'
     pattern2 = '.*@\\${(.*)}'
-    logging.debug("Pattern %s" % pattern)
+    logging.getLogger(__name__).debug("Checking config for replace patterns '%s' and '%s'" % (pattern, pattern2))
 
     duplicate_check_list = []
     for group in conf['groups']:
@@ -329,10 +331,11 @@ class AbstractController(object):
         :type filename: str
         :return: None
         """
-
+        self.logger.debug("Trying to load config")
         try:
             with open(filename) as data_file:
                 self.config = load(data_file, Loader)
+                self.logger.debug("Config file found. Parsing content")
         except IOError as e:
             self.logger.critical("No config file at '%s' found" % filename)
             raise e
@@ -818,6 +821,8 @@ class AbstractController(object):
         """
         self.logger.debug("Sending command to master session main window: %s" % cmd)
         window = self._find_window('Main')
+        if window == None:
+            self.cleanup(True, config.ExitStatus.MAIN_TMUX_WINDOW_NOT_FOUND)
 
         self._wait_until_window_not_busy(window)
         window.cmd("send-keys", cmd, "Enter")
@@ -976,6 +981,7 @@ class ControlCenter(AbstractController):
         self.monitor_queue = queue.Queue()
         self.mon_thread = ComponentMonitor(self.monitor_queue)
         if monitor_enabled:
+            self.logger.debug("Launching monitoring thread")
             self.mon_thread.start()
 
         if configfile:
@@ -994,6 +1000,7 @@ class ControlCenter(AbstractController):
             self.server = Server()
 
             session_ready = False
+            self.logger.debug("Checking if session is ready")
             try:
                 if self.server.has_session(self.session_name):
                     self.session = self.server.find_where({
@@ -1014,6 +1021,7 @@ class ControlCenter(AbstractController):
                 )
 
             if config.MONITOR_LOCAL_STATS:
+                self.logger.debug("Launching stat monitor thread")
                 self.stat_thread.start()
 
         else:
@@ -1030,6 +1038,7 @@ class ControlCenter(AbstractController):
 
         :return: None
         """
+        self.logger.debug("Initializing ControlCenter ...")
         if not self.config:
             self.logger.error(" Config not loaded yet!")
 
@@ -1068,6 +1077,7 @@ class ControlCenter(AbstractController):
                 self._send_main_session_command(cmd)
 
             if self.slave_server:
+                self.logger.debug("Starting slave server")
                 self.slave_server.start()
             else:
                 self.logger.critical("Slave server is None!")
@@ -1618,6 +1628,7 @@ class ControlCenter(AbstractController):
         :return: State of the component
         :rtype: config.CheckState
         """
+        
         self.logger.debug("Starting remote check")
         if self.host_list.get(comp['host']) is not None:
             self.logger.debug("Remote '%s' is connected" % comp['host'])
