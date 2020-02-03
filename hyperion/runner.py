@@ -156,6 +156,7 @@ def main():
                                                            'passed component will be killed')
     subparser_remote.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
 
+    subparser_remote.add_argument('--verbose', action='store_true')
     subparser_remote.add_argument('-p', '--port',
                                   help='specify port of the master server to connect to',
                                   type=int, required=True)
