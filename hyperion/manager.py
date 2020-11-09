@@ -699,6 +699,7 @@ class AbstractController(object):
                 return True
             elif hostname == socket.gethostname():
                 self.logger.debug("Host '%s' is localhost, but has no loopback definition!" % hostname)
+                return True
             else:
                 self.logger.debug("Host '%s' is not localhost" % hostname)
                 return False
