@@ -519,7 +519,11 @@ class SlaveManagementServer(BaseServer):
         self.slave_log_handlers[hn] = slave_log_handler
 
         cmd = 'hyperion slave --config %s -H %s -p %s' % (config_path, socket.gethostname(), self.port)
+
+        if config.SLAVE_HYPERION_SOURCE_PATH != None:
+            cmd = 'source %s && %s' % (config.SLAVE_HYPERION_SOURCE_PATH, cmd)
         tmux_cmd = 'tmux new -d -s "%s-slave" "%s"' % (config_name, cmd)
+        self.logger.debug("Running following command to start slave on remote and conntect to this master: %s" % tmux_cmd)
         window.cmd('send-keys', tmux_cmd, 'Enter')
 
         self.logger.info("Waiting for slave on '%s' (%s) to connect..." % (hn, hostname))

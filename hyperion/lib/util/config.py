@@ -143,3 +143,6 @@ STATE_CHECK_BUTTON_STYLE = {
     CheckState.STOPPED_BUT_SUCCESSFUL: 'darkcyan'
 }
 """Global check button color dictionary for CheckStates"""
+
+SLAVE_HYPERION_SOURCE_PATH = None
+"""Option to source a specific env where hyperion is located on a slave"""

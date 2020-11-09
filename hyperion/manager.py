@@ -354,6 +354,10 @@ class AbstractController(object):
                 self.logger.critical("Env file %s could not be found!" % env)
                 raise exceptions.EnvNotFoundException("Env file %s could not be found!" % env)
 
+        if 'slave_hyperion_source_path' in self.config and self.config.get('slave_hyperion_source_path'):
+            config.SLAVE_HYPERION_SOURCE_PATH = self.config.get('slave_hyperion_source_path')
+            self.logger.info("Will source file '%s' before starting slave on remote" % config.SLAVE_HYPERION_SOURCE_PATH)
+
         if 'exclude' in self.config and self.config.get('exclude'):
             self.exclude_tags = self.config.get('exclude')
             self.logger.info("Following tags are excluded by configuration: %s" % self.exclude_tags)
