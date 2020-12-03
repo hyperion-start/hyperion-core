@@ -428,10 +428,15 @@ class AbstractController(object):
             sleep(.5)
 
         if config.SHOW_CHECK_OUTPUT:
-            self.logger.info(("Check output of '%s':\n%s" % (comp['id'], "".join(p.stdout.readlines()))))
+            out = p.stdout.readlines()
+            if not is_py2:
+                out = map(lambda x: x.decode(encoding='UTF-8'), out)
+            self.logger.info(("Check output of '%s':\n%s" % (comp['id'], "".join(out))))
 
             err_out_list = p.stderr.readlines()
             if len(err_out_list):
+                if not is_py2:
+                    err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list)
                 self.logger.error(("'%s' check stderr:\n%s" % (comp['id'], "".join(err_out_list))))
 
         if p.returncode == 0:
