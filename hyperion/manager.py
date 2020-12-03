@@ -241,7 +241,7 @@ def get_component_cmd(component, cmd_type):
     :return: Command as string or None
     :rtype: str or None
     """
-    if cmd_type is not 'start' and cmd_type is not 'check' and cmd_type is not 'stop':
+    if cmd_type != 'start' and cmd_type == 'check' and cmd_type != 'stop':
         logging.getLogger(__name__).error("Unrecognized cmd type '%s' was given" % cmd_type)
         return
 
@@ -1861,7 +1861,7 @@ class ControlCenter(AbstractController):
         cmd = 'ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s' % (config.CUSTOM_SSH_CONFIG_PATH,
                                                                       hostname, config.SSH_CONNECTION_TIMEOUT)
 
-        is_up = True if os.system('ping -w2 -c 1 %s > /dev/null' % hostname) is 0 else False
+        is_up = True if os.system('ping -w2 -c 1 %s > /dev/null' % hostname) == 0 else False
         if not is_up:
             self.logger.error("Host %s is not reachable!" % hostname)
 
