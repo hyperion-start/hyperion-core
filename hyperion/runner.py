@@ -150,10 +150,13 @@ def main():
     subparser_val.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
     subparser_val.add_argument('--visual', help='Generate and show a graph image', action='store_true')
 
+
+    # Create parser for slave
     subparser_remote = subparsers.add_parser('slave', help='Run a component locally without controlling it. The '
                                                            'control is taken care of the remote master invoking '
                                                            'this command.\nIf run with the --kill flag, the '
                                                            'passed component will be killed')
+    subparser_remote.add_argument('--verbose', action='store_true')
     subparser_remote.add_argument('--config', '-F', type=str, help='YAML config file. see sample-config.yaml.', required=True)
 
     subparser_remote.add_argument('--verbose', action='store_true')
