@@ -304,7 +304,10 @@ class RemoteSlaveInterface(BaseClient):
                 connection = key.fileobj
 
                 if mask & selectors.EVENT_READ:
-                    raw_msglen = connection.recv(4)
+                    try:
+                        raw_msglen = connection.recv(4)
+                    except:
+                        self.logger.critical("Exception")
                     if raw_msglen:
                         # A readable client socket has data
                         msglen = struct.unpack('>I', raw_msglen)[0]
