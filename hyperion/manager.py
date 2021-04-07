@@ -241,7 +241,7 @@ def get_component_cmd(component, cmd_type):
     :return: Command as string or None
     :rtype: str or None
     """
-    if cmd_type != 'start' and cmd_type == 'check' and cmd_type != 'stop':
+    if cmd_type != 'start' and cmd_type != 'check' and cmd_type != 'stop':
         logging.getLogger(__name__).error("Unrecognized cmd type '%s' was given" % cmd_type)
         return
 
