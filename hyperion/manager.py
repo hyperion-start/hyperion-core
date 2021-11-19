@@ -1011,11 +1011,17 @@ class ControlCenter(AbstractController):
                     })
 
                     self.logger.info('found running session by name "%s" on server' % self.session_name)
-                    session_ready = True
             except LibTmuxException:
                 self.logger.debug("Exception in libtmux while looking up sessions. Maybe no session is running. Trying "
                                   "to create a new one")
 
+            if self.session:
+                window = self._find_window('Main')
+                if not window:
+                    self.logger.debug("Session has no 'Main' window, Maybe session is in use somewhere.")
+                    self.session.new_window('Main')
+                session_ready = True    
+                
             if not session_ready:
                 self.logger.info('starting new session by name "%s" on server' % self.session_name)
                 self.session = self.server.new_session(
