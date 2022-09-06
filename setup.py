@@ -33,7 +33,7 @@ setup_args = dict(
     install_requires=['libtmux',
                       'pyyaml',
                       'psutil',
-                      'enum34',
+                      'enum34;python_version<"3.4"',
                       'selectors2;python_version<"3.4"'],
 
     description='The Hyperion Launch Engine',
