@@ -40,7 +40,7 @@ SCRIPT_SHOW_SESSION_PATH = ("%s/bin/show_session.sh" % BASE_DIR)
 ###################
 # Logging
 ###################
-def setup_log(window, filepath, comp_id, start_tee=True):
+def setup_log(window, filepath, comp_id, start_logging=True):
     """Redirect stdout and stderr of window to file.
 
     Rotate logs and ensure the log directory for a component with id `comp_id` exists, than,
@@ -59,11 +59,9 @@ def setup_log(window, filepath, comp_id, start_tee=True):
     clear_log(filepath, comp_id)
     ensure_dir(filepath, mask=config.DEFAULT_LOG_UMASK)
 
-    if start_tee:
-        # Reroute stderr to log file
-        window.cmd("send-keys", "exec 2> >(exec tee -i -a '%s')" % filepath, "Enter")
-        # Reroute stdout to log file
-        window.cmd("send-keys", "exec 1> >(exec tee -i -a '%s')" % filepath, "Enter")
+    if start_logging:
+        # Reroute stdout and stderr to log file
+        window.cmd("pipe-pane", f"exec cat &>> %s" % filepath, "Enter")
     window.cmd("send-keys", ('echo "#Hyperion component start: %s\\t$(date)"' % comp_id), "Enter")
 
 
@@ -775,9 +773,7 @@ class AbstractController(object):
 
         for proc in procs:
             try:
-                if proc.name() == 'tee' and proc.is_running():
-                    tee_count+=1
-                if proc.name() != 'tee' and proc.is_running():
+                if proc.is_running():
                     self.logger.debug("Killing leftover child process %s" % proc.name())
                     proc.terminate()
             except NoSuchProcess:
