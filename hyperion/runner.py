@@ -256,8 +256,10 @@ def main():
                         logger.debug('Remove non file stream handlers to disable logging on stdout!')
                         remove.append(handler)
                 [root_logger.removeHandler(h) for h in remove]
-
-                cc.cleanup(ui_plugins['urwid'].main(cc, log_file_path))
+                full_shutdown = ui_plugins['urwid'].main(cc, log_file_path)
+                # Re-add handlers for shutdown log
+                [root_logger.addHandler(h) for h in remove]
+                cc.cleanup(full_shutdown)
             else:
                 cc.cleanup(False, config.ExitStatus.MISSING_UI_INSTALL)
                 logger.error('To use this feature you need hyperion-uis installed! Check the README.md for install '
