@@ -92,8 +92,45 @@ CUSTOM_SSH_CONFIG_PATH = "/tmp/Hyperion/ssh-config"
 SSH_CONNECTION_TIMEOUT = 4
 """How many Seconds to wait before an SSH connection attempt fails"""
 
-FORMAT = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]: %(message)s"
+FORMAT     = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]: %(message)s"
 """Logger output formatting"""
+
+FORMAT_ERR = "%(asctime)s: %(name)s %(funcName)20s() [%(levelname)s]: %(message)s (%(filename)s:%(lineno)d)"
+"""Logger output formatting for errors"""
+
+class CustomFormatter(logging.Formatter):
+    """Custom log formatter with different formats for different levels"""
+
+    FORMATS = {
+        logging.DEBUG: FORMAT,
+        logging.INFO: FORMAT,
+        logging.WARNING: FORMAT,
+        logging.ERROR: FORMAT_ERR,
+        logging.CRITICAL: FORMAT_ERR
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+class ColorFormatter(CustomFormatter):
+    """Colored log formatter adapted from https://stackoverflow.com/a/56944256"""
+    grey = "\x1b[38;20m"
+    green = "\x1b[32;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+
+    FORMATS = {
+        logging.DEBUG: green + FORMAT + reset,
+        logging.INFO: grey + FORMAT + reset,
+        logging.WARNING: yellow + FORMAT + reset,
+        logging.ERROR: red + FORMAT_ERR + reset,
+        logging.CRITICAL: bold_red + FORMAT_ERR + reset
+    }
+
 
 DEFAULT_COMP_WAIT_TIME = 3.0
 """Default time to wait for a component to start"""

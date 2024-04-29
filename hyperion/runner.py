@@ -9,7 +9,7 @@ from signal import *
 from hyperion.lib.util.setupParser import Loader
 from hyperion.manager import ControlCenter, SlaveManager, ensure_dir, BASE_DIR, clear_log, conf_preprocessing
 from hyperion.lib.networking import clientInterface, server
-from hyperion.lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, FORMAT
+from hyperion.lib.util.config import TMP_LOG_PATH, DEFAULT_TCP_PORT, ColorFormatter, CustomFormatter
 from logging.config import fileConfig
 from hyperion.lib.util.exception import *
 
@@ -174,7 +174,11 @@ def main():
     logger.debug(args)
 
     root_logger = logging.getLogger()
-    log_formatter = logging.Formatter(FORMAT)
+    stream_formatter = ColorFormatter()
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.setFormatter(stream_formatter)
+    log_formatter = CustomFormatter()
     log_name = ''
 
     if args.config:

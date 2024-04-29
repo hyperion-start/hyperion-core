@@ -42,6 +42,7 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 monitoring and tune the rates at which monitoring is executed. 
 - Detection of multiple definitions of a single group. Multiple group definitions broke the whole startup process.
 - After the urwid ui is closed, the stream logging handler printing the log output to the terminal is reattached. In case a full shutdown was requested, instead of waiting without output, the log shows what's going on.
+- Added custom log formatters for additional information on higher levels and for colored output in the terminal.
 
 ## [2.2.0] - 19.06.2019
 

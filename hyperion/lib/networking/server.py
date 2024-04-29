@@ -515,7 +515,7 @@ class SlaveManagementServer(BaseServer):
         slave_log_handler = logging.handlers.RotatingFileHandler(log_file_path)
         hyperion.manager.clear_log(log_file_path, '%s@%s' % (config_name, hostname))
 
-        slave_log_handler.setFormatter(logging.Formatter(config.FORMAT))
+        slave_log_handler.setFormatter(config.ColorFormatter())
         self.slave_log_handlers[hn] = slave_log_handler
 
         cmd = 'hyperion slave --config %s -H %s -p %s' % (config_path, socket.gethostname(), self.port)
