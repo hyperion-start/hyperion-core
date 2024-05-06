@@ -3,10 +3,9 @@
 IS_CATKIN = False
 
 try:
-    from distutils.core import setup
     from catkin_pkg.python_setup import generate_distutils_setup
     import selectors
-    from setuptools import find_packages
+    from setuptools import setup, find_packages
     IS_CATKIN = True
 except ImportError:
     from setuptools import setup, find_packages
