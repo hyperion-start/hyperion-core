@@ -21,11 +21,7 @@ import hyperion.lib.util.config as config
 import hyperion.lib.util.events as events
 import hyperion.lib.util.actionSerializer as actionSerializer
 
-is_py2 = sys.version[0] == '2'
-if is_py2:
-    import Queue as queue
-else:
-    import queue as queue
+import queue as queue
 
 BASE_DIR = os.path.dirname(__file__)
 """Path to the directory this file is contained in"""
@@ -152,10 +148,7 @@ def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
         data, err_lines = pipe.communicate()
 
         if err_lines and len(err_lines) > 0:
-            if is_py2:
-                err_lines = "".join(err_lines)
-            else:
-                err_lines = err_lines.decode("utf-8")
+            err_lines = err_lines.decode("utf-8")
             logging.getLogger(__name__).critical(
                 "Sourcing the custom environment file of this config returned with an error! "
                 "Is it suitable for the selected shell executable ('%s')? "
@@ -165,12 +158,7 @@ def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
         keys = []
         values = []
         for line in data.splitlines():
-
-            # Python version specifics
-            if is_py2:
-                entry = line.split("=", 1)
-            else:
-                entry = line.decode("utf-8").split("=", 1)
+            entry = line.decode("utf-8").split("=", 1)
 
             if len(entry) == 2:
                 keys.append(entry[0])
@@ -427,14 +415,12 @@ class AbstractController(object):
 
         if config.SHOW_CHECK_OUTPUT:
             out = p.stdout.readlines()
-            if not is_py2:
-                out = map(lambda x: x.decode(encoding='UTF-8'), out)
+            out = map(lambda x: x.decode(encoding='UTF-8'), out)
             self.logger.info(("Check output of '%s':\n%s" % (comp['id'], "".join(out))))
 
             err_out_list = p.stderr.readlines()
             if len(err_out_list):
-                if not is_py2:
-                    err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list)
+                err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list)
                 self.logger.error(("'%s' check stderr:\n%s" % (comp['id'], "".join(err_out_list))))
 
         if p.returncode == 0:

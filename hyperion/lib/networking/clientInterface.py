@@ -13,22 +13,10 @@ import hyperion.lib.util.events as events
 from signal import *
 from subprocess import Popen, PIPE
 
-try:
-    import selectors
-except ImportError:
-    logging.warn("Module selectors not found! Trying to load selectors2")
-    try:
-        import selectors2 as selectors
-    except ImportError as err:
-        logging.critical("Neither selectors or selectors2 is installed. You need one of these packages to run hyperion! Err: %s" % err)
-        raise err
+import selectors
 
 
-is_py2 = sys.version[0] == '2'
-if is_py2:
-    import Queue as queue
-else:
-    import queue as queue
+import queue as queue
 
 
 def recvall(connection, n):
@@ -631,8 +619,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         else:
             self.logger.error("Could not mount remote '%s' with sshfs - logs will not be accessible!" % hostname)
             err_out_list = p.stderr.readlines()
-            if not is_py2:
-                err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list)
+            err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list)
             self.logger.debug("sshfs exited with error: %s (code: %s)" % (err_out_list, p.returncode))
 
         self.logger.debug("mounted hosts: %s" % self.mounted_hosts)

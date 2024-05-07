@@ -14,21 +14,8 @@ import hyperion.lib.util.exception as exceptions
 import hyperion.lib.util.events as events
 import hyperion.lib.util.config as config
 
-is_py2 = sys.version[0] == '2'
-if is_py2:
-    import Queue as queue
-else:
-    import queue as queue
-
-try:
-    import selectors
-except ImportError:
-    logging.warn("Module selectors not found! Trying to load selectors2")
-    try:
-        import selectors2 as selectors
-    except ImportError as err:
-        logging.critical("Neither selectors or selectors2 is installed. You need one of these packages to run hyperion! Err: %s" % err)
-        raise err
+import queue as queue
+import selectors
 
 
 def recvall(connection, n):

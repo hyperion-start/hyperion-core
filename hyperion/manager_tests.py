@@ -7,11 +7,7 @@ from hyperion.lib.networking import server, clientInterface
 import hyperion.lib.util.exception as exceptions
 from hyperion.lib.monitoring.threads import *
 
-is_py2 = sys.version[0] == '2'
-if is_py2:
-    import Queue as queue
-else:
-    import queue as queue
+import queue as queue
 
 
 class BasicManagerTests(unittest.TestCase):

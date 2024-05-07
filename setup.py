@@ -4,7 +4,6 @@ IS_CATKIN = False
 
 try:
     from catkin_pkg.python_setup import generate_distutils_setup
-    import selectors
     from setuptools import setup, find_packages
     IS_CATKIN = True
 except ImportError:
@@ -32,8 +31,7 @@ setup_args = dict(
     install_requires=['libtmux',
                       'pyyaml',
                       'psutil',
-                      'enum34;python_version<"3.4"',
-                      'selectors2;python_version<"3.4"'],
+                      'enum34;python_version<"3.4"'],
 
     description='The Hyperion Launch Engine',
     author='David Leins',

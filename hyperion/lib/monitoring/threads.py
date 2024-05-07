@@ -10,11 +10,7 @@ from subprocess import call
 from psutil import Process, NoSuchProcess
 import socket
 
-is_py2 = sys.version[0] == '2'
-if is_py2:
-    import Queue as Queue
-else:
-    import queue as Queue
+import queue as Queue
     
 
 class ComponentMonitorJob(object):
