@@ -627,9 +627,9 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             self.host_states = event.host_states
         elif isinstance(event, events.StatResponseEvent):
             self.host_stats[event.hostname] = [
-                f"{event.load}",
-                f"{event.cpu}%%",
-                f"{event.mem}%%",
+                f"{event.load:.2f}",
+                f"{event.cpu:.2f}%%",
+                f"{event.mem:.2f}%%",
             ]
 
     def _loop(self) -> None:

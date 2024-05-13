@@ -21,6 +21,7 @@ the right moment, in order to notify users of a successful component stop.
 - Switched to numpy style docstring (https://numpydoc.readthedocs.io/en/latest/format.html).
 - Now using black for formatting.
 - Added type hints where possible.
+- Set host stat precision to 2 digits after the decimal point.
 
 > [!IMPORTANT]
 > #### Breaking Changes
