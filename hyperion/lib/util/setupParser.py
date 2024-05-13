@@ -9,17 +9,17 @@ from yaml.constructor import ConstructorError
 class Loader(yaml.SafeLoader):
     """Custom loader class to feature including yaml files inside each other."""
 
-    def __init__(self, stream):
+    def __init__(self, stream) -> None:
         self._root = os.path.split(stream.name)[0]
         super(Loader, self).__init__(stream)
 
     def include(self, node):
         filename = os.path.join(self._root, self.construct_scalar(node))
         try:
-            with open(filename, 'r') as f:
+            with open(filename, "r") as f:
                 return yaml.load(f, Loader)
         except IOError:
             raise exceptions.MissingComponentDefinitionException(filename)
 
 
-Loader.add_constructor('!include', Loader.include)
+Loader.add_constructor("!include", Loader.include)

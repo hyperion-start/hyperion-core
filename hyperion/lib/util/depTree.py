@@ -1,43 +1,53 @@
 from hyperion.lib.util.exception import CircularReferenceException
-
+from hyperion.lib.util.types import Component
+from typing_extensions import Self
 
 class Node(object):
     """This class models a component as node of a dependency tree."""
+
     pass
 
-    def __init__(self, comp):
-        """Initialize node for component ``comp``.
+    def __init__(self, comp: Component) -> None:
+        """Initialize node for component `comp`.
 
-        :param comp: Component to create a node for
-        :type comp: dict
+        Parameters
+        ----------
+        comp : Component
+            Component to create a node for.
         """
 
         self.component = comp
-        self.depends_on = []
-        self.comp_id = comp['id']
+        self.depends_on: list[Node] = []
+        self.comp_id = comp["id"]
 
-    def add_edge(self, node):
+    def add_edge(self, node: Self) -> None:
         """Add a node as dependency.
 
-        :param node: Node to add as dependency
-        :type node: Node
-        :return: None
+        Parameters
+        ----------
+        node: Node
+            Node to add as dependency
         """
 
         self.depends_on.append(node)
 
 
-def dep_resolve(node, resolved, unresolved):
-    """Recursively generate a list of all dependencies for ``node``
+def dep_resolve(node: Node, resolved: list[Node], unresolved: list[Node]) -> None:
+    """Recursively generate a list of all dependencies for `node`.
 
-    :param node: Node to resolve dependencies for
-    :type node: Node
-    :param resolved: List of already resolved nodes
-    :type resolved: List of Node
-    :param unresolved: List of unresolved nodes
-    :type unresolved: List of Node
-    :return: List containing all dependencies of ``node``
-    :rtype: List of Node
+    Parameters
+    ----------
+    node : Node
+        Node to resolve dependencies for
+    resolved : list[Node]
+        List of already resolved nodes
+    unresolved : list[Node]
+        List of unresolved nodes
+
+    Raises
+    ------
+    CircularReferenceException
+        If the config contains at least one node with a circular dependency.
     """
 
     unresolved.append(node)

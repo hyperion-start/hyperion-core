@@ -18,6 +18,9 @@ in tmp. To set this option manually add an octal entry (e.g. `0o000` for 775) by
 - On stopping a component the monitoring job responsible for the component is not removed anymore, but converted to send
 itself a check event, once the component has finished running. This solves the problem of needing to start a check at
 the right moment, in order to notify users of a successful component stop.
+- Switched to numpy style docstring (https://numpydoc.readthedocs.io/en/latest/format.html).
+- Now using black for formatting.
+- Added type hints where possible.
 
 > [!IMPORTANT]
 > #### Breaking Changes

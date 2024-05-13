@@ -3,7 +3,6 @@ import select
 import time
 import logging
 import logging.handlers
-import sys
 import struct
 import threading
 import hyperion.manager
@@ -13,55 +12,65 @@ import hyperion.lib.util.actionSerializer as actionSerializer
 import hyperion.lib.util.exception as exceptions
 import hyperion.lib.util.events as events
 import hyperion.lib.util.config as config
+import libtmux
 
 import queue as queue
 import selectors
 
+from typing import Any, Callable, Optional
+from hyperion.lib.util.types import Config
 
-def recvall(connection, n):
+
+def recvall(connection: socket.socket, n: int) -> bytes:
     """Helper function to recv n bytes or return None if EOF is hit
 
     To read a message with an expected size and combine it to one object, even if it was split into more than one
     packets.
 
-    :param connection: Connection to a socket
-    :param n: Size of the message to read in bytes
-    :type n: int
-    :return: Expected message combined into one string
+    Parameters
+    ----------
+    connection : socket.socket
+        Connection to a socket to read from.
+    n : int
+        Size of the message to read in bytes.
+
+    Returns
+    -------
+    bytes
+        Expected message combined into one string.
     """
 
-    data = b''
+    data = b""
     while len(data) < n:
         packet = connection.recv(n - len(data))
-        if not packet:
-            return None
         data += packet
     return data
 
 
 class BaseServer(object):
     """Base class for servers."""
-    def __init__(self):
-        self.port = None
+
+    def __init__(self) -> None:
+        self.port: int
         self.sel = selectors.DefaultSelector()
         self.keep_running = True
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(config.DEFAULT_LOG_LEVEL)
-        self.send_queues = {}
+        self.send_queues: dict[socket.socket, queue.Queue] = {}
         signal(SIGINT, self._handle_sigint)
 
-    def accept(self, sock, mask):
+    def accept(self, sock: socket.socket, mask: int) -> None:
         """Callback for new connections"""
         new_connection, addr = sock.accept()
-        self.logger.debug('accept({})'.format(addr))
+        self.logger.debug("accept({})".format(addr))
         new_connection.setblocking(False)
         self.send_queues[new_connection] = queue.Queue()
         self.sel.register(new_connection, selectors.EVENT_READ | selectors.EVENT_WRITE)
 
-    def _interpret_message(self, action, args, connection):
+    def _interpret_message(self, action: str, args: list[Any], connection: socket.socket) -> None:
         raise NotImplementedError
 
-    def write(self, connection):
+    def write(self, connection: socket.socket) -> None:
         """Callback for write events"""
         send_queue = self.send_queues.get(connection)
         if send_queue and not send_queue.empty() and self.keep_running:
@@ -72,17 +81,19 @@ class BaseServer(object):
             except socket.error as err:
                 self.logger.error("Error while writing message to socket: %s" % err)
 
-    def read(self, connection):
+    def read(self, connection: socket.socket) -> None:
         raise NotImplementedError
 
-    def _handle_sigint(self, signum, frame):
+    def _handle_sigint(self, signum: int, frame: Any) -> None:
         self.logger.debug("Received C-c")
         self._quit()
 
-    def _quit(self):
-        self.logger.debug("Sending all pending messages to slave clients before quitting server...")
-        for sub in self.send_queues:
-            while self.send_queues.get(sub) and not self.send_queues.get(sub).empty():
+    def _quit(self) -> None:
+        self.logger.debug(
+            "Sending all pending messages to slave clients before quitting server..."
+        )
+        for sub in self.send_queues.values():
+            while sub.empty():
                 time.sleep(0.5)
         self.logger.debug("... All pending messages sent to slave clients!")
         self.send_queues = {}
@@ -90,51 +101,59 @@ class BaseServer(object):
 
 
 class Server(BaseServer):
-    def __init__(self, port, cc, loop_in_thread=False):
+    def __init__(
+        self,
+        port: int,
+        cc: hyperion.manager.ControlCenter,
+        loop_in_thread: bool = False,
+    ) -> None:
         BaseServer.__init__(self)
         self.port = port
         self.cc = cc  # type: hyperion.ControlCenter
-        self.event_queue = queue.Queue()
+        self.event_queue: queue.Queue = queue.Queue()
         self.cc.add_subscriber(self.event_queue)
 
-        server_address = ('localhost', port)
+        server_address = ("localhost", port)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.setblocking(False)
         try:
             server.bind(server_address)
-            self.logger.debug("Starting server on localhost:%s" % server.getsockname()[1])
+            self.logger.debug(f"Starting server on localhost:{server.getsockname()[1]}")
         except socket.error as e:
             if e.errno == 98:
-                self.logger.critical("Server adress '%s' is already in use! Try waiting a few seconds if you are sure "
-                                     "there is no other instance running" % (server_address,))
+                self.logger.critical(
+                    f"Server adress '{server_address}' is already in use! Try waiting a few seconds if you are sure "
+                    "there is no other instance running"
+                )
                 # Simulate sigint
-                self._handle_sigint(None, None)
+                self._handle_sigint(SIGINT, None)
             else:
-                self.logger.critical("Error while trying to bind server adress: %s" % e)
-                self._handle_sigint(None, None)
+                self.logger.critical(f"Error while trying to bind server adress: {e}")
+                self._handle_sigint(SIGINT, None)
+        self.logger.info("Hyperion server up and running")
         server.listen(5)
 
-        self.function_mapping = {
-            'start_all': self.cc.start_all,
-            'start': self._start_component_wrapper,
-            'check': self._check_component_wrapper,
-            'stop_all': self.cc.stop_all,
-            'stop': self._stop_component_wrapper,
-            'get_conf': self._send_config,
-            'get_host_list': self._send_host_list,
-            'get_host_stats': self._send_host_stats,
-            'quit': self.cc.cleanup,
-            'reconnect_with_host': self.cc.reconnect_with_host,
-            'unsubscribe': None,
-            'reload_config': self.cc.reload_config,
-            'start_clone_session': self._handle_start_clone_session
+        self.function_mapping: dict[str, Optional[Callable]] = {
+            "start_all": self.cc.start_all,
+            "start": self._start_component_wrapper,
+            "check": self._check_component_wrapper,
+            "stop_all": self.cc.stop_all,
+            "stop": self._stop_component_wrapper,
+            "get_conf": self._send_config,
+            "get_host_list": self._send_host_list,
+            "get_host_stats": self._send_host_stats,
+            "quit": self.cc.cleanup,
+            "reconnect_with_host": self.cc.reconnect_with_host,
+            "unsubscribe": None,
+            "reload_config": self.cc.reload_config,
+            "start_clone_session": self._handle_start_clone_session,
         }
 
         self.receiver_mapping = {
-            'get_conf': 'single',
-            'get_host_list': 'single',
-            'get_host_stats': 'single'
+            "get_conf": "single",
+            "get_host_list": "single",
+            "get_host_stats": "single",
         }
 
         self.sel.register(server, selectors.EVENT_READ, self.accept)
@@ -145,11 +164,11 @@ class Server(BaseServer):
             self.worker = worker = threading.Thread(target=self._loop)
             worker.start()
 
-    def _loop(self):
+    def _loop(self) -> None:
         while self.keep_running:
             try:
                 for key, mask in self.sel.select(timeout=1):
-                    connection = key.fileobj
+                    connection: socket.socket = key.fileobj  # type: ignore[assignment]
                     if key.data and self.keep_running:
                         callback = key.data
                         callback(connection, mask)
@@ -162,120 +181,125 @@ class Server(BaseServer):
                 self._process_events()
                 time.sleep(0.3)
             except OSError:
-                self.logger.error("Caught timeout exception while reading from/writing to ui clients. "
-                                  "If this error occured during shutdown, everything is in order!")
+                self.logger.error(
+                    "Caught timeout exception while reading from/writing to ui clients. "
+                    "If this error occured during shutdown, everything is in order!"
+                )
                 pass
 
-        self.logger.debug('Exited messaging loop')
+        self.logger.debug("Exited messaging loop")
         self.sel.close()
 
-    def read(self, connection):
+    def read(self, connection: socket.socket) -> None:
         """Callback for read events"""
         try:
             raw_msglen = connection.recv(4)
             if raw_msglen:
                 # A readable client socket has data
-                msglen = struct.unpack('>I', raw_msglen)[0]
+                msglen = struct.unpack(">I", raw_msglen)[0]
                 data = recvall(connection, msglen)
                 self.logger.debug("Received message")
                 action, args = actionSerializer.deserialize(data)
 
                 if action:
-                    worker = threading.Thread(target=self._interpret_message, args=(action, args, connection))
+                    worker = threading.Thread(
+                        target=self._interpret_message, args=(action, args, connection)
+                    )
                     worker.start()
 
-                    if action == 'quit':
+                    if action == "quit":
                         worker.join()
                         self._quit()
             else:
                 # Handle uncontrolled connection loss
                 self.send_queues.pop(connection)
                 self.sel.unregister(connection)
-                self.logger.debug("Connection to client on %s was lost!" % connection.getpeername()[1])
+                self.logger.debug(
+                    f"Connection to client on {connection.getpeername()[1]} was lost!"
+                )
                 connection.close()
         except socket.error as e:
-            self.logger.error("Something went wrong while receiving a message. Check debug for more information")
-            self.logger.debug("Socket excpetion: %s" % e)
+            self.logger.error(
+                "Something went wrong while receiving a message. Check debug for more information"
+            )
+            self.logger.debug(f"Socket excpetion: {e}")
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
             connection.close()
 
-    def _interpret_message(self, action, args, connection):
-        self.logger.debug("Action: %s, args: %s" % (action, args))
+    def _interpret_message(self, action: str, args: list[Any], connection: socket.socket) -> None:
+        self.logger.debug(f"Action: {action}, args: {args}")
         func = self.function_mapping.get(action)
 
-        if action == 'unsubscribe':
+        if action == "unsubscribe":
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
-            self.logger.debug("Client %s unsubscribed" % connection.getpeername()[0])
+            self.logger.debug(f"Client {connection.getpeername()[0]} unsubscribed")
             connection.close()
             return
+        assert func is not None
 
         response_type = self.receiver_mapping.get(action)
         if response_type:
             try:
                 ret = func(*args)
             except TypeError:
-                self.logger.error("Ignoring unrecognized action '%s'" % action)
+                self.logger.error(f"Ignoring unrecognized action '{action}'")
                 return
-            action = '%s_response' % action
+            action = f"{action}_response"
             message = actionSerializer.serialize_request(action, [ret])
-            if response_type == 'all':
-                for key in self.send_queues:
-                    message_queue = self.send_queues.get(key)
+            if response_type == "all":
+                for message_queue in self.send_queues.values():
                     message_queue.put(message)
-            elif response_type == 'single':
+            elif response_type == "single":
                 self.send_queues[connection].put(message)
 
         else:
             try:
                 func(*args)
             except TypeError:
-                self.logger.error("Ignoring unrecognized action '%s'" % action)
+                self.logger.error(f"Ignoring unrecognized action '{action}'")
                 return
 
-    def _process_events(self):
-        """Process events enqueued by the manager and send them to connected clients if necessary.
-
-        :return: None
-        """
+    def _process_events(self) -> None:
+        """Process events enqueued by the manager and send them to connected clients if necessary."""
         # Put events received by slave manager into event queue to forward to clients
+        assert self.cc.slave_server is not None
         while not self.cc.slave_server.notify_queue.empty():
             event = self.cc.slave_server.notify_queue.get_nowait()
             self.event_queue.put(event)
 
         while not self.event_queue.empty():
             event = self.event_queue.get_nowait()
-            message = actionSerializer.serialize_request('queue_event', [event])
-            for key in self.send_queues:
-                message_queue = self.send_queues.get(key)
+            message = actionSerializer.serialize_request("queue_event", [event])
+            for message_queue in self.send_queues.values():
                 message_queue.put(message)
 
             if isinstance(event, events.DisconnectEvent):
-                self.cc.host_states[event.host_name] = config.HostState.DISCONNECTED
+                self.cc.host_states[event.host_name] = config.HostConnectionState.DISCONNECTED
 
-    def _start_component_wrapper(self, comp_id, force_mode=False):
+    def _start_component_wrapper(self, comp_id: str, force_mode: bool = False) -> None:
         try:
             comp = self.cc.get_component_by_id(comp_id)
             self.cc.start_component(comp, force_mode)
         except exceptions.ComponentNotFoundException as e:
             self.logger.error(e.message)
 
-    def _check_component_wrapper(self, comp_id):
+    def _check_component_wrapper(self, comp_id: str) -> None:
         try:
             comp = self.cc.get_component_by_id(comp_id)
             self.cc.check_component(comp)
         except exceptions.ComponentNotFoundException as e:
             self.logger.error(e.message)
 
-    def _stop_component_wrapper(self, comp_id):
+    def _stop_component_wrapper(self, comp_id: str) -> None:
         try:
             comp = self.cc.get_component_by_id(comp_id)
             self.cc.stop_component(comp)
         except exceptions.ComponentNotFoundException as e:
             self.logger.error(e.message)
 
-    def _handle_start_clone_session(self, comp_id):
+    def _handle_start_clone_session(self, comp_id: str) -> None:
         comp = self.cc.get_component_by_id(comp_id)
 
         if self.cc.run_on_localhost(comp):
@@ -283,53 +307,58 @@ class Server(BaseServer):
         else:
             self.cc.start_remote_clone_session(comp)
 
-    def _send_config(self):
+    def _send_config(self) -> Config:
         return self.cc.config
 
-    def _send_host_list(self):
+    def _send_host_list(self) -> dict[str, config.HostConnectionState]:
         return self.cc.host_states
 
-    def _send_host_stats(self):
+    def _send_host_stats(self) -> dict[str, list[str]]:
         return self.cc.host_stats
 
-    def _handle_sigint(self, signum, frame):
+    def _handle_sigint(self, signum: int, frame: Any) -> None:
         self.logger.debug("Received C-c")
         self._quit()
         worker = threading.Thread(target=self.cc.cleanup, args=[True])
         worker.start()
         worker.join()
 
-    def _quit(self):
+    def _quit(self) -> None:
         self.logger.debug("Stopping Server...")
         self.send_queues = {}
         self.keep_running = False
 
 
 class SlaveManagementServer(BaseServer):
-    def __init__(self):
+    def __init__(self) -> None:
         """Init slave managing socket server."""
         BaseServer.__init__(self)
-        self.notify_queue = queue.Queue()
+        self.notify_queue = queue.Queue()  # type: queue.Queue
         self.function_mapping = {
-            'queue_event': self._forward_event,
-            'auth': None,
-            'unsubscribe': None
+            "queue_event": self._forward_event,
+            "auth": None,
+            "unsubscribe": None,
         }
-        self.check_buffer = {}
-        self.slave_log_handlers = {}
-        self.port_mapping = {}
+        self.check_buffer: dict[str, Optional[config.CheckState]] = {}
+        self.slave_log_handlers: dict[str, logging.handlers.RotatingFileHandler] = {}
+        self.port_mapping: dict[socket.socket, str] = {}
 
-        server_address = ('localhost', 0)
+        server_address = ("localhost", 0)
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setblocking(False)
         try:
             server.bind(server_address)
-            self.logger.info("Starting slave management server on localhost:%s" % server.getsockname()[1])
+            self.logger.info(
+                "Starting slave management server on localhost:%s"
+                % server.getsockname()[1]
+            )
             self.port = server.getsockname()[1]
         except socket.error as e:
             if e.errno == 98:
-                self.logger.critical("Server adress is already in use! This is odd, free port should be chosen "
-                                     "automatically by socket module...")
+                self.logger.critical(
+                    "Server adress is already in use! This is odd, free port should be chosen "
+                    "automatically by socket module..."
+                )
                 self.keep_running = False
             else:
                 self.logger.critical("Error while trying to bind server adress: %s" % e)
@@ -339,47 +368,50 @@ class SlaveManagementServer(BaseServer):
 
         self.thread = threading.Thread(target=self._run_loop)
 
-    def start(self):
+    def start(self) -> None:
         self.thread.start()
 
-    def kill_slaves(self, full):
+    def kill_slaves(self, full: bool) -> None:
         """Send shutdown command to all connected slave client sockets.
 
-        :param full: Whether the tmux session is killed too
-        :type full: bool
-        :return: None
+        Parameters
+        ----------
+        full : bool
+            Whether the tmux session is killed, too.
         """
+
         if full:
-            action = 'quit'
+            action = "quit"
         else:
-            action = 'suspend'
-        payload = []
+            action = "suspend"
+        payload: list[object] = []
         message = actionSerializer.serialize_request(action, payload)
 
-        for host in self.send_queues:
-            slave_queue = self.send_queues.get(host)
+        for slave_queue in self.send_queues.values():
             slave_queue.put(message)
 
-    def stop(self):
+    def stop(self) -> None:
         self._quit()
         if self.thread.is_alive():
             self.thread.join()
         self.logger.info("Slave server successfully shutdown!")
 
-    def _quit(self):
-        self.logger.debug("Sending all pending messages to slave clients before quitting server...")
+    def _quit(self) -> None:
+        self.logger.debug(
+            "Sending all pending messages to slave clients before quitting server..."
+        )
         send_queues = self.send_queues.copy()
-        for sub in send_queues:
-            while send_queues.get(sub) and not send_queues.get(sub).empty():
+        for sq in send_queues.values():
+            while not sq.empty():
                 time.sleep(0.5)
         self.logger.debug("... All pending messages sent to slave clients!")
         self.send_queues = {}
         self.keep_running = False
 
-    def _run_loop(self):
+    def _run_loop(self) -> None:
         while self.keep_running:
             for key, mask in self.sel.select(timeout=1):
-                connection = key.fileobj
+                connection: socket.socket = key.fileobj  # type: ignore[assignment]
                 if key.data and self.keep_running:
                     callback = key.data
                     callback(connection, mask)
@@ -393,166 +425,215 @@ class SlaveManagementServer(BaseServer):
 
         self.sel.close()
 
-    def _forward_event(self, event):
-        """Process events enqueued by the manager and send them to connected clients if necessary.
+    def _forward_event(self, event: events.BaseEvent) -> None:
+        """Process events enqueued by the manager and send them to connected clients if necessary."""
 
-        :return: None
-        """
         # self.logger.debug("Forwarding slave client event: %s" % event)
         self.notify_queue.put(event)
 
         if isinstance(event, events.CheckEvent):
             self.check_buffer[event.comp_id] = event.check_state
 
-    def _interpret_message(self, action, args, connection):
+    def _interpret_message(
+        self, action: str, args: list[Any], connection: socket.socket
+    ) -> None:
         # self.logger.debug("Action: %s, args: %s" % (action, args))
         func = self.function_mapping.get(action)
 
-        if action == 'unsubscribe':
+        if action == "unsubscribe":
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
-            self.logger.info("Client %s unsubscribed" % connection.getpeername()[0])
+            self.logger.info(f"Client {connection.getpeername()[0]} unsubscribed")
             connection.close()
             return
 
-        if action == 'auth':
+        if action == "auth":
             hostname = args[0]
             self.port_mapping[connection] = hostname
             return
+        assert func is not None
 
         try:
             func(*args)
         except TypeError:
-            self.logger.error("Ignoring unrecognized slave action '%s'" % action)
+            self.logger.error(f"Ignoring unrecognized slave action '{action}'")
 
-    def read(self, connection):
+    def read(self, connection: socket.socket) -> None:
         """Callback for read events"""
         try:
             raw_msglen = connection.recv(4)
             if raw_msglen:
                 # A readable client socket has data
-                msglen = struct.unpack('>I', raw_msglen)[0]
+                msglen = struct.unpack(">I", raw_msglen)[0]
                 data = recvall(connection, msglen)
                 action, args = actionSerializer.deserialize(data)
 
-                if action:
-                    worker = threading.Thread(target=self._interpret_message, args=(action, args, connection))
+                if action is not None:
+                    worker = threading.Thread(
+                        target=self._interpret_message, args=(action, args, connection)
+                    )
                     worker.start()
                 else:
                     # Not an action message - trying to decode as log message
-                    record = logging.makeLogRecord(args)
+                    record = logging.makeLogRecord(args)  # type: ignore[arg-type]
                     try:
-                        self.slave_log_handlers[connection.getpeername()[0]].handle(record)
+                        self.slave_log_handlers[connection.getpeername()[0]].handle(
+                            record
+                        )
                     except KeyError:
-                        self.logger.debug("Got log message from yet unhandled slave socket logger")
+                        self.logger.debug(
+                            "Got log message from yet unhandled slave socket logger"
+                        )
                         pass
             else:
                 # Handle uncontrolled connection loss
-                hostname = self.port_mapping.get(connection)
+                hostname = self.port_mapping[connection]
 
                 self.send_queues.pop(connection)
                 self.sel.unregister(connection)
-                self.logger.error("Connection to client %s was lost!" % hostname)
-                self.notify_queue.put(events.SlaveDisconnectEvent(hostname, connection.getpeername()[1]))
+                self.logger.error(f"Connection to client '{hostname}' was lost!")
+                self.notify_queue.put(
+                    events.SlaveDisconnectEvent(hostname, connection.getpeername()[1])
+                )
                 connection.close()
+        except KeyError:
+            self.logger.error(
+                f"Could not get hostname of connection '{connection}' where message was read from. This should not happen, dropping connection."
+            )
+            self.send_queues.pop(connection)
+            self.sel.unregister(connection)
+            connection.close()
         except socket.error as e:
-            self.logger.error("Something went wrong while receiving a message. Check debug for more information")
-            self.logger.debug("Socket excpetion: %s" % e)
+            self.logger.error(
+                "Something went wrong while receiving a message. Check debug for more information"
+            )
+            self.logger.debug(f"Socket excpetion: {e}")
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
             connection.close()
 
-    def start_slave(self, hostname, config_path, config_name, window, custom_messages=None):
+    def start_slave(
+        self,
+        hostname: str,
+        config_path: str,
+        config_name: str,
+        window: libtmux.Window,
+        custom_messages: Optional[list[bytes]] = None,
+    ) -> bool:
         """Start slave on the remote host.
 
-        :param hostname: Host where the slave is started
-        :type hostname: str
-        :param config_path: Path to the config file on the remote
-        :type config_path: str
-        :param window: Tmux window of the host connection
-        :type window: libtmux.Window
-        :param config_name: Name of the configuration (not the file name!)
-        :type config_name: str
-        :param custom_messages: Optional custom messages to send on connect (or reconnect).
-        :type custom_messages: list of str
-        :return: Whether the start was successful or not
-        :rtype: bool
+        Parameters
+        ----------
+        hostname : str
+            Host where the slave is going to be started.
+        config_path : str
+            Path to the config file on the remote.
+        config_name : str
+            Name of the configuration (not the file name!).
+        window : libtmux.Window
+            tmux window of the host connection.
+        custom_messages : list[bytes], optional
+            Optional custom messages to send on connect (or reconnect), by default None.
+
+        Returns
+        -------
+        bool
+            True if starting slave was successful.
         """
-        hn = socket.gethostbyname('%s' % hostname)
+
+        hn = socket.gethostbyname(f"{hostname}")
 
         if not custom_messages:
             custom_messages = []
 
-        for conn in self.send_queues:
+        for conn, sq in self.send_queues.items():
             if hostname == self.port_mapping.get(conn):
-                self.logger.debug("Socket to %s already exists! Checking if it is still connected" % hostname)
+                self.logger.debug(
+                    f"Socket to {hostname} already exists! Checking if it is still connected"
+                )
                 try:
                     select.select([conn], [], [conn], 1)
                     self.logger.debug("Connection still up")
-                    self._forward_event(events.SlaveReconnectEvent(hostname, conn.getpeername()[1]))
+                    self._forward_event(
+                        events.SlaveReconnectEvent(hostname, conn.getpeername()[1])
+                    )
 
                     for message in custom_messages:
-                        self.send_queues.get(conn).put(message)
+                        sq.put(message)
 
                     return True
                 except socket.error:
-                    self.logger.error("Existing connection to %s died. Trying to reconnect...")
+                    self.logger.error(
+                        f"Existing connection to {hostname} died. Trying to reconnect..."
+                    )
 
-        log_file_path = "%s/remote/slave/%s@%s.log" % (config.TMP_LOG_PATH, config_name, hostname)
+        log_file_path = (
+            f"{config.TMP_LOG_PATH}/remote/slave/{config_name}@{hostname}.log"
+        )
         slave_log_handler = logging.handlers.RotatingFileHandler(log_file_path)
-        hyperion.manager.clear_log(log_file_path, '%s@%s' % (config_name, hostname))
+        hyperion.manager.clear_log(log_file_path, f"{config_name}@{hostname}")
 
         slave_log_handler.setFormatter(config.ColorFormatter())
         self.slave_log_handlers[hn] = slave_log_handler
 
-        cmd = 'hyperion slave --config %s -H %s -p %s' % (config_path, socket.gethostname(), self.port)
+        cmd = f"hyperion slave --config {config_path} -H {socket.gethostname()} -p {self.port}"
 
         if config.SLAVE_HYPERION_SOURCE_PATH != None:
-            cmd = 'source %s && %s' % (config.SLAVE_HYPERION_SOURCE_PATH, cmd)
-        tmux_cmd = 'tmux new -d -s "%s-slave" "%s"' % (config_name, cmd)
-        self.logger.debug("Running following command to start slave on remote and conntect to this master: %s" % tmux_cmd)
-        window.cmd('send-keys', tmux_cmd, 'Enter')
+            cmd = f"source {config.SLAVE_HYPERION_SOURCE_PATH} && {cmd}"
+        tmux_cmd = f'tmux new -d -s "{config_name}-slave" "{cmd}"'
+        self.logger.debug(
+            f"Running following command to start slave on remote and conntect to this master: {tmux_cmd}"
+        )
+        window.cmd("send-keys", tmux_cmd, "Enter")
 
-        self.logger.info("Waiting for slave on '%s' (%s) to connect..." % (hn, hostname))
+        self.logger.info(f"Waiting for slave on '{hn}' ({hostname}) to connect...")
         end_t = time.time() + 4
         while time.time() < end_t:
-            for conn in self.send_queues:
+            for conn, sq in self.send_queues.items():
                 con_host = self.port_mapping.get(conn)
                 if con_host:
-                    self.logger.debug("'%s' is connected" % con_host)
+                    self.logger.debug(f"'{con_host}' is connected")
                 if hostname == con_host:
                     self.logger.info("Connection successfully established")
 
                     for message in custom_messages:
-                        self.send_queues.get(conn).put(message)
+                        sq.put(message)
 
-                    self._forward_event(events.SlaveReconnectEvent(hostname, conn.getpeername()[1]))
+                    self._forward_event(
+                        events.SlaveReconnectEvent(hostname, conn.getpeername()[1])
+                    )
                     return True
-            time.sleep(.5)
+            time.sleep(0.5)
 
         self.logger.error("Connection to slave failed!")
         return False
 
-    def kill_slave_on_host(self, hostname):
+    def kill_slave_on_host(self, hostname: str) -> None:
         """Kill a slave session of the current master session running on the remote host.
 
-        :param hostname: Host to kill the slave on
-        :type hostname: str
-        :return: None
+        Parameters
+        ----------
+        hostname : str
+            Host to kill the slave on
         """
-        for conn in self.send_queues:
+
+        for conn, sq in self.send_queues.items():
             if hostname == self.port_mapping.get(conn):
-                self.logger.debug("Socket to %s still exists - Sending shutdown" % hostname)
+                self.logger.debug(
+                    f"Socket to '{hostname}' still exists - Sending shutdown"
+                )
                 try:
                     # Test if connection still alive
                     select.select([conn], [], [conn], 1)
-                    message = actionSerializer.serialize_request('quit', [])
-                    self.send_queues.get(conn).put(message)
+                    message = actionSerializer.serialize_request("quit", [])
+                    sq.put(message)
                 except socket.error:
-                    self.logger.error("Existing connection to %s died. Could not send quit command" % hostname)
+                    self.logger.error(
+                        f"Existing connection to '{hostname}' died. Could not send quit command"
+                    )
 
-    def start_clone_session(self, comp_id, hostname):
-        action = 'start_clone_session'
+    def start_clone_session(self, comp_id: str, hostname: str) -> None:
+        action = "start_clone_session"
         payload = [comp_id]
 
         connection_queue = None
@@ -567,10 +648,12 @@ class SlaveManagementServer(BaseServer):
         if connection_queue:
             connection_queue.put(message)
         else:
-            raise exceptions.SlaveNotReachableException("Slave at %s is not reachable!" % hostname)
+            raise exceptions.SlaveNotReachableException(
+                f"Slave at '{hostname}' is not reachable!"
+            )
 
-    def start_component(self, comp_id, hostname):
-        action = 'start'
+    def start_component(self, comp_id: str, hostname: str) -> None:
+        action = "start"
         payload = [comp_id]
 
         connection_queue = None
@@ -585,10 +668,12 @@ class SlaveManagementServer(BaseServer):
         if connection_queue:
             connection_queue.put(message)
         else:
-            raise exceptions.SlaveNotReachableException("Slave at %s is not reachable!" % hostname)
+            raise exceptions.SlaveNotReachableException(
+                f"Slave at '{hostname}' is not reachable!"
+            )
 
-    def stop_component(self, comp_id, hostname):
-        action = 'stop'
+    def stop_component(self, comp_id: str, hostname: str) -> None:
+        action = "stop"
         payload = [comp_id]
 
         connection_queue = None
@@ -603,11 +688,15 @@ class SlaveManagementServer(BaseServer):
         if connection_queue:
             connection_queue.put(message)
         else:
-            raise exceptions.SlaveNotReachableException("Slave at %s is not reachable!" % hostname)
+            raise exceptions.SlaveNotReachableException(
+                f"Slave at '{hostname}' is not reachable!"
+            )
 
-    def check_component(self, comp_id, hostname, component_wait):
-        self.logger.debug("Sending '%s' check request to %s" % (comp_id, hostname))
-        action = 'check'
+    def check_component(
+        self, comp_id: str, hostname: str, component_wait: float
+    ) -> config.CheckState:
+        self.logger.debug(f"Sending '{comp_id}' check request to '{hostname}'")
+        action = "check"
         payload = [comp_id]
 
         connection_queue = None
@@ -625,17 +714,21 @@ class SlaveManagementServer(BaseServer):
             connection_queue.put(message)
             end_t = time.time() + component_wait + 1
 
-            self.logger.debug("Waiting on '%s' response for %s seconds" % (hostname, component_wait))
+            self.logger.debug(
+                f"Waiting on '{hostname}' response for {component_wait} seconds"
+            )
             while end_t > time.time():
                 if self.check_buffer[comp_id] is not None:
                     break
-                time.sleep(.5)
+                time.sleep(0.5)
         else:
-            self.logger.error("Slave on '%s' is not connected!" % hostname)
+            self.logger.error(f"Slave on '{hostname}' is not connected!")
 
         ret = self.check_buffer[comp_id]
         if ret is not None:
-            self.logger.debug("Slave answered check request with %s" % config.STATE_DESCRIPTION.get(ret))
+            self.logger.debug(
+                f"Slave answered check request with {config.STATE_DESCRIPTION.get(ret)}"
+            )
             return ret
         else:
             self.logger.error("No answer from slave - returning unreachable")
