@@ -12,7 +12,7 @@ from hyperion.manager import (
     SlaveManager,
     ensure_dir,
     BASE_DIR,
-    clear_log,
+    rotate_log,
     conf_preprocessing,
 )
 from hyperion.lib.networking import clientInterface, server
@@ -316,7 +316,7 @@ def main() -> None:
 
     if args.cmd == "server":
         log_file_path = f"{TMP_LOG_PATH}/localhost/server/{log_name}.log"
-        clear_log(log_file_path, log_name)
+        rotate_log(log_file_path, log_name)
         handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
         handler.setFormatter(log_formatter)
@@ -350,7 +350,7 @@ def main() -> None:
             log_file_path = (
                 f'{TMP_LOG_PATH}/localhost/client/{time.strftime("%H-%M-%S")}.log'
             )
-            clear_log(log_file_path, log_name)
+            rotate_log(log_file_path, log_name)
             handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
             handler.setFormatter(log_formatter)
@@ -417,7 +417,7 @@ def main() -> None:
                 handler.setLevel(logging.INFO)
 
         log_file_path = f"{TMP_LOG_PATH}/localhost/server/{log_name}.log"
-        clear_log(log_file_path, log_name)
+        rotate_log(log_file_path, log_name)
         handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
         handler.setFormatter(log_formatter)
@@ -510,7 +510,7 @@ def main() -> None:
 
     elif args.cmd == "slave":
         log_file_path = f"{TMP_LOG_PATH}/localhost/slave/{log_name}.log"
-        clear_log(log_file_path, log_name)
+        rotate_log(log_file_path, log_name)
         handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
         handler.setFormatter(log_formatter)

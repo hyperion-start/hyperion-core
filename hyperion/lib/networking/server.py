@@ -571,7 +571,7 @@ class SlaveManagementServer(BaseServer):
             f"{config.TMP_LOG_PATH}/remote/slave/{config_name}@{hostname}.log"
         )
         slave_log_handler = logging.handlers.RotatingFileHandler(log_file_path)
-        hyperion.manager.clear_log(log_file_path, f"{config_name}@{hostname}")
+        hyperion.manager.rotate_log(log_file_path, f"{config_name}@{hostname}")
 
         slave_log_handler.setFormatter(config.ColorFormatter())
         self.slave_log_handlers[hn] = slave_log_handler

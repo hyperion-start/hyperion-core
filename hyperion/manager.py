@@ -64,13 +64,13 @@ def setup_log(
     start_logging : bool, optional
         Whether pipeing the content of `Window` should be set up (only necessary once after Window is created), by default True
     """
-
-    clear_log(filepath, comp_id)
     ensure_dir(filepath, mask=config.DEFAULT_LOG_UMASK)
+    rotate_log(filepath, comp_id)
 
     if start_logging:
+        logging.debug(f"Started logging for component '{comp_id}'")
         # Reroute stdout and stderr to log file
-        window.cmd("pipe-pane", f"exec cat &>> %s" % filepath, "Enter")
+        window.cmd("pipe-pane", f"exec cat >> {filepath}")
     window.cmd(
         "send-keys", (f'echo "#Hyperion component start: {comp_id}\\t$(date)"'), "Enter"
     )
@@ -104,8 +104,7 @@ def get_component_wait(comp: Component) -> float:
         return config.DEFAULT_COMP_WAIT_TIME
 
 
-# TODO: refactor to rotate_log
-def clear_log(file_path: str, log_name: str) -> None:
+def rotate_log(file_path: str, log_name: str) -> None:
     """If found rename the log at file_path to e.g. COMPONENTNAME_TIME.log or 'server_TIME.log'.
 
     Parameters
@@ -117,9 +116,12 @@ def clear_log(file_path: str, log_name: str) -> None:
     """
 
     if os.path.isfile(file_path):
-        directory = os.path.dirname(file_path)
+        # set new umask, remembering old one
         old_mask = os.umask(config.DEFAULT_LOG_UMASK)
+        directory = os.path.dirname(file_path)
         os.rename(file_path, f"{directory}/{log_name}_{strftime('%H-%M-%S')}.log")
+    
+        # reset previous umask
         os.umask(old_mask)
 
 
@@ -935,10 +937,9 @@ class AbstractController(object):
         """
 
         comp_id = comp["id"]
-        tee_count = 0
 
         pid = self._get_window_pid(window)
-        procs = []
+        procs: list[Process] = []
         for entry in pid:
             procs.extend(Process(entry).children(recursive=True))
 
@@ -951,7 +952,7 @@ class AbstractController(object):
                 pass
 
         self.logger.debug(f"Rotating log for {comp_id}")
-        if tee_count == 2:
+        if len(procs) > 0:
             setup_log(window, log_file, comp_id, False)
         else:
             setup_log(window, log_file, comp_id)
