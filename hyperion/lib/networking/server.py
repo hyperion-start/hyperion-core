@@ -141,7 +141,7 @@ class Server(BaseServer):
             "stop_all": self.cc.stop_all,
             "stop": self._stop_component_wrapper,
             "get_conf": self._send_config,
-            "get_host_list": self._send_host_list,
+            "get_host_states": self._send_host_states,
             "get_host_stats": self._send_host_stats,
             "quit": self.cc.cleanup,
             "reconnect_with_host": self.cc.reconnect_with_host,
@@ -152,7 +152,7 @@ class Server(BaseServer):
 
         self.receiver_mapping = {
             "get_conf": "single",
-            "get_host_list": "single",
+            "get_host_states": "single",
             "get_host_stats": "single",
         }
 
@@ -310,7 +310,7 @@ class Server(BaseServer):
     def _send_config(self) -> Config:
         return self.cc.config
 
-    def _send_host_list(self) -> dict[str, config.HostConnectionState]:
+    def _send_host_states(self) -> dict[str, config.HostConnectionState]:
         return self.cc.host_states
 
     def _send_host_stats(self) -> dict[str, list[str]]:

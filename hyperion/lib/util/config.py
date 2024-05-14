@@ -202,3 +202,6 @@ STATE_CHECK_BUTTON_STYLE = {
 
 SLAVE_HYPERION_SOURCE_PATH: Optional[str] = None
 """Option to source a specific env where hyperion is located on a slave"""
+
+EMPTY_HOST_STATS = ["N/A", "N/A", "N/A"]
+"""Empty host stats to set on a new connection."""

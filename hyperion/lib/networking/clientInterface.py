@@ -423,7 +423,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
 
         self.function_mapping: dict[str, Callable] = {
             "get_conf_response": self._set_config,
-            "get_host_list_response": self._set_host_list,
+            "get_host_states_response": self._set_host_states,
             "get_host_stats_response": self._set_host_stats,
             "queue_event": self._forward_event,
         }
@@ -462,7 +462,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.thread.start()
 
         self.request_config()
-        while not self.config or not self.host_list:
+        while not self.config and not self.host_list:
             self.logger.debug("Waiting for config")
             time.sleep(0.5)
 
@@ -484,7 +484,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-        action = "get_host_list"
+        action = "get_host_states"
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
@@ -597,8 +597,13 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.config = config
         self.logger.debug("Got config from server")
 
-    def _set_host_list(self, host_list: list[str]) -> None:
-        self.host_list = host_list
+    def _set_host_states(self, host_states: dict[str, config.HostConnectionState]) -> None:
+        self.host_states = host_states
+        self.host_list = list(host_states.keys())
+        self.logger.warn(f"Got host states: {host_states}")
+        for host in host_states:
+            if host not in self.host_stats:
+                self.host_stats[host] = config.EMPTY_HOST_STATS
         self.logger.debug("Updated host list")
 
     def _set_host_stats(self, host_stats: dict[str, list[str]]) -> None:

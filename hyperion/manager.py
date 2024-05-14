@@ -1321,7 +1321,7 @@ class ControlCenter(AbstractController):
         self.host_list: dict[str, int] = {f"{socket.gethostname()}": 0}
         self.host_list_lock = Lock()
         self.host_states = {f"{socket.gethostname()}": config.HostConnectionState.CONNECTED}
-        self.host_stats = {f"{socket.gethostname()}": ["N/A", "N/A", "N/A"]}
+        self.host_stats = {f"{socket.gethostname()}": config.EMPTY_HOST_STATS}
         self.monitor_queue = queue.Queue()
         self.mon_thread = ComponentMonitor(self.monitor_queue)
         if monitor_enabled:
@@ -1554,7 +1554,7 @@ class ControlCenter(AbstractController):
         window = self._find_window("ssh-%s" % hostname)
         config_path = "%s/%s.yaml" % (config.TMP_SLAVE_DIR, self.config["name"])
 
-        self.host_stats[hostname] = ["N/A", "N/A", "N/A"]
+        self.host_stats[hostname] = config.EMPTY_HOST_STATS
 
         if config.MONITOR_REMOTE_STATS:
             custom_messages.append(
@@ -2444,7 +2444,7 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list.pop(hostname, None)
             self.host_states[hostname] = config.HostConnectionState.DISCONNECTED
-            self.host_stats[hostname] = ["N/A", "N/A", "N/A"]
+            self.host_stats[hostname] = config.EMPTY_HOST_STATS
             self.host_list_lock.release()
             return False
 
@@ -2459,7 +2459,7 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list.pop(hostname, None)
             self.host_states[hostname] = config.HostConnectionState.DISCONNECTED
-            self.host_stats[hostname] = ["N/A", "N/A", "N/A"]
+            self.host_stats[hostname] = config.EMPTY_HOST_STATS
             self.host_list_lock.release()
             return False
 
@@ -2488,7 +2488,7 @@ class ControlCenter(AbstractController):
             self.host_list_lock.acquire()
             self.host_list.pop(hostname, None)
             self.host_states[hostname] = config.HostConnectionState.DISCONNECTED
-            self.host_stats[hostname] = ["N/A", "N/A", "N/A"]
+            self.host_stats[hostname] = config.EMPTY_HOST_STATS
             self.host_list_lock.release()
             return False
 
