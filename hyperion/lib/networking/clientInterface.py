@@ -728,13 +728,13 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             self.mounted_hosts.append(hostname)
         else:
             self.logger.error(
-                f"Could not mount remote '{hostname}' with sshfs - logs will not be accessible!"
+                f"Could not mount remote '{hostname}' with sshfs - remote logs will not be accessible!"
             )
             if p.stderr is not None:
                 err_out_list_raw = p.stderr.readlines()
                 if len(err_out_list_raw) > 0:
                     err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list_raw)
-                    self.logger.debug(
+                    self.logger.error(
                         f"sshfs exited with error: {err_out_list} (code: {p.returncode})"
                     )
 

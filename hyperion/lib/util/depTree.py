@@ -31,6 +31,12 @@ class Node(object):
 
         self.depends_on.append(node)
 
+    def __repr__(self):
+        return f"Node({self.comp_id})"
+    
+    def __str__(self):
+        return f"Node({self.comp_id})"
+
 
 def dep_resolve(node: Node, resolved: list[Node], unresolved: list[Node]) -> None:
     """Recursively generate a list of all dependencies for `node`.

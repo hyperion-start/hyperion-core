@@ -67,6 +67,11 @@ class CancellationJob(ComponentMonitorJob):
         """
         super(CancellationJob, self).__init__(pid, comp_id)
 
+    def __str__(self):
+        return f"CancellationJob(pid:{self.pid}, comp_id:{self.comp_id})"
+
+    def __repr__(self):
+        return f"CancellationJob(pid:{self.pid}, comp_id:{self.comp_id})"
 
 class LocalComponentMonitoringJob(ComponentMonitorJob):
     """Class that represents a local component monitoring job."""
@@ -98,6 +103,7 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
         except NoSuchProcess:
             pass
         if self.is_cancelled:
+            # TODO: Introduce STOPPING state or find another way, this may falsely signal the component is already stopped.
             return events.CheckEvent(self.comp_id, config.CheckState.STOPPED)
         return events.CrashEvent(self.comp_id)
 
@@ -322,12 +328,12 @@ class ComponentMonitor(BaseMonitorThread):
                 mon_job = self.job_queue.get()
                 if isinstance(mon_job, HostMonitorJob):
                     jobs.append(mon_job)
-                if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_id not in already_handleled:
-                    comp_jobs.append(mon_job)
-                    already_handleled[mon_job.comp_id] = True
                 if isinstance(mon_job, CancellationJob) and mon_job.comp_id not in already_removed:
                     cancellations.append(mon_job)
                     already_removed[mon_job.comp_id] = True
+                if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_id not in already_handleled:
+                    comp_jobs.append(mon_job)
+                    already_handleled[mon_job.comp_id] = True
 
             # Remove all jobs that received a cancellation from the job list
             # remove = []
@@ -342,7 +348,11 @@ class ComponentMonitor(BaseMonitorThread):
             # Reorder job list to first check the hosts, then check the components because this makes sense
             jobs.extend(comp_jobs)
             for mon_job in jobs:
-                ret = mon_job.run_check()
+                try:
+                    ret = mon_job.run_check()
+                except NotImplementedError:
+                    self.logger.error(f"Ran run_check on {mon_job} instance!")
+                    continue
                 if ret is True:
                     # If job is ok, put it back for the next iteration
                     self.job_queue.put(mon_job)
