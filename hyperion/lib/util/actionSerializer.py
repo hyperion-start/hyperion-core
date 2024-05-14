@@ -30,7 +30,7 @@ def serialize_request(action: str, payload: list[Any]) -> bytes:
     encoded = {"action": action}
     for i in range(len(payload)):
         encoded[f"arg_{i}"] = payload[i]
-    pickled = pickle.dumps(encoded, protocol=5)  # 5 >= python 3.8
+    pickled = pickle.dumps(encoded, protocol=4)  # 4 >= python 3.4, 5 >= python 3.8
     return struct.pack(">I", len(pickled)) + pickled
 
 
