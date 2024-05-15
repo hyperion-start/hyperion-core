@@ -8,6 +8,7 @@ from typing import Optional
 class ExitStatus(Enum):
     """Enum providing information about exit status"""
 
+    UNKNOWN_ERROR = -1
     FINE = 0
     CONFIG_NOT_FOUND = 1
     MISSING_CONFIG = 2
@@ -21,6 +22,7 @@ class ExitStatus(Enum):
     MISSING_SSH_CONFIG = 10
     CONFIG_RESET_FAILED = 11
     MISSING_UI_INSTALL = 12
+    PROGRAMM_NOT_FOUND = 127
 
 
 class CheckState(Enum):
