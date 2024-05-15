@@ -12,7 +12,7 @@ from subprocess import call, Popen, PIPE, STDOUT
 from threading import Lock
 from time import sleep, time, strftime
 from hyperion.lib.util.setupParser import Loader
-from hyperion.lib.util.depTree import Node, dep_resolve
+from hyperion.lib.util.depTree import Node, dep_resolve, resolve_concurrent_start
 from hyperion.lib.monitoring.threads import (
     StatMonitor,
     ComponentMonitor,
@@ -25,6 +25,9 @@ import hyperion.lib.util.exception as exceptions
 import hyperion.lib.util.config as config
 import hyperion.lib.util.events as events
 import hyperion.lib.util.actionSerializer as actionSerializer
+
+from collections import deque
+from multiprocessing.pool import AsyncResult, ThreadPool
 
 import queue as queue
 
@@ -1928,134 +1931,134 @@ class ControlCenter(AbstractController):
         config.StartState
             Result of the starting process.
         """        
-        
-        failed_comps: dict[str, config.CheckState] = {}
         node = self.nodes[comp["id"]]
         res: list[Node] = []
         unres: list[Node] = []
         dep_resolve(node, res, unres)
-        for node in res:
-            if node.comp_id != comp["id"]:
-                if len(failed_comps) == 0 or force_mode:
-                    self.logger.debug("Checking and starting %s" % node.comp_id)
-                    state = self.check_component(node.component, False)
+        hierarchy = resolve_concurrent_start(res)
+        failed_comps = self.start_component_hierarchy(hierarchy, force_mode, threadn=config.DEFAULT_THREADN)
+        if len(failed_comps) > 0 and not force_mode:
+            self.broadcast_event(events.CheckEvent(node.comp_id, config.CheckState.DEP_FAILED))
+            return config.StartState.FAILED
 
-                    if (
-                        state is config.CheckState.STOPPED_BUT_SUCCESSFUL
-                        or state is config.CheckState.STARTED_BY_HAND
-                        or state is config.CheckState.RUNNING
-                    ):
-                        self.logger.debug(
-                            f"Component '{node.comp_id}' is already running, skipping to next in line"
-                        )
-                        self.broadcast_event(events.CheckEvent(node.comp_id, state))
-                    else:
-                        self.logger.debug(
-                            f"Start component '{node.comp_id}' as dependency of '{comp['id']}'"
-                        )
-                        self.start_component_without_deps(node.component)
-
-                        # Wait component time for startup
-                        end_t = time() + get_component_wait(node.component)
-
-                        tries = 0
-                        while True:
-                            self.logger.debug(
-                                "Checking %s resulted in checkstate %s"
-                                % (node.comp_id, config.STATE_DESCRIPTION.get(state))
-                            )
-                            state = self.check_component(node.component, False)
-                            if (
-                                state is config.CheckState.RUNNING
-                                or state is config.CheckState.STOPPED_BUT_SUCCESSFUL
-                                or state is config.CheckState.STARTED_BY_HAND
-                            ):
-                                self.logger.debug(f"Dep '{node.comp_id}' success")
-                                break
-                            if tries > 3:
-                                self.broadcast_event(
-                                    events.CheckEvent(
-                                        comp["id"], config.CheckState.DEP_FAILED
-                                    )
-                                )
-                                failed_comps[node.comp_id] = state
-                                failed_comps[comp["id"]] = config.CheckState.DEP_FAILED
-                                break
-                            if time() > end_t:
-                                tries = tries + 1
-                            sleep(0.5)
-                        self.broadcast_event(events.CheckEvent(node.comp_id, state))
-                else:
-                    self.logger.debug(
-                        "Previous dependency failed. Only checking '%s' now"
-                        % node.comp_id
-                    )
-                    state = self.check_component(node.component, True)
-                    if not (
-                        state is config.CheckState.RUNNING
-                        or state is config.CheckState.STOPPED_BUT_SUCCESSFUL
-                        or state is config.CheckState.STARTED_BY_HAND
-                    ):
-                        failed_comps[node.comp_id] = config.CheckState.DEP_FAILED
-
-        state = self.check_component(node.component, False)
+        event = self.component_start_worker_fn(node)
         if (
-            state is config.CheckState.STARTED_BY_HAND
+            event.check_state is config.CheckState.STARTED_BY_HAND
+            or event.check_state is config.CheckState.STOPPED_BUT_SUCCESSFUL
+            or event.check_state is config.CheckState.RUNNING
+        ): 
+            return config.StartState.STARTED
+        return config.StartState.FAILED
+
+    def start_component_hierarchy(self, hierarchy: list[list[Node]], force_mode: bool = False, threadn: int=4) -> dict[str, config.CheckState]:
+        """Starts a component hierarchy, using `threadn` threads to start independent components in parallel.
+
+        Parameters
+        ----------
+        hierarchy : list[list[Node]]
+            Component hierarchy to be started.
+        force_mode : bool, optional
+            _description_, by default False
+        threadn : int, optional
+            Number of threads for multiprocessing, by default 4
+
+        Returns
+        -------
+        dict[str, config.CheckState]
+            The individual checkstates of the failed components. This is only for internal processing, broadcasting happens along the way.
+        """        
+        failed_comps: dict[str, config.CheckState] = {}
+        pending: deque[AsyncResult[events.CheckEvent]] = deque()
+        pool = ThreadPool(processes=threadn)
+
+        for batch in hierarchy:
+            if len(failed_comps) > 0 and not force_mode:
+                self.logger.error(f"Not in force mode, cancelling dependencies of failed components")
+                for comp in batch:
+                    self.broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
+                    failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
+                continue
+
+            self.logger.info(f"Starting the following components in parallel: {[c.comp_id for c in batch]}")
+            comp_iter = iter(batch)
+            level_done = False
+            while not level_done or len(pending) > 0:
+                while len(pending) > 0 and pending[0].ready():
+                    state = pending.popleft().get()
+                    if (
+                        state.check_state is config.CheckState.DEP_FAILED
+                        or state.check_state is config.CheckState.UNREACHABLE
+                        or state.check_state is config.CheckState.NOT_INSTALLED
+                        or state.check_state is config.CheckState.UNKNOWN
+                    ):
+                        failed_comps[state.comp_id] = state
+                        self.logger.error(f"Component {state.comp_id} failed to start!")
+                if level_done:
+                    sleep(0.3)
+                elif len(pending) < threadn and not level_done:
+                    try:
+                        next_comp = next(comp_iter)
+                        task = pool.apply_async(self.component_start_worker_fn, (next_comp,))
+                        pending.append(task)
+                        self.logger.debug(f"Put start job for '{next_comp.comp_id}' in queue")
+                    except StopIteration:
+                        level_done = True
+        return failed_comps
+
+    def component_start_worker_fn(self, node: Node) -> events.CheckEvent:
+        """Separate function for a component start with check.
+
+        Parameters
+        ----------
+        node : Node
+            Node to be started.
+
+        Returns
+        -------
+        events.CheckEvent
+            Succesfull CheckEvent if the component was already running or started successfully, non-successful event otherwise.
+        """        
+
+        state = self.check_component(node.component, broadcast=False)
+        if (
+            state is config.CheckState.STOPPED_BUT_SUCCESSFUL
+            or state is config.CheckState.STARTED_BY_HAND
             or state is config.CheckState.RUNNING
         ):
-            self.logger.warn(
-                "Component %s is already running. Skipping start" % comp["id"]
+            self.logger.debug(
+                f"Component '{node.comp_id}' is already running, skipping to next dep in line"
             )
-            self.broadcast_event(events.CheckEvent(comp["id"], state))
-            return config.StartState.ALREADY_RUNNING
+            self.broadcast_event(events.CheckEvent(node.comp_id, state))
+            return events.CheckEvent(node.comp_id, state)
         else:
-            if len(failed_comps) > 0 and not force_mode:
-                self.logger.warn(
-                    "At least one dependency failed and the component is not running. Aborting start"
+            self.logger.debug(
+                f"Starting component '{node.comp_id}' as dependency"
+            )
+            self.start_component_without_deps(node.component)
+            # Wait component time for startup
+            end_t = time() + get_component_wait(node.component)
+
+            tries = 0
+            while True:
+                self.logger.debug(
+                    "Checking %s resulted in checkstate %s"
+                    % (node.comp_id, config.STATE_DESCRIPTION.get(state))
                 )
-                failed_comps[comp["id"]] = config.CheckState.DEP_FAILED
-                self.broadcast_event(events.CheckEvent(comp["id"], state))
-                self.broadcast_event(events.StartReportEvent(comp["id"], failed_comps))
-                return config.StartState.FAILED
-            else:
-                self.logger.info(
-                    "All dependencies satisfied or force mode is active (%s), starting '%s'"
-                    % (force_mode, comp["id"])
-                )
-                self.start_component_without_deps(comp)
-
-                end_t = time() + get_component_wait(comp)
-
-                tries = 0
-                while True:
-                    ret = self.check_component(comp, False)
-
-                    if (
-                        ret is config.CheckState.RUNNING
-                        or ret is config.CheckState.STOPPED_BUT_SUCCESSFUL
-                    ):
-                        break
-                    if tries > 3:
-                        break
-                    if time() > end_t:
-                        tries = tries + 1
-                    sleep(0.5)
-
-            self.broadcast_event(events.CheckEvent(comp["id"], ret))
-
-            if (
-                ret is not config.CheckState.RUNNING
-                and ret is not config.CheckState.STOPPED_BUT_SUCCESSFUL
-            ):
-                self.logger.warn(
-                    "All dependencies satisfied, but start failed: %s!"
-                    % config.STATE_DESCRIPTION.get(ret)
-                )
-                self.broadcast_event(
-                    events.StartReportEvent(comp["id"], {comp["id"]: ret})
-                )
-                return config.StartState.FAILED
-            return config.StartState.STARTED
+                state = self.check_component(node.component, False)
+                if (
+                    state is config.CheckState.RUNNING
+                    or state is config.CheckState.STOPPED_BUT_SUCCESSFUL
+                    or state is config.CheckState.STARTED_BY_HAND
+                ):
+                    self.logger.debug(f"Dep '{node.comp_id}' success")
+                    break
+                if tries > 3:
+                    break
+                if time() > end_t:
+                    tries = tries + 1
+                sleep(0.5)
+            self.broadcast_event(events.CheckEvent(node.comp_id, state))
+            return events.CheckEvent(node.comp_id, state)
 
     def _start_remote_component(self, comp: Component) -> None:
         """Issue start component 'comp' to slave manager on remote host.
@@ -2110,88 +2113,53 @@ class ControlCenter(AbstractController):
 
     def start_all(self, force_mode: bool = False) -> None:
         comps = self.get_start_all_list()
-        logger = self.logger
-        failed_comps: dict[str, config.CheckState] = {}
-
-        for comp in comps:
-            deps = self.get_dep_list(comp.component)
-            failed = False
-
-            for dep in deps:
-                if dep.comp_id in failed_comps:
-                    logger.debug(
-                        "Comp %s failed, because dependency %s failed!"
-                        % (comp.comp_id, dep.comp_id)
-                    )
-                    failed = True
-
-            if not failed or force_mode:
-                logger.debug("Checking %s" % comp.comp_id)
-                ret = self.check_component(comp.component, False)
-                if (
-                    ret is config.CheckState.RUNNING
-                    or ret is config.CheckState.STARTED_BY_HAND
-                ):
-                    logger.debug("Dep %s already running" % comp.comp_id)
-                    self.broadcast_event(events.CheckEvent(comp.comp_id, ret))
-                else:
-                    logger.debug("Starting dep %s" % comp.comp_id)
-                    self.start_component_without_deps(comp.component)
-                    # Component wait time for startup
-                    end_t = time() + get_component_wait(comp.component)
-
-                    tries = 0
-                    while True:
-                        sleep(0.5)
-                        ret = self.check_component(comp.component, False)
-                        if (
-                            ret is config.CheckState.RUNNING
-                            or ret is config.CheckState.STOPPED_BUT_SUCCESSFUL
-                        ):
-                            break
-                        if (
-                            tries > 3
-                            or ret is config.CheckState.NOT_INSTALLED
-                            or ret is config.CheckState.UNREACHABLE
-                        ):
-                            logger.debug(
-                                "Component %s failed, adding it to failed list"
-                                % comp.comp_id
-                            )
-                            failed_comps[comp.comp_id] = ret
-                            break
-                        if time() > end_t:
-                            tries = tries + 1
-                    self.broadcast_event(events.CheckEvent(comp.comp_id, ret))
-            else:
-                ret = self.check_component(comp.component)
-                if ret is config.CheckState.STOPPED:
-                    self.broadcast_event(
-                        events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED)
-                    )
-                    failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
-                self.broadcast_event(events.CheckEvent(comp.comp_id, ret))
+        hierarchy = resolve_concurrent_start(comps)
+        failed_comps = self.start_component_hierarchy(hierarchy, force_mode)
         self.broadcast_event(events.StartReportEvent("All components", failed_comps))
 
     def stop_all(self) -> None:
-        """Stop all components ordered by dependency and run checks afterwards
-
-        :return: None
-        """
+        """Stop all components ordered by dependency and run checks afterwards."""
         try:
             comps = self.get_start_all_list(exclude_no_auto=False)
+            hierarchy = resolve_concurrent_start(comps)
         except exceptions.CircularReferenceException:
             # If circular dependency is given no components can be started and this is happening in cleanup, so we
             # can safely return without action.
             return
 
-        comps = list(reversed(comps))
+        pending: deque[AsyncResult[None]] = deque()
+        pool = ThreadPool(processes=config.DEFAULT_THREADN)
 
-        for comp in comps:
-            self.stop_component(comp.component)
+        hierarchy = list(reversed(hierarchy))
 
-        for comp in comps:
-            self.check_component(comp.component)
+        last_batch: list[Node] = []
+
+        for batch in hierarchy:
+            stop_iter = iter(batch)
+            check_iter = iter(last_batch)
+            both_done = False
+            while len(pending) > 0 or not both_done:
+                while len(pending) > 0 and pending[0].ready():
+                    pending.popleft()
+                while len(pending) < config.DEFAULT_THREADN and not both_done:
+                    both_done = True
+                    try:
+                        comp = next(stop_iter)
+                        both_done = False
+                        task_stop = pool.apply_async(self.stop_component, (comp.component,))
+                        pending.append(task_stop)
+                    except StopIteration:
+                        pass
+                    try:
+                        comp = next(check_iter)
+                        both_done = False
+                        task_check = pool.apply_async(self.check_component, (comp.component,))
+                        pending.append(task_check)
+                    except StopIteration:
+                        pass
+                else:
+                    sleep(0.3)
+            last_batch = batch
 
     ###################
     # Check

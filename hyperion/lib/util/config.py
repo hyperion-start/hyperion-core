@@ -53,6 +53,9 @@ class HostConnectionState(Enum):
     DISCONNECTED = 2
     SSH_ONLY = 3
 
+DEFAULT_THREADN = 4
+"""Default number of threads for concurrent starting or stopping"""
+
 DEFAULT_LOG_UMASK = 0
 """Default permission mask for log files (results in 0777)"""
 
