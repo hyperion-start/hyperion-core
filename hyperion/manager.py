@@ -329,8 +329,8 @@ def setup_ssh_config() -> bool:
         conf.write(
             "\n"
             "Host *\n"
-            "    ControlMaster yes\n"
-            "    ControlPath ~/.ssh/controlmasters/%C\n"
+            "    ControlMaster no\n"
+            "    ControlPath ~/.ssh/controlmasters/%r@%h:%p\n"
             "    ServerAliveInterval 10\n"
             "    PasswordAuthentication no"
         )
@@ -2453,10 +2453,10 @@ class ControlCenter(AbstractController):
         bool
             True establishing the connection was successful.
         """
-
+        
         self.logger.debug("Establishing master connection to host %s" % hostname)
 
-        cmd = "ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s" % (
+        cmd = "ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s -o ControlMaster=yes" % (
             config.CUSTOM_SSH_CONFIG_PATH,
             hostname,
             config.SSH_CONNECTION_TIMEOUT,
