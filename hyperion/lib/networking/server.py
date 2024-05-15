@@ -70,7 +70,9 @@ class BaseServer(object):
         self.send_queues[new_connection] = queue.Queue()
         self.sel.register(new_connection, selectors.EVENT_READ | selectors.EVENT_WRITE)
 
-    def _interpret_message(self, action: str, args: list[Any], connection: socket.socket) -> None:
+    def _interpret_message(
+        self, action: str, args: list[Any], connection: socket.socket
+    ) -> None:
         raise NotImplementedError
 
     def write(self, connection: socket.socket) -> None:
@@ -230,7 +232,9 @@ class Server(BaseServer):
             self.sel.unregister(connection)
             connection.close()
 
-    def _interpret_message(self, action: str, args: list[Any], connection: socket.socket) -> None:
+    def _interpret_message(
+        self, action: str, args: list[Any], connection: socket.socket
+    ) -> None:
         self.logger.debug(f"Action: {action}, args: {args}")
         func = self.function_mapping.get(action)
 
@@ -260,8 +264,8 @@ class Server(BaseServer):
         else:
             try:
                 func(*args)
-            except TypeError:
-                self.logger.error(f"Ignoring unrecognized action '{action}'")
+            except TypeError as e:
+                self.logger.error(f"Ignoring unrecognized action '{action}': {e}")
                 return
 
     def _process_events(self) -> None:
@@ -279,7 +283,9 @@ class Server(BaseServer):
                 message_queue.put(message)
 
             if isinstance(event, events.DisconnectEvent):
-                self.cc.host_states[event.host_name] = config.HostConnectionState.DISCONNECTED
+                self.cc.host_states[event.host_name] = (
+                    config.HostConnectionState.DISCONNECTED
+                )
 
     def _start_component_wrapper(self, comp_id: str, force_mode: bool = False) -> None:
         try:
@@ -584,6 +590,7 @@ class SlaveManagementServer(BaseServer):
     def start_slave(
         self,
         hostname: str,
+        host_ip: str,
         config_path: str,
         config_name: str,
         window: libtmux.Window,
@@ -595,6 +602,8 @@ class SlaveManagementServer(BaseServer):
         ----------
         hostname : str
             Host where the slave is going to be started.
+        host_ip : str
+            Resolved ip to host `hostname`.
         config_path : str
             Path to the config file on the remote.
         config_name : str
@@ -609,8 +618,6 @@ class SlaveManagementServer(BaseServer):
         bool
             True if starting slave was successful.
         """
-
-        hn = socket.gethostbyname(f"{hostname}")
 
         if not custom_messages:
             custom_messages = []
@@ -643,7 +650,7 @@ class SlaveManagementServer(BaseServer):
         hyperion.manager.rotate_log(log_file_path, f"{config_name}@{hostname}")
 
         slave_log_handler.setFormatter(config.ColorFormatter())
-        self.slave_log_handlers[hn] = slave_log_handler
+        self.slave_log_handlers[host_ip] = slave_log_handler
 
         cmd = f"hyperion slave --config {config_path} -H {socket.gethostname()} -p {self.port}"
 
@@ -655,8 +662,8 @@ class SlaveManagementServer(BaseServer):
         )
         window.cmd("send-keys", tmux_cmd, "Enter")
 
-        self.logger.info(f"Waiting for slave on '{hn}' ({hostname}) to connect...")
-        end_t = time.time() + 4
+        self.logger.info(f"Waiting for slave on '{host_ip}' ({hostname}) to connect...")
+        end_t = time.time() + 10
         while time.time() < end_t:
             for conn, sq in self.send_queues.items():
                 con_host = self.port_mapping.get(conn)
