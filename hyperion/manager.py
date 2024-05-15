@@ -2474,7 +2474,7 @@ class ControlCenter(AbstractController):
             self.logger.debug("SSH process still running. Connection was successful")
             self.logger.debug("Adding ssh master to monitor queue")
             self.monitor_queue.put(
-                HostMonitorJob(pids[0], hostname, self.host_list, self.host_list_lock)
+                HostMonitorJob(hostname, self.host_states, self.host_states_lock)
             )
             self.logger.debug("Copying env files to remote %s" % hostname)
             self._copy_env_file(hostname)

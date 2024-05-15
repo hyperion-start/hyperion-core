@@ -15,7 +15,13 @@ from typing import Union, Any, Tuple
 import queue
     
 
-class ComponentMonitorJob(object):
+class MoinitorJob(object):
+    """Base Class for all monitoring instances."""
+    def __init__(self) -> None:
+        
+        self.is_cancelled = False
+
+class ComponentMonitorJob(MoinitorJob):
     """Abstract class that represents a component monitoring job (local or remote)."""
 
     def __init__(self, pid: int, comp_id: str) -> None:
@@ -29,10 +35,10 @@ class ComponentMonitorJob(object):
             Id of the component (name@host)
         """
         
+        super(ComponentMonitorJob, self).__init__()
         self.pid = pid
         self.comp_id = comp_id
         self.error_msg = f"Component '{comp_id}' crashed!"
-        self.is_cancelled = False
 
     def run_check(self) -> Union[bool, events.CrashEvent, events.CheckEvent]:
         """You need to override this function in monitoring subclasses. It is called in the main monitoring thread.
@@ -171,7 +177,7 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
         return f"Running check for remote component {self.comp_id} with pid {self.pid} on host {self.hostname}"
 
 
-class LocalStatMonitorJob(object):
+class LocalStatMonitorJob(MoinitorJob):
 
     @staticmethod
     def request_stats() -> events.StatResponseEvent:
@@ -189,24 +195,23 @@ class LocalStatMonitorJob(object):
         return events.StatResponseEvent(load, cpu, mem, socket.gethostname())
 
 
-class HostMonitorJob(object):
+class HostMonitorJob(MoinitorJob):
     """Class representing a host monitoring job."""
-    def __init__(self, pid: int, hostname: str, host_status: dict[str, int], host_lock: Lock) -> None:
+    def __init__(self, hostname: str, host_status: dict[str, Tuple[int,config.HostConnectionState]], host_lock: Lock) -> None:
         """Create host monitoring job.
 
         Parameters
         ----------
-        pid : int
-            Process id of the ssh connection.
         hostname : str
             Name of the host connected to.
-        host_status : dict[str, int]
+        host_status : dict[str, Tuple[int,config.HostConnectionState]]
             Status of the used hosts.
         host_lock : Lock
             Lock that has to be acquired in order to write to the host status dictionary.
         """
 
-        self.pid = pid
+        super(HostMonitorJob, self).__init__()
+        self.pid = host_status[hostname][0]
         self.hostname = hostname
         self.host_status = host_status
         self.host_lock = host_lock
@@ -221,7 +226,7 @@ class HostMonitorJob(object):
             pass
 
         self.host_lock.acquire()
-        self.host_status.pop(self.hostname, None)
+        self.host_status[self.hostname] = (0, config.HostConnectionState.DISCONNECTED)
         self.host_lock.release()
 
         return events.DisconnectEvent(self.hostname)
