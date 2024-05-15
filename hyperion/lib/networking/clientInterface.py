@@ -377,7 +377,7 @@ class RemoteSlaveInterface(BaseClient):
                     if (
                         not self.send_queue.empty()
                     ):  # Server is ready to read, check if we have messages to send
-                        self.logger.debug("Sending next message in queue to Server")
+                        # self.logger.trace("Sending next message in queue to Server")
                         next_msg = self.send_queue.get()
                         self.sock.sendall(next_msg)
             self._process_events()
