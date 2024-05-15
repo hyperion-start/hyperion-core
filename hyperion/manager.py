@@ -1361,10 +1361,15 @@ class ControlCenter(AbstractController):
         super(ControlCenter, self).__init__(configfile)
         self.slave_server = slave_server
         self.nodes: dict[str, Node] = {}
-        self.host_list: dict[str, int] = {f"{socket.gethostname()}": 0}
-        self.host_list_lock = Lock()
-        self.host_states = {f"{socket.gethostname()}": config.HostConnectionState.CONNECTED}
+
+        self.host_states_lock = Lock()
+
+        self.host_states: dict[str, Tuple[int, config.HostConnectionState]] = {f"{socket.gethostname()}": (0, config.HostConnectionState.CONNECTED)}
+        """Dictionary that contains the pid the main ssh connection and connection state for each host."""
+
         self.host_stats = {f"{socket.gethostname()}": config.EMPTY_HOST_STATS}
+        """Dictionary containing the current load, cpu, and memory usage stats for each host."""
+
         self.monitor_queue = queue.Queue()
         self.mon_thread = ComponentMonitor(self.monitor_queue)
         if monitor_enabled:
@@ -1447,7 +1452,7 @@ class ControlCenter(AbstractController):
                         if comp["host"] != "localhost" and not self.run_on_localhost(
                             comp
                         ):
-                            if comp["host"] not in self.host_list:
+                            if comp["host"] not in self.host_states:
                                 if self._establish_master_connection(comp["host"]):
                                     self.logger.info(
                                         f"Master connection to '{comp['host']}' established!"
@@ -1479,7 +1484,7 @@ class ControlCenter(AbstractController):
                 self.logger.critical("Slave server is None!")
 
             self.logger.debug("Starting slave on connected remote hosts")
-            for host in self.host_list:
+            for host in self.host_states:
                 if host and not self.is_localhost(host):
                     self.logger.debug(f"Starting slave on '{host}'")
                     self._start_remote_slave(host)
@@ -1531,15 +1536,14 @@ class ControlCenter(AbstractController):
                 self.cleanup(True, config.ExitStatus.CONFIG_RESET_FAILED)
 
         # Update hosts
-        old_hostlist = self.host_list.copy()
-        self.host_list = {socket.gethostname(): 0}
-        self.host_states = {socket.gethostname(): config.HostConnectionState.CONNECTED}
+        old_host_states = self.host_states.copy()
+        self.host_states = {socket.gethostname(): (0, config.HostConnectionState.CONNECTED)}
 
         for group in self.config["groups"]:
             for comp in group["components"]:
                 try:
                     if comp["host"] != "localhost" and not self.run_on_localhost(comp):
-                        if comp["host"] not in self.host_list:
+                        if comp["host"] not in self.host_states:
                             if self._establish_master_connection(comp["host"]):
                                 self.logger.info(
                                     "Master connection to %s established!"
@@ -1548,7 +1552,7 @@ class ControlCenter(AbstractController):
                 except exceptions.HostUnknownException as ex:
                     self.logger.error(ex.message)
 
-        unused_hosts = [k for k in old_hostlist if k not in self.host_list]
+        unused_hosts = [k for k in old_host_states if k not in self.host_states]
         if len(unused_hosts) > 0:
             self.logger.debug(
                 "Updated config removed hosts from setup - Killing unused remote slaves"
@@ -1569,9 +1573,9 @@ class ControlCenter(AbstractController):
 
         messages = [actionSerializer.serialize_request("conf_reload", [])]
 
-        for host in self.host_list:
-            if host and not self.is_localhost(host):
-                if host not in old_hostlist:
+        for host in self.host_states:
+            if not self.is_localhost(host):
+                if host not in old_host_states:
                     self.logger.debug("Starting slave on '%s'" % host)
                     self._start_remote_slave(host)
                 else:
@@ -1606,17 +1610,40 @@ class ControlCenter(AbstractController):
                 )
             )
 
-        if window and self.host_list.get(hostname) is not None and self.slave_server:
-            if self.slave_server.start_slave(
-                hostname, config_path, self.config["name"], window, custom_messages
-            ):
-                self.host_states[hostname] = config.HostConnectionState.CONNECTED
-            else:
-                self.host_states[hostname] = config.HostConnectionState.SSH_ONLY
-        else:
+        state = self.host_states.get(hostname) 
+        if state is None or window is None:
             self.logger.error(
-                "No connection to remote '%s' - can not start slave manager" % hostname
+                f"No connection to remote '{hostname}' - can not start slave"
             )
+            return
+        if self.slave_server is None:
+            self.logger.error(
+                f"Slave server is not running, cannot start a slave on host '{hostname}'" 
+            )
+            return
+
+        if not self.slave_server.validate_on_slave(
+            hostname, socket.gethostname(), config_path
+        ):
+            with self.host_states_lock:
+                state = self.host_states[hostname]
+                self.host_states[hostname] = (state[0], config.HostConnectionState.SSH_ONLY)
+            self.logger.error(f"Running hyperion validate on '{hostname}' failed!")
+            return
+
+        host_ip = resolve_host_address(hostname, config.CUSTOM_SSH_CONFIG_PATH)
+        if self.slave_server.start_slave(
+            hostname, host_ip, config_path, self.config["name"], window, custom_messages
+        ):
+            with self.host_states_lock:
+                state = self.host_states[hostname]
+                self.host_states[hostname] = (state[0], config.HostConnectionState.CONNECTED)
+        else:
+            if self._is_window_busy(window):
+                self.logger.warn("Remote host slave is still running. Manually check remote tmux session! Maybe the host key of the main server is unknown")
+            with self.host_states_lock:
+                state = self.host_states[hostname]
+                self.host_states[hostname] = (state[0], config.HostConnectionState.SSH_ONLY)
 
     def set_dependencies(self) -> None:
         """Parses all components constructing a dependency tree.
@@ -1678,8 +1705,9 @@ class ControlCenter(AbstractController):
         unmet = [k for k in requires if k not in provides]
 
         if len(unmet) > 0:
-            self.logger.critical("Unmet requirements were detected! %s" % unmet)
+            self.logger.fatal("Unmet requirements were detected! %s" % unmet)
             single_char = 0
+            unmet_deps = True
 
             for deps in unmet:
                 if len(unmet):
@@ -1691,7 +1719,6 @@ class ControlCenter(AbstractController):
                             "component."
                         )
                         break
-            unmet_deps = True
 
         if len(optional) > 0:
             self.logger.debug(
@@ -1841,28 +1868,42 @@ class ControlCenter(AbstractController):
         host = comp["host"]
 
         self.logger.debug("Stopping remote component '%s'" % comp_id)
-        if self.host_list.get(comp["host"]) is not None:
-            if self.slave_server:
-                try:
-                    self.logger.debug("Issuing stop command to slave server")
-                    self.slave_server.stop_component(comp_id, host)
-                except exceptions.SlaveNotReachableException as ex:
-                    self.logger.debug(ex.message)
-            else:
-                self.logger.error(
-                    "Host %s is reachable but slave is not - hyperion seems not to be installed"
-                    % comp["host"]
-                )
-                self.broadcast_event(
-                    events.CheckEvent(comp["id"], config.CheckState.NOT_INSTALLED)
-                )
-        else:
-            self.logger.error(
-                "Host %s is unreachable. Can not stop component %s!"
-                % (comp["host"], comp["id"])
+        state = self.host_states.get(host)
+
+        if state is None:
+            self.logger.warn(
+                f"Host {host} is not connected. Can not stop component {comp_id}!"
             )
             self.broadcast_event(
-                events.CheckEvent(comp["id"], config.CheckState.UNREACHABLE)
+                events.CheckEvent(comp_id, config.CheckState.UNREACHABLE)
+            )
+            return
+
+        if state[1] == config.HostConnectionState.CONNECTED:
+            self.logger.debug("Issuing stop command to slave server")
+            try:
+                self.slave_server.stop_component(comp_id, host)
+            except exceptions.SlaveNotReachableException as ex:
+                self.logger.debug(ex.message)
+                self.logger.warn(
+                    f"Host {host} is unreachable. Can not stop component {comp_id}!"
+                )
+                self.broadcast_event(
+                    events.CheckEvent(comp_id, config.CheckState.UNREACHABLE)
+                )
+        elif state[1] == config.HostConnectionState.SSH_ONLY:
+            self.logger.error(
+                f"Connection state of host {host} is {state[1].name}. Can not stop component {comp_id}!"
+            )
+            self.broadcast_event(
+                events.CheckEvent(comp_id, config.CheckState.NOT_INSTALLED)
+            )
+        else:
+            self.logger.warn(
+                f"Connection state of host {host} is {state[1].name}. Can not stop component {comp_id}!"
+            )
+            self.broadcast_event(
+                events.CheckEvent(comp_id, config.CheckState.UNREACHABLE)
             )
 
     ###################
@@ -1905,14 +1946,12 @@ class ControlCenter(AbstractController):
                         or state is config.CheckState.RUNNING
                     ):
                         self.logger.debug(
-                            "Component '%s' is already running, skipping to next in line"
-                            % comp["id"]
+                            f"Component '{node.comp_id}' is already running, skipping to next in line"
                         )
                         self.broadcast_event(events.CheckEvent(node.comp_id, state))
                     else:
                         self.logger.debug(
-                            "Start component '%s' as dependency of '%s'"
-                            % (node.comp_id, comp["id"])
+                            f"Start component '{node.comp_id}' as dependency of '{comp['id']}'"
                         )
                         self.start_component_without_deps(node.component)
 
@@ -1931,7 +1970,7 @@ class ControlCenter(AbstractController):
                                 or state is config.CheckState.STOPPED_BUT_SUCCESSFUL
                                 or state is config.CheckState.STARTED_BY_HAND
                             ):
-                                self.logger.debug("Dep '%s' success" % node.comp_id)
+                                self.logger.debug(f"Dep '{node.comp_id}' success")
                                 break
                             if tries > 3:
                                 self.broadcast_event(
@@ -2031,25 +2070,39 @@ class ControlCenter(AbstractController):
         host = comp["host"]
 
         self.logger.debug("Starting remote component '%s'" % comp_id)
-        if self.host_list.get(comp["host"]) is not None:
-            if self.slave_server:
-                try:
-                    self.logger.debug("Issuing start command to slave server")
-                    self.slave_server.start_component(comp_id, host)
-                except exceptions.SlaveNotReachableException as ex:
-                    self.logger.debug(ex.message)
-            else:
-                self.logger.error(
-                    "Host %s is reachable but slave is not - hyperion seems not to be installed"
-                    % comp["host"]
+        state = self.host_states.get(comp["host"])
+
+        if state is None:
+            self.logger.error(
+                f"Host {host} is unreachable. Can not start component {comp_id}!"
+            )
+            self.broadcast_event(
+                events.CheckEvent(comp_id, config.CheckState.UNREACHABLE)
+            )
+            return
+
+        if state[1] == config.HostConnectionState.CONNECTED:
+            try:
+                self.logger.debug("Issuing start command to slave server")
+                self.slave_server.start_component(comp_id, host)
+            except exceptions.SlaveNotReachableException as ex:
+                self.logger.debug(ex.message)
+                self.logger.warn(
+                    f"Host {host} is unreachable. Can not start component {comp_id}!"
                 )
                 self.broadcast_event(
-                    events.CheckEvent(comp["id"], config.CheckState.NOT_INSTALLED)
+                    events.CheckEvent(comp_id, config.CheckState.UNREACHABLE)
                 )
-        else:
+        elif state[1] == config.HostConnectionState.SSH_ONLY:
             self.logger.error(
-                "Host %s is unreachable. Can not start component %s!"
-                % (comp["host"], comp["id"])
+                f"Connection state of host {host} is {state[1].name}. Can not start component {comp_id}!"
+            )
+            self.broadcast_event(
+                events.CheckEvent(comp_id, config.CheckState.NOT_INSTALLED)
+            )
+        else:
+            self.logger.warn(
+                f"Connection state of host {host} is {state[1].name}. Can not start component {comp_id}!"
             )
             self.broadcast_event(
                 events.CheckEvent(comp["id"], config.CheckState.UNREACHABLE)
@@ -2158,7 +2211,8 @@ class ControlCenter(AbstractController):
         """
 
         self.logger.debug("Starting remote check")
-        if self.host_list.get(comp["host"]) is not None:
+        state = self.host_states.get(comp["host"])
+        if state is not None and state[1] == config.HostConnectionState.CONNECTED:
             self.logger.debug("Remote '%s' is connected" % comp["host"])
             if self.slave_server:
                 self.logger.debug("Slave server is running")
@@ -2173,7 +2227,12 @@ class ControlCenter(AbstractController):
                     ret_val = config.CheckState.NOT_INSTALLED
             else:
                 ret_val = config.CheckState.UNREACHABLE
-
+        elif state is not None and state[1] == config.HostConnectionState.SSH_ONLY:
+            self.logger.error(
+                f"Host {host} has connection status '{status[1]}'. Can not run check for component %s!"
+                % (comp["host"], comp["id"])
+            )
+            ret_val = config.CheckState.UNREACHABLE
         else:
             self.logger.error(
                 "Host %s is unreachable. Can not run check for component %s!"
@@ -2435,16 +2494,14 @@ class ControlCenter(AbstractController):
             config.SSH_CONNECTION_TIMEOUT,
         )
 
-        is_up = (
-            True if os.system("ping -w2 -c 1 %s > /dev/null" % hostname) == 0 else False
-        )
-        if not is_up:
+        host_ip = resolve_host_address(hostname, config.CUSTOM_SSH_CONFIG_PATH)
+
+        if host_ip is None:
             self.logger.error("Host %s is not reachable!" % hostname)
 
-            self.host_list_lock.acquire()
-            self.host_list.pop(hostname, None)
-            self.host_states[hostname] = config.HostConnectionState.DISCONNECTED
-            self.host_list_lock.release()
+            with self.host_states_lock:
+                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
         window = self._find_window("ssh-%s" % hostname)
@@ -2484,11 +2541,9 @@ class ControlCenter(AbstractController):
                 break
 
         if len(pids) < 1:
-            self.host_list_lock.acquire()
-            self.host_list.pop(hostname, None)
-            self.host_states[hostname] = config.HostConnectionState.DISCONNECTED
-            self.host_stats[hostname] = config.EMPTY_HOST_STATS
-            self.host_list_lock.release()
+            with self.host_states_lock:
+                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
         try:
@@ -2499,18 +2554,15 @@ class ControlCenter(AbstractController):
                 "SSH connection was not successful. Make sure that an ssh connection is allowed, "
                 "you have set up ssh-keys and the identification certificate is up to date"
             )
-            self.host_list_lock.acquire()
-            self.host_list.pop(hostname, None)
-            self.host_states[hostname] = config.HostConnectionState.DISCONNECTED
-            self.host_stats[hostname] = config.EMPTY_HOST_STATS
-            self.host_list_lock.release()
+            with self.host_states_lock:
+                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
         # Add host to known list with process to poll from
-        self.host_list_lock.acquire()
-        self.host_list[hostname] = pids[0]
-        self.host_states[hostname] = config.HostConnectionState.SSH_ONLY
-        self.host_list_lock.release()
+        with self.host_states_lock:
+            self.host_states[hostname] = (pids[0], config.HostConnectionState.SSH_ONLY)
+            self.host_stats[hostname] = config.EMPTY_HOST_STATS
 
         self.logger.debug("Testing if connection was successful")
         if ssh_proc.is_running():
@@ -2528,11 +2580,9 @@ class ControlCenter(AbstractController):
                 "SSH connection was not successful. Make sure that an ssh connection is allowed, "
                 "you have set up ssh-keys and the identification certificate is up to date"
             )
-            self.host_list_lock.acquire()
-            self.host_list.pop(hostname, None)
-            self.host_states[hostname] = config.HostConnectionState.DISCONNECTED
-            self.host_stats[hostname] = config.EMPTY_HOST_STATS
-            self.host_list_lock.release()
+            with self.host_states_lock:
+                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
     def reconnect_with_host(self, hostname: str) -> bool:
@@ -2553,16 +2603,15 @@ class ControlCenter(AbstractController):
 
         # Check if really necessary
         self.logger.debug("Reconnecting with %s" % hostname)
-        pid = self.host_list.get(hostname)
-        if pid is not None:
-            proc = Process(pid)
+        if old_status is not None and old_status[0] > 0:
+            proc = Process(old_status[0])
             if not proc.is_running():
                 self.logger.debug("Killing off leftover process")
                 proc.kill()
 
         # Start new connection
         if self._establish_master_connection(hostname):
-            if old_status is config.HostConnectionState.DISCONNECTED:
+            if old_status is not None and old_status[1] is config.HostConnectionState.DISCONNECTED:
                 self.broadcast_event(events.ReconnectEvent(hostname))
             self._start_remote_slave(hostname)
             return True
@@ -2608,7 +2657,7 @@ class ControlCenter(AbstractController):
         if full:
             self.logger.info("Chose full shutdown. Killing remote and main sessions")
 
-            for host in self.host_list:
+            for host in self.host_states:
                 window = self._find_window("ssh-%s" % host)
 
                 if window:
@@ -2627,22 +2676,29 @@ class ControlCenter(AbstractController):
         host = comp["host"]
 
         self.logger.debug("Starting remote clone session for component '%s'" % comp_id)
-        if self.host_list.get(comp["host"]) is not None:
-            if self.slave_server:
-                try:
-                    self.logger.debug("Issuing start command to slave server")
-                    self.slave_server.start_clone_session(comp_id, host)
-                except exceptions.SlaveNotReachableException as ex:
-                    self.logger.debug(ex.message)
-            else:
-                self.logger.error(
-                    "Host %s is reachable but slave is not - hyperion seems not to be installed"
-                    % comp["host"]
+        state = self.host_states.get(host)
+        if state is None:
+            self.logger.warn(
+                f"Host '{host}' is unreachable. Can not start remote clone session for component {comp_id}!"
+            )
+            return
+
+        if state[1] == config.HostConnectionState.CONNECTED:
+            try:
+                self.logger.debug("Issuing start command to slave server")
+                self.slave_server.start_clone_session(comp_id, host)
+            except exceptions.SlaveNotReachableException as ex:
+                self.logger.debug(ex.message)
+                self.logger.warn(
+                    f"Host '{host}' is unreachable. Can not start remote clone session for component {comp_id}!"
                 )
-        else:
+        elif state[1] == config.HostConnectionState.SSH_ONLY:
             self.logger.error(
-                "Host %s is unreachable. Can not start remote clone session for component %s!"
-                % (comp["host"], comp["id"])
+                f"Connection state of host {host} is {state[1].name}. Can not start clone session for component {comp_id}!"
+            )
+        else:
+            self.logger.warn(
+                f"Host '{host}' is unreachable. Can not start remote clone session for component {comp_id}!"
             )
 
 
@@ -2735,7 +2791,7 @@ class SlaveManager(AbstractController):
 
         super(SlaveManager, self).__init__(configfile)
         self.nodes: dict[str, Node] = {}
-        self.host_list = {f"{socket.gethostname()}": 0}
+        self.host_states = {f"{socket.gethostname()}": (0, config.HostConnectionState.CONNECTED)}
         self.monitor_queue = queue.Queue()
         self.mon_thread = ComponentMonitor(self.monitor_queue)
         self.mon_thread.start()
