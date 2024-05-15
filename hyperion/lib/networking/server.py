@@ -14,6 +14,9 @@ import hyperion.lib.util.events as events
 import hyperion.lib.util.config as config
 import libtmux
 
+from psutil import Process, NoSuchProcess
+from subprocess import Popen, PIPE
+
 import queue as queue
 import selectors
 
@@ -511,6 +514,72 @@ class SlaveManagementServer(BaseServer):
             self.send_queues.pop(connection)
             self.sel.unregister(connection)
             connection.close()
+
+    def validate_on_slave(
+        self,
+        remote_hostname: str,
+        local_hostname: str,
+        config_path: str,
+    ) -> bool:
+        """Run validate on slave to test if the config could be loaded successfully.
+
+        Parameters
+        ----------
+        hostname : str
+            Host where the slave is going to be started.
+        host_ip : str
+            Resolved ip to host `hostname`.
+        config_path : str
+            Path to the config file on the remote.
+        config_name : str
+            Name of the configuration (not the file name!).
+        window : libtmux.Window
+            tmux window of the host connection.
+
+        Returns
+        -------
+        bool
+            True if validation was successful.
+        """
+
+        cmd = f"hyperion validate --config {config_path}"
+
+        if config.SLAVE_HYPERION_SOURCE_PATH != None:
+            cmd = f"source {config.SLAVE_HYPERION_SOURCE_PATH} && {cmd}"
+
+        forward_cmd = f"ssh -F {config.CUSTOM_SSH_CONFIG_PATH} {remote_hostname} '{cmd}'"
+        pipe = Popen(forward_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = pipe.communicate()
+        if pipe.returncode < 0:
+            ret = config.ExitStatus.UNKNOWN_ERROR()
+        else:
+            ret = config.ExitStatus(pipe.returncode)
+
+        if ret != config.ExitStatus.FINE:
+            err = stderr.decode("utf-8")
+            if len(err) > 0:
+                msg = err
+            else:
+                msg = stdout.decode("utf-8")
+            self.logger.error(
+                f"validate on remote returned with error {ret.name}: \n#####################\n{msg}\n#####################"
+            )
+            return False
+
+        self.logger.debug(
+            f"validate on remote returned {ret.name}: \n#####################\n{stdout.decode('utf-8')} \n#####################"
+        )
+
+        # Checking ssh connection
+        forward_cmd = f"ssh -F {config.CUSTOM_SSH_CONFIG_PATH} {remote_hostname} 'ssh {local_hostname} echo test'"
+        pipe = Popen(forward_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        stdout, stderr = pipe.communicate()
+        if pipe.returncode != 0:
+            self.logger.error(
+               f"ssh from slave to main failed with error: {pipe.communicate()[1].decode('utf-8')}"
+            )
+            return False
+        return True
 
     def start_slave(
         self,
