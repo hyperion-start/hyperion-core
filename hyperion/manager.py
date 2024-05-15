@@ -8,7 +8,7 @@ import os
 import socket
 import shutil
 from psutil import Process, NoSuchProcess
-from subprocess import call, Popen, PIPE
+from subprocess import call, Popen, PIPE, STDOUT
 from threading import Lock
 from time import sleep, time, strftime
 from hyperion.lib.util.setupParser import Loader
@@ -28,7 +28,7 @@ import hyperion.lib.util.actionSerializer as actionSerializer
 
 import queue as queue
 
-from typing import Optional, Tuple, Any, NoReturn
+from typing import Optional, Tuple, Any, NoReturn, Union
 from hyperion.lib.util.types import Component, Config
 
 BASE_DIR = os.path.dirname(__file__)
@@ -336,6 +336,49 @@ def setup_ssh_config() -> bool:
         return False
 
     return True
+
+def resolve_host_address(hostname: str, ssh_config_path: str) -> Union[str, None]:
+    """Checks several methods to resolve and ip from a hostname.
+
+    Parameters
+    ----------
+    hostname : str
+        Hostname to get the adress to.
+    ssh_config_path : str
+        Path to ssh config (for possible hostname resolution).
+
+    Returns
+    -------
+    Union[str,None]
+        If host could be reached, returns the correct ip, otherwise None.
+    """    
+
+    is_up = (
+        True if os.system("ping -w2 -c 1 %s > /dev/null" % hostname) == 0 else False
+    )
+    if not is_up:
+        # Try resolving the host ip or a different name, in case host is known not by /etc/hosts but set through ssh-config
+        ip_cmd = "ssh -F %s -G %s | awk '/^hostname / { print $2 }'" % (
+            ssh_config_path,
+            hostname
+        )
+        ps = Popen(ip_cmd, shell=True, stdout=PIPE, stderr=STDOUT)
+        ip = ps.communicate()[0].decode('utf-8').rstrip()
+        is_up = (
+            True if os.system("ping -w2 -c 1 %s > /dev/null" % ip) == 0 else False
+        )
+
+        if not is_up:
+            hn_out = socket.gethostbyname(hostname)
+            is_up = (
+                True if os.system("ping -w2 -c 1 %s > /dev/null" % hn_out) == 0 else False
+            )
+
+            if not is_up:
+                return None
+            return hn_out
+        return ip
+    return hostname
 
 
 class AbstractController(object):
