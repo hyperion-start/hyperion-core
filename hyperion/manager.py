@@ -401,6 +401,8 @@ class AbstractController(object):
         self.server: Optional[Server] = None
         self.dev_mode = True
         self.exclude_tags: Optional[list[str]] = None
+        self.monitor_queue = queue.Queue() # type: queue.Queue
+        self.mon_thread = ComponentMonitor(self.monitor_queue)
 
     def broadcast_event(self, event: events.BaseEvent) -> None:
         """Put a given event in all registered subscriber queues.
@@ -518,6 +520,8 @@ class AbstractController(object):
                 f"Changed default log umask to '{config.DEFAULT_LOG_UMASK}'"
             )
 
+        self.logger.info(f"Running {config.DEFAULT_THREADN} threads for starting/stopping")
+
     ###################
     # Component Management
     ###################
@@ -575,24 +579,6 @@ class AbstractController(object):
         else:
             self.logger.debug("Check returned false")
             return False
-
-    def _get_window_pid(self, window: Window) -> list[int]:
-        """Returns pid of the tmux window process.
-
-        Parameters
-        ----------
-        window : Window
-            tmux reference to the window.
-
-        Returns
-        -------
-        list[int]
-            pids of the window and its child processes.
-        """
-
-        self.logger.debug(f"Fetching pids of window {window.name}")
-        r = window.cmd("list-panes", "-F #{pane_pid}")
-        return [int(p) for p in r.stdout]
 
     def get_component_by_id(self, comp_id: str) -> Component:
         """Return component configuration by providing only the id (name@host).
@@ -764,6 +750,9 @@ class AbstractController(object):
             State of the component
         """
 
+        if self.mon_thread.is_component_monitored(comp['id']):
+            return config.CheckState.RUNNING
+
         try:
             on_localhost = self.run_on_localhost(comp)
             if on_localhost:
@@ -813,26 +802,7 @@ class AbstractController(object):
         pid = 0
 
         if window:
-            w_pid = self._get_window_pid(window)
-            logger.debug(f"Found window pid: {w_pid}")
-
-            # May return more child pids if logging is done via tee (which then was started twice in the window too)
-            procs = []
-            for entry in w_pid:
-                procs.extend(Process(entry).children(recursive=True))
-
-            pids = []
-            for p in procs:
-                try:
-                    if p.name() != "tee":
-                        pids.append(p.pid)
-                except NoSuchProcess:
-                    pass
-            logger.debug(
-                f"Window is running {len(pids)} non-logger child processes: {pids}"
-            )
-
-            if len(pids) < 1:
+            if not self._is_window_busy(window):
                 logger.debug(
                     "Main process has finished. Running custom check if available"
                 )
@@ -844,14 +814,18 @@ class AbstractController(object):
                     ret = config.CheckState.STOPPED
             elif check_available and self._run_component_check(comp):
                 logger.debug("Check succeeded")
-                pid = pids[0]
                 ret = config.CheckState.RUNNING
+                children = Process(int(window.pane_pid)).children()
+                if len(children) > 0:
+                    pid = children[0].pid
             elif not check_available:
                 logger.debug(
-                    "No custom check specified and got sufficient pid amount: returning true"
+                    "No custom check specified and window is busy: returning true"
                 )
-                pid = pids[0]
                 ret = config.CheckState.RUNNING
+                children = Process(int(window.pane_pid)).children()
+                if len(children) > 0:
+                    pid = children[0].pid
             else:
                 logger.debug("Check failed: returning false")
                 ret = config.CheckState.STOPPED
@@ -984,10 +958,11 @@ class AbstractController(object):
 
         comp_id = comp["id"]
 
-        pid = self._get_window_pid(window)
+        pid = int(window.pane_pid)
         procs: list[Process] = []
-        for entry in pid:
-            procs.extend(Process(entry).children(recursive=True))
+        
+        if self._is_window_busy(window):
+            procs.extend(Process(pid).children())
 
         for proc in procs:
             try:
@@ -1089,7 +1064,7 @@ class AbstractController(object):
             f"Waiting until window '{window.name}' has no running child processes left ..."
         )
         while self._is_window_busy(window):
-            sleep(0.5)
+            sleep(0.1)
         self.logger.debug(f"... window '{window.name}' is not busy anymore")
 
     def _is_window_busy(self, window: Window) -> bool:
@@ -1106,20 +1081,15 @@ class AbstractController(object):
             True if `window` is busy.
         """
 
-        pid = self._get_window_pid(window)
+        sc = window.pane_start_command
+        cc = window.pane_current_command
+        ep = config.SHELL_EXECUTABLE_PATH
 
-        procs = []
-        for entry in pid:
-            procs.extend(Process(entry).children(recursive=True))
+        if cc in ['fish', 'zsh', 'bash', 'sh']:
+            return False
 
-        for p in procs:
-            try:
-                if p.is_running() and p.name() != "tee":
-                    self.logger.debug(f"Running child process: {p.name()}")
-                    return True
-            except NoSuchProcess:
-                pass
-        return False
+        assert sc in ep, f"sc should be in ep: ({sc} not in {ep})"
+        return cc != ep
 
     ###################
     # TMUX SESSION CONTROL
@@ -1373,8 +1343,6 @@ class ControlCenter(AbstractController):
         self.host_stats = {f"{socket.gethostname()}": config.EMPTY_HOST_STATS}
         """Dictionary containing the current load, cpu, and memory usage stats for each host."""
 
-        self.monitor_queue = queue.Queue()
-        self.mon_thread = ComponentMonitor(self.monitor_queue)
         if monitor_enabled:
             self.mon_thread.start()
 
@@ -1936,21 +1904,59 @@ class ControlCenter(AbstractController):
         unres: list[Node] = []
         dep_resolve(node, res, unres)
         hierarchy = resolve_concurrent_start(res)
-        failed_comps = self.start_component_hierarchy(hierarchy, force_mode, threadn=config.DEFAULT_THREADN)
+        
+        if config.DEFAULT_THREADN > 1:
+            failed_comps = self.start_component_hierarchy_parallel(hierarchy, force_mode, threadn=config.DEFAULT_THREADN)
+        else:
+            failed_comps = self.start_component_hierarchy(hierarchy, force_mode)
+
         if len(failed_comps) > 0 and not force_mode:
-            self.broadcast_event(events.CheckEvent(node.comp_id, config.CheckState.DEP_FAILED))
             return config.StartState.FAILED
 
-        event = self.component_start_worker_fn(node)
-        if (
-            event.check_state is config.CheckState.STARTED_BY_HAND
-            or event.check_state is config.CheckState.STOPPED_BUT_SUCCESSFUL
-            or event.check_state is config.CheckState.RUNNING
-        ): 
-            return config.StartState.STARTED
-        return config.StartState.FAILED
+        return config.StartState.STARTED
 
-    def start_component_hierarchy(self, hierarchy: list[list[Node]], force_mode: bool = False, threadn: int=4) -> dict[str, config.CheckState]:
+    def start_component_hierarchy(self, hierarchy: list[list[Node]], force_mode: bool = False) -> dict[str, config.CheckState]:
+        """Starts a component hierarchy, using a single thread.
+
+        Parameters
+        ----------
+        hierarchy : list[list[Node]]
+            Component hierarchy to be started.
+        force_mode : bool, optional
+            _description_, by default False
+
+        Returns
+        -------
+        dict[str, config.CheckState]
+            The individual checkstates of the failed components. This is only for internal processing, broadcasting happens along the way.
+        """        
+        failed_comps: dict[str, config.CheckState] = {}
+
+        for batch in hierarchy:
+            if len(failed_comps) > 0 and not force_mode:
+                self.logger.error(f"Not in force mode, cancelling dependencies of failed components")
+                for comp in batch:
+                    self.broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
+                    failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
+                continue
+
+            self.logger.info(f"Starting the following batch of components: {[c.comp_id for c in batch]}")
+            
+            for next_comp in batch:
+                state = self.component_start_worker_fn(next_comp)
+                if (
+                    state.check_state is config.CheckState.DEP_FAILED
+                    or state.check_state is config.CheckState.STOPPED
+                    or state.check_state is config.CheckState.UNREACHABLE
+                    or state.check_state is config.CheckState.NOT_INSTALLED
+                    or state.check_state is config.CheckState.UNKNOWN
+                ):
+                    failed_comps[state.comp_id] = state.check_state
+                    self.broadcast_event(state)
+                    self.logger.error(f"Component {state.comp_id} failed to start!")
+        return failed_comps
+
+    def start_component_hierarchy_parallel(self, hierarchy: list[list[Node]], force_mode: bool = False, threadn: int=4) -> dict[str, config.CheckState]:
         """Starts a component hierarchy, using `threadn` threads to start independent components in parallel.
 
         Parameters
@@ -1991,7 +1997,8 @@ class ControlCenter(AbstractController):
                         or state.check_state is config.CheckState.NOT_INSTALLED
                         or state.check_state is config.CheckState.UNKNOWN
                     ):
-                        failed_comps[state.comp_id] = state
+                        failed_comps[state.comp_id] = state.check_state
+                        self.broadcast_event(state)
                         self.logger.error(f"Component {state.comp_id} failed to start!")
                 if level_done:
                     sleep(0.3)
@@ -2026,13 +2033,13 @@ class ControlCenter(AbstractController):
             or state is config.CheckState.RUNNING
         ):
             self.logger.debug(
-                f"Component '{node.comp_id}' is already running, skipping to next dep in line"
+                f"Component '{node.comp_id}' is already running, skipping to next component"
             )
             self.broadcast_event(events.CheckEvent(node.comp_id, state))
             return events.CheckEvent(node.comp_id, state)
         else:
             self.logger.debug(
-                f"Starting component '{node.comp_id}' as dependency"
+                f"Starting component '{node.comp_id}'"
             )
             self.start_component_without_deps(node.component)
             # Wait component time for startup
@@ -2040,11 +2047,11 @@ class ControlCenter(AbstractController):
 
             tries = 0
             while True:
+                state = self.check_component(node.component, False)
                 self.logger.debug(
                     "Checking %s resulted in checkstate %s"
                     % (node.comp_id, config.STATE_DESCRIPTION.get(state))
                 )
-                state = self.check_component(node.component, False)
                 if (
                     state is config.CheckState.RUNNING
                     or state is config.CheckState.STOPPED_BUT_SUCCESSFUL
@@ -2052,10 +2059,11 @@ class ControlCenter(AbstractController):
                 ):
                     self.logger.debug(f"Dep '{node.comp_id}' success")
                     break
-                if tries > 3:
-                    break
                 if time() > end_t:
+                    if tries > 2:
+                        break
                     tries = tries + 1
+                    self.logger.warn(f"Retrying component check for '{node.comp_id}' (failed try {tries})")
                 sleep(0.5)
             self.broadcast_event(events.CheckEvent(node.comp_id, state))
             return events.CheckEvent(node.comp_id, state)
@@ -2114,11 +2122,37 @@ class ControlCenter(AbstractController):
     def start_all(self, force_mode: bool = False) -> None:
         comps = self.get_start_all_list()
         hierarchy = resolve_concurrent_start(comps)
-        failed_comps = self.start_component_hierarchy(hierarchy, force_mode)
+        if config.DEFAULT_THREADN > 1:
+            failed_comps = self.start_component_hierarchy_parallel(hierarchy, force_mode, threadn=config.DEFAULT_THREADN)
+        else:
+            failed_comps = self.start_component_hierarchy(hierarchy, force_mode)
         self.broadcast_event(events.StartReportEvent("All components", failed_comps))
 
     def stop_all(self) -> None:
         """Stop all components ordered by dependency and run checks afterwards."""
+        
+        if config.DEFAULT_THREADN > 1:
+            return self.stop_all_parallel()
+        
+        try:
+            comps = self.get_start_all_list(exclude_no_auto=False)
+            hierarchy = resolve_concurrent_start(comps)
+        except exceptions.CircularReferenceException:
+            # If circular dependency is given no components can be started and this is happening in cleanup, so we
+            # can safely return without action.
+            return
+
+        hierarchy = list(reversed(hierarchy))
+        for batch in hierarchy:
+            for comp in batch:
+                self.stop_component(comp.component)
+        for batch in hierarchy:
+            for comp in batch:
+                self.check_component(comp.component)
+
+
+    def stop_all_parallel(self) -> None:
+        """Stop all components in parallel ordered by dependency and run checks afterwards."""
         try:
             comps = self.get_start_all_list(exclude_no_auto=False)
             hierarchy = resolve_concurrent_start(comps)
@@ -2161,6 +2195,24 @@ class ControlCenter(AbstractController):
                     sleep(0.3)
             last_batch = batch
 
+        # Check final batch
+        done = False
+        check_iter = iter(last_batch)
+        while len(pending) > 0 or not done:
+            while len(pending) > 0 and pending[0].ready():
+                pending.popleft()
+            while len(pending) < config.DEFAULT_THREADN and not done:
+                done = True
+                try:
+                    comp = next(check_iter)
+                    done = False
+                    task_check = pool.apply_async(self.check_component, (comp.component,))
+                    pending.append(task_check)
+                except StopIteration:
+                    pass
+            else:
+                sleep(0.3)
+
     ###################
     # Check
     ###################
@@ -2197,14 +2249,12 @@ class ControlCenter(AbstractController):
                 ret_val = config.CheckState.UNREACHABLE
         elif state is not None and state[1] == config.HostConnectionState.SSH_ONLY:
             self.logger.error(
-                f"Host {host} has connection status '{status[1]}'. Can not run check for component %s!"
-                % (comp["host"], comp["id"])
+                f"Host {comp['host']} has connection status '{state[1]}'. Can not run check for component %s!"
             )
             ret_val = config.CheckState.UNREACHABLE
         else:
             self.logger.error(
-                "Host %s is unreachable. Can not run check for component %s!"
-                % (comp["host"], comp["id"])
+                f"Host {comp['host']} is unreachable. Can not run check for component {comp['id']}!"
             )
             ret_val = config.CheckState.UNREACHABLE
 
@@ -2491,13 +2541,12 @@ class ControlCenter(AbstractController):
         t_end = time() + config.SSH_CONNECTION_TIMEOUT
         t_min = time() + 0.5
 
-        pid = self._get_window_pid(window)
+        pid = int(window.pane_pid)
         pids = []
 
         while time() < t_end:
             procs = []
-            for entry in pid:
-                procs.extend(Process(entry).children(recursive=True))
+            procs.extend(Process(pid).children(recursive=False))
 
             for p in procs:
                 try:
@@ -2760,8 +2809,6 @@ class SlaveManager(AbstractController):
         super(SlaveManager, self).__init__(configfile)
         self.nodes: dict[str, Node] = {}
         self.host_states = {f"{socket.gethostname()}": (0, config.HostConnectionState.CONNECTED)}
-        self.monitor_queue = queue.Queue()
-        self.mon_thread = ComponentMonitor(self.monitor_queue)
         self.mon_thread.start()
 
         try:

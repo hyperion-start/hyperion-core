@@ -42,6 +42,9 @@ active session. This should not happen anymore. (Did not happen on Xenial but on
 - Introduced check if at least one group is defined. If not, the application is shut down with an config parsing error.
 - Now handling psutil error that occurs when inside a component check a already dead process' name is looked up.
 - Replaced tee logging with tmux pipe-pane. We don't encounter the linebuffering issues described in #38 when 'cat'-ing the piped pane contents directly to the logfile.
+- Fetching window(-pane) PIDs is much faster now.
+- Checking if a window is busy is much faster now.
+- Checking a component now first checks if a component is already being monitored. If it is, true is returned, because this means that a previous check was successful and the process is still running. With this approach only a single constly psutil call to get the process to be monitored is needed, which saves a lot of time in repeated checks.
 
 ### Added
 - More informative logging output when a file included in the configuration could not be found.

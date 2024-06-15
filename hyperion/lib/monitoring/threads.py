@@ -314,7 +314,34 @@ class ComponentMonitor(BaseMonitorThread):
         """
 
         super(ComponentMonitor, self).__init__()
+        self.queue_lock = Lock()
         self.job_queue = queue
+
+    def is_component_monitored(self, comp_id: str) -> bool:
+        """Check if a component is already being monitored.
+
+        Parameters
+        ----------
+        comp_id : str
+            Component id
+
+        Returns
+        -------
+        bool
+            true, if a monitoring job already is in queue.
+        """
+        new_queue = queue.Queue()
+        with self.queue_lock:
+            while not self.job_queue.empty():
+                job = self.job_queue.get()
+                new_queue.put(job)
+                if isinstance(job, ComponentMonitorJob):
+                    if job.comp_id == comp_id and not job.is_cancelled:
+                        for _ in range(new_queue.qsize()):
+                            self.job_queue.put(new_queue.get())
+                        return True
+        return False
+
 
     def run(self) -> None:
         """Starts the monitoring thread.
@@ -322,51 +349,51 @@ class ComponentMonitor(BaseMonitorThread):
 
         self.logger.debug("Started run function")
         while not self.end:
+            with self.queue_lock:
+                comp_jobs = []
+                cancellations = []
+                jobs: list[Union[HostMonitorJob, ComponentMonitorJob]] = []
+                already_handleled = {}
+                already_removed = {}
+                # Get all enqueued jobs for this iteration
+                while not self.job_queue.empty():
+                    mon_job = self.job_queue.get()
+                    if isinstance(mon_job, HostMonitorJob):
+                        jobs.append(mon_job)
+                    if isinstance(mon_job, CancellationJob) and mon_job.comp_id not in already_removed:
+                        cancellations.append(mon_job)
+                        already_removed[mon_job.comp_id] = True
+                    if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_id not in already_handleled:
+                        comp_jobs.append(mon_job)
+                        already_handleled[mon_job.comp_id] = True
 
-            comp_jobs = []
-            cancellations = []
-            jobs: list[Union[HostMonitorJob, ComponentMonitorJob]] = []
-            already_handleled = {}
-            already_removed = {}
-            # Get all enqueued jobs for this iteration
-            while not self.job_queue.empty():
-                mon_job = self.job_queue.get()
-                if isinstance(mon_job, HostMonitorJob):
-                    jobs.append(mon_job)
-                if isinstance(mon_job, CancellationJob) and mon_job.comp_id not in already_removed:
-                    cancellations.append(mon_job)
-                    already_removed[mon_job.comp_id] = True
-                if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_id not in already_handleled:
-                    comp_jobs.append(mon_job)
-                    already_handleled[mon_job.comp_id] = True
+                # Remove all jobs that received a cancellation from the job list
+                # remove = []
+                for mon_job in cancellations:
+                    for comp_job in comp_jobs:
+                        if mon_job.comp_id is comp_job.comp_id:
+                            comp_job.is_cancelled = True
+                            # Previous way of cancelling jobs. Lets keep this for now
+                        # remove.append(comp_job)
+            # [comp_jobs.remove(job) for job in remove]
 
-            # Remove all jobs that received a cancellation from the job list
-            # remove = []
-            for mon_job in cancellations:
-                for comp_job in comp_jobs:
-                    if mon_job.comp_id is comp_job.comp_id:
-                        comp_job.is_cancelled = True
-                        # Previous way of cancelling jobs. Lets keep this for now
-                       # remove.append(comp_job)
-           # [comp_jobs.remove(job) for job in remove]
-
-            # Reorder job list to first check the hosts, then check the components because this makes sense
-            jobs.extend(comp_jobs)
-            for mon_job in jobs:
-                try:
-                    ret = mon_job.run_check()
-                except NotImplementedError:
-                    self.logger.error(f"Ran run_check on {mon_job} instance!")
-                    continue
-                if ret is True:
-                    # If job is ok, put it back for the next iteration
-                    self.job_queue.put(mon_job)
-                else:
-                    # If job is not ok, notify subscribers
-                    if not mon_job.is_cancelled:
-                        self.logger.error(mon_job.error_msg)
-                    self.logger.debug("Notifying mon subscribers about failed check")
-                    for subscriber in self.subscribed_queues:
-                        subscriber.put(ret)
+                # Reorder job list to first check the hosts, then check the components because this makes sense
+                jobs.extend(comp_jobs)
+                for mon_job in jobs:
+                    try:
+                        ret = mon_job.run_check()
+                    except NotImplementedError:
+                        self.logger.error(f"Ran run_check on {mon_job} instance!")
+                        continue
+                    if ret is True:
+                        # If job is ok, put it back for the next iteration
+                        self.job_queue.put(mon_job)
+                    else:
+                        # If job is not ok, notify subscribers
+                        if not mon_job.is_cancelled:
+                            self.logger.error(mon_job.error_msg)
+                        self.logger.debug("Notifying mon subscribers about failed check")
+                        for subscriber in self.subscribed_queues:
+                            subscriber.put(ret)
 
             time.sleep(1/config.MONITORING_RATE)
