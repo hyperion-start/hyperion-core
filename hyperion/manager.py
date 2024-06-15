@@ -815,7 +815,7 @@ class AbstractController(object):
             elif check_available and self._run_component_check(comp):
                 logger.debug("Check succeeded")
                 ret = config.CheckState.RUNNING
-                children = Process(int(window.pane_pid)).children()
+                children = Process(int(window.panes[0].get('pane_pid'))).children()
                 if len(children) > 0:
                     pid = children[0].pid
             elif not check_available:
@@ -823,7 +823,7 @@ class AbstractController(object):
                     "No custom check specified and window is busy: returning true"
                 )
                 ret = config.CheckState.RUNNING
-                children = Process(int(window.pane_pid)).children()
+                children = Process(int(window.panes[0].get('pane_pid'))).children()
                 if len(children) > 0:
                     pid = children[0].pid
             else:
@@ -958,7 +958,7 @@ class AbstractController(object):
 
         comp_id = comp["id"]
 
-        pid = int(window.pane_pid)
+        pid = int(window.panes[0].get('pane_pid'))
         procs: list[Process] = []
         
         if self._is_window_busy(window):
@@ -1081,14 +1081,12 @@ class AbstractController(object):
             True if `window` is busy.
         """
 
-        sc = window.pane_start_command
-        cc = window.pane_current_command
+        cc = window.panes[0].get('pane_current_command')
         ep = config.SHELL_EXECUTABLE_PATH
 
         if cc in ['fish', 'zsh', 'bash', 'sh']:
             return False
 
-        assert sc in ep, f"sc should be in ep: ({sc} not in {ep})"
         return cc != ep
 
     ###################
@@ -2541,7 +2539,7 @@ class ControlCenter(AbstractController):
         t_end = time() + config.SSH_CONNECTION_TIMEOUT
         t_min = time() + 0.5
 
-        pid = int(window.pane_pid)
+        pid = int(window.panes[0].get('pane_pid'))
         pids = []
 
         while time() < t_end:
