@@ -633,8 +633,8 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         elif isinstance(event, events.StatResponseEvent):
             self.host_stats[event.hostname] = [
                 f"{event.load:.2f}",
-                f"{event.cpu:.2f}%%",
-                f"{event.mem:.2f}%%",
+                f"{event.cpu:.2f}%",
+                f"{event.mem:.2f}%",
             ]
 
     def _loop(self) -> None:
