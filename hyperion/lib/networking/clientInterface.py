@@ -387,8 +387,9 @@ class RemoteSlaveInterface(BaseClient):
     def _start_monitoring(self, rate: float) -> None:
         self.logger.debug(f"Starting stat monitor with rate {rate}")
         config.LOCAL_STAT_MONITOR_RATE = rate
-        self.cc.stat_thread.start()
-        self.cc.stat_thread.add_subscriber(self.event_queue)
+        if not self.cc.stat_thread.is_alive():
+            self.cc.stat_thread.start()
+            self.cc.stat_thread.add_subscriber(self.event_queue)
 
 
 class RemoteControllerInterface(AbstractController, BaseClient):
