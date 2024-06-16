@@ -284,7 +284,7 @@ class Server(BaseServer):
 
             if isinstance(event, events.DisconnectEvent):
                 self.cc.host_states[event.host_name] = (
-                    config.HostConnectionState.DISCONNECTED
+                    (0, config.HostConnectionState.DISCONNECTED)
                 )
 
     def _start_component_wrapper(self, comp_id: str, force_mode: bool = False) -> None:
