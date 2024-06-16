@@ -13,7 +13,7 @@ import hyperion.lib.util.events as events
 from signal import *
 from subprocess import Popen, PIPE
 
-from typing import Any, Union, Callable, Optional
+from typing import Any, Union, Callable, Tuple
 
 import selectors
 import queue
@@ -417,7 +417,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         BaseClient.__init__(self, host, port)
 
         self.host_list: list[str] = []
-        self.host_states: dict[str, config.HostConnectionState] = {}
+        self.host_states: dict[str, Tuple[int, config.HostConnectionState]] = {}
         self.config: Config = {}
         self.host_stats: dict[str, list[str]] = {}
         self.mounted_hosts: list[str] = []
@@ -598,12 +598,12 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.config = config
         self.logger.debug("Got config from server")
 
-    def _set_host_states(self, host_states: dict[str, config.HostConnectionState]) -> None:
+    def _set_host_states(self, host_states: dict[str, Tuple[int, config.HostConnectionState]]) -> None:
         self.host_states = host_states
         self.host_list = list(host_states.keys())
         self.logger.warn(f"Got host states: {host_states}")
-        for host in host_states:
-            if host not in self.host_stats:
+        for host, state in host_states.items():
+            if host not in self.host_stats or state[1] != config.HostConnectionState.CONNECTED:
                 self.host_stats[host] = config.EMPTY_HOST_STATS
         self.logger.debug("Updated host list")
 
@@ -618,14 +618,14 @@ class RemoteControllerInterface(AbstractController, BaseClient):
 
         # Special events handling
         if isinstance(event, events.SlaveReconnectEvent):
-            self.host_states[event.host_name] = config.HostConnectionState.CONNECTED
+            self.host_states[event.host_name] = (0, config.HostConnectionState.CONNECTED)
         elif isinstance(event, events.SlaveDisconnectEvent):
-            self.host_states[event.host_name] = config.HostConnectionState.SSH_ONLY
+            self.host_states[event.host_name] = (0, config.HostConnectionState.SSH_ONLY)
         elif isinstance(event, events.DisconnectEvent):
-            self.host_states[event.host_name] = config.HostConnectionState.DISCONNECTED
+            self.host_states[event.host_name] = (0, config.HostConnectionState.DISCONNECTED)
             self._unmount_host(event.host_name)
         elif isinstance(event, events.ReconnectEvent):
-            self.host_states[event.host_name] = config.HostConnectionState.SSH_ONLY
+            self.host_states[event.host_name] = (0, config.HostConnectionState.SSH_ONLY)
             self._mount_host(event.host_name)
         elif isinstance(event, events.ConfigReloadEvent):
             self.logger.debug("Updating config and host list")
@@ -700,8 +700,8 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         # First unmount to prevent unknown permissions issue on disconnected mountpoint
         self._unmount_host(hostname)
 
-        state = self.host_states[hostname]
-        if not state or state == config.HostConnectionState.DISCONNECTED:
+        state = self.host_states.get(hostname)
+        if not state or state[1] == config.HostConnectionState.DISCONNECTED:
             self.logger.error(
                 f"'{hostname}' seems not to be connected. Aborting mount! Logs will not be available"
             )
