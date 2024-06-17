@@ -331,6 +331,7 @@ def main() -> None:
         s = server.Server(int(args.port), cc)
         sys.exit(config.ExitStatus.FINE.value)
 
+    cc : ControlCenter = None
     if args.cmd == "ui":
         logger.debug("Chose ui mode")
 
@@ -346,6 +347,9 @@ def main() -> None:
             sms = server.SlaveManagementServer()
             cc = ControlCenter(args.config, True, slave_server=sms)
             cc.init()
+
+            s = server.Server(int(args.port), cc, loop_in_thread=True)
+            rci = clientInterface.RemoteControllerInterface(args.host, args.port)
         else:
             log_file_path = (
                 f'{TMP_LOG_PATH}/localhost/client/{time.strftime("%H-%M-%S")}.log'
@@ -358,7 +362,7 @@ def main() -> None:
 
             logger.debug("Entering ui in socket mode")
 
-            cc = clientInterface.RemoteControllerInterface(args.host, args.port) # type: ignore[assignment]
+            rci = clientInterface.RemoteControllerInterface(args.host, args.port)
 
         if args.x_server:
             # PyQt
@@ -387,12 +391,16 @@ def main() -> None:
                         )
                         remove.append(handler)
                 [root_logger.removeHandler(h) for h in remove] # type: ignore[func-returns-value]
-                full_shutdown = ui_plugins["urwid"].main(cc, log_file_path)
+                full_shutdown = ui_plugins["urwid"].main(rci, log_file_path)
                 # Re-add handlers for shutdown log
                 [root_logger.addHandler(h) for h in remove] # type: ignore[func-returns-value]
-                cc.cleanup(full_shutdown)
+                rci.cleanup(full_shutdown)
+                if cc is not None:
+                    s.worker.join()
             else:
-                cc.cleanup(False, config.ExitStatus.MISSING_UI_INSTALL)
+                rci.cleanup(False, config.ExitStatus.MISSING_UI_INSTALL)
+                if cc is not None:
+                    cc.cleanup(True, config.ExitStatus.MISSING_UI_INSTALL)
                 logger.error(
                     "To use this feature you need hyperion-uis installed! Check the README.md for install "
                     "instructions. If you already ran the installation try adding site-packages of your "

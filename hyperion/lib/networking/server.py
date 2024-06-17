@@ -557,7 +557,7 @@ class SlaveManagementServer(BaseServer):
         pipe = Popen(forward_cmd, shell=True, stdout=PIPE, stderr=PIPE)
         stdout, stderr = pipe.communicate()
         if pipe.returncode < 0:
-            ret = config.ExitStatus.UNKNOWN_ERROR()
+            ret = config.ExitStatus.UNKNOWN_ERROR
         else:
             ret = config.ExitStatus(pipe.returncode)
 
