@@ -463,7 +463,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         self.thread.start()
 
         self.request_config()
-        while not self.config and not self.host_list:
+        while not self.config or self.host_list.count == 0:
             self.logger.debug("Waiting for config")
             time.sleep(0.5)
 
