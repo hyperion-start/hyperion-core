@@ -291,9 +291,7 @@ def main() -> None:
     root_logger = logging.getLogger()
     stream_formatter = ColorFormatter()
     for handler in root_logger.handlers:
-        if isinstance(handler, logging.StreamHandler):
-            handler.setFormatter(stream_formatter)
-    log_formatter = CustomFormatter()
+        handler.setFormatter(stream_formatter)
     log_name = ""
 
     if args.config:
@@ -319,7 +317,7 @@ def main() -> None:
         rotate_log(log_file_path, log_name)
         handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
-        handler.setFormatter(log_formatter)
+        handler.setFormatter(stream_formatter)
         root_logger.addHandler(handler)
 
         sms = server.SlaveManagementServer()
@@ -341,7 +339,7 @@ def main() -> None:
             )
             handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
-            handler.setFormatter(log_formatter)
+            handler.setFormatter(stream_formatter)
             root_logger.addHandler(handler)
             logger.debug("Entering ui in standalone mode")
             sms = server.SlaveManagementServer()
@@ -357,7 +355,7 @@ def main() -> None:
             rotate_log(log_file_path, log_name)
             handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
-            handler.setFormatter(log_formatter)
+            handler.setFormatter(stream_formatter)
             root_logger.addHandler(handler)
 
             logger.debug("Entering ui in socket mode")
@@ -428,7 +426,7 @@ def main() -> None:
         rotate_log(log_file_path, log_name)
         handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
-        handler.setFormatter(log_formatter)
+        handler.setFormatter(stream_formatter)
         root_logger.addHandler(handler)
 
         sms = server.SlaveManagementServer()
@@ -521,7 +519,7 @@ def main() -> None:
         rotate_log(log_file_path, log_name)
         handler = logging.handlers.RotatingFileHandler(log_file_path, "w")
 
-        handler.setFormatter(log_formatter)
+        handler.setFormatter(stream_formatter)
 
         socket_handler = logging.handlers.SocketHandler(args.host, args.port)
         socket_handler.setLevel(logging.INFO)
