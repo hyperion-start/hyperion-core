@@ -2684,6 +2684,8 @@ class ControlCenter(AbstractController):
             self.kill_session_by_name(self.session_name)
 
         self.logger.info("... Done")
+        if (status.value != 0 ):
+            self.logger.critical(f"{status.name}")
         exit(status.value)
 
     def start_remote_clone_session(self, comp: Component) -> None:
