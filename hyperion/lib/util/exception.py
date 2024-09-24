@@ -4,7 +4,7 @@ from typing import List
 class WindowNotFoundException(Exception):
     """Exception to be thrown when a tmux window could not be found on the server."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message):
         """Create WindowNotFoundException with message `message`.
 
         Parameters
@@ -19,7 +19,7 @@ class WindowNotFoundException(Exception):
 class ComponentNotFoundException(Exception):
     """Exception to be thrown when a searched component is not contained in the current configuration."""
 
-    def __init__(self, component_id: str) -> None:
+    def __init__(self, component_id):
         """Create exception with detailed message.
 
         Parameters
@@ -34,7 +34,7 @@ class ComponentNotFoundException(Exception):
 class UnmetDependenciesException(Exception):
     """Exception to be thrown when a dependency in the configuration could not be found."""
 
-    def __init__(self, unmet_list: List[str]) -> None:
+    def __init__(self, unmet_list):
         """Create exception with detailed message.
 
         Parameters
@@ -43,14 +43,16 @@ class UnmetDependenciesException(Exception):
             List of unmet requirements.
         """
 
-        self.message = "At least one component in the configuration has an unmet dependency"
+        self.message = (
+            "At least one component in the configuration has an unmet dependency"
+        )
         self.unmet_list = unmet_list
 
 
 class DuplicateGroupDefinitionException(Exception):
     """Exception to be thrown when a duplicate group definition is found in the sys config"""
 
-    def __init__(self, duplicate_name: str) -> None:
+    def __init__(self, duplicate_name):
         """Create DuplicateGroupDefinitionException
 
         Parameters
@@ -65,7 +67,7 @@ class DuplicateGroupDefinitionException(Exception):
 class CircularReferenceException(Exception):
     """Exception to be thrown when a circular dependency is detected in the dependency graph."""
 
-    def __init__(self, node1: str, node2: str) -> None:
+    def __init__(self, node1, node2):
         """Create CircularReferenceException between `node1` and `node2`.
 
         Parameters
@@ -83,7 +85,7 @@ class CircularReferenceException(Exception):
 class EnvNotFoundException(Exception):
     """Exception to be thrown when a custom environment file could not be found."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message):
         """Create EnvNotFoundException.
 
         Parameters
@@ -98,7 +100,7 @@ class EnvNotFoundException(Exception):
 class HostUnknownException(Exception):
     """Exception to be thrown when a host can not be resolved."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message):
         """Create a HostUnknownException.
 
         Parameters
@@ -112,7 +114,7 @@ class HostUnknownException(Exception):
 class SlaveNotReachableException(Exception):
     """Exception to be thrown when a slave is not reachable."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message):
         """Create a SlaveNotReachableException.
 
         Parameters
@@ -127,7 +129,7 @@ class SlaveNotReachableException(Exception):
 class MissingComponentDefinitionException(Exception):
     """Exception to be thrown when a file included in a yaml config file could not be found."""
 
-    def __init__(self, filename: str) -> None:
+    def __init__(self, filename):
         """Create a MissingComponentDefinitionException.
 
         Parameters

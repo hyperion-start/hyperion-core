@@ -31,9 +31,6 @@ from multiprocessing.pool import AsyncResult, ThreadPool
 
 import queue as queue
 
-from typing import Optional, Tuple, Any, NoReturn, Union
-from hyperion.lib.util.types import Component, Config
-
 BASE_DIR = os.path.dirname(__file__)
 """Path to the directory this file is contained in"""
 
@@ -47,9 +44,7 @@ SCRIPT_SHOW_SESSION_PATH = f"{BASE_DIR}/bin/show_session.sh"
 ###################
 # Logging
 ###################
-def setup_log(
-    window: Window, filepath: str, comp_id: str, start_logging: bool = True
-) -> None:
+def setup_log(window, filepath, comp_id, start_logging=True):
     """Redirect stdout and stderr of window to file.
 
     Rotate logs and ensure the log directory for a component with id `comp_id` exists, than,
@@ -79,7 +74,7 @@ def setup_log(
     )
 
 
-def get_component_wait(comp: Component) -> float:
+def get_component_wait(comp):
     """Returns time to wait after component start (default of 3 seconds unless overwritten in configuration).
 
     Parameters
@@ -107,7 +102,7 @@ def get_component_wait(comp: Component) -> float:
         return config.DEFAULT_COMP_WAIT_TIME
 
 
-def rotate_log(file_path: str, log_name: str) -> None:
+def rotate_log(file_path, log_name):
     """If found rename the log at file_path to e.g. COMPONENTNAME_TIME.log or 'server_TIME.log'.
 
     Parameters
@@ -123,12 +118,12 @@ def rotate_log(file_path: str, log_name: str) -> None:
         old_mask = os.umask(config.DEFAULT_LOG_UMASK)
         directory = os.path.dirname(file_path)
         os.rename(file_path, f"{directory}/{log_name}_{strftime('%H-%M-%S')}.log")
-    
+
         # reset previous umask
         os.umask(old_mask)
 
 
-def ensure_dir(file_path: str, mask: int = 0o777) -> None:
+def ensure_dir(file_path, mask=0o777):
     """If not already existing, recursively create parent directory of `file_path`.
 
     Parameters
@@ -146,7 +141,7 @@ def ensure_dir(file_path: str, mask: int = 0o777) -> None:
         os.umask(prev_mask)
 
 
-def dump_config(conf: dict) -> None:
+def dump_config(conf):
     """Dumps configuration in a file called conf-result.yaml.
 
     Parameters
@@ -159,9 +154,7 @@ def dump_config(conf: dict) -> None:
         dump(conf, outfile, default_flow_style=False)
 
 
-def conf_preprocessing(
-    conf: Config, custom_env: Optional[str] = None, exclude_tags: Optional[list[str]] = None
-) -> None:
+def conf_preprocessing(conf, custom_env=None, exclude_tags=None):
     """Preprocess configuration file.
 
     Comprises a) setting all component ids to comp_name@host and b) interpreting environment variables in hostnames.
@@ -257,11 +250,11 @@ def conf_preprocessing(
 
         if len(exclude_from_group) > 0:
             c_list = group["components"]
-            [c_list.remove(comp) for comp in exclude_from_group] # type: ignore[func-returns-value]
+            [c_list.remove(comp) for comp in exclude_from_group]  # type: ignore[func-returns-value]
             group["components"] = c_list
 
 
-def get_component_cmd(component: Component, cmd_type: str) -> Optional[str]:
+def get_component_cmd(component, cmd_type):
     """Retrieve component cmd from config.
 
     Parameters
@@ -295,7 +288,7 @@ def get_component_cmd(component: Component, cmd_type: str) -> Optional[str]:
 ####################
 # SSH Stuff
 ####################
-def setup_ssh_config() -> bool:
+def setup_ssh_config():
     """Creates an ssh configuration that is saved to `CUSTOM_SSH_CONFIG_PATH`.
 
     The user config in `SSH_CONFIG_PATH` is copied to `CUSTOM_SSH_CONFIG_PATH` and then appends the lines enabling
@@ -340,7 +333,8 @@ def setup_ssh_config() -> bool:
 
     return True
 
-def resolve_host_address(hostname: str, ssh_config_path: str) -> Union[str, None]:
+
+def resolve_host_address(hostname, ssh_config_path):
     """Checks several methods to resolve and ip from a hostname.
 
     Parameters
@@ -354,27 +348,25 @@ def resolve_host_address(hostname: str, ssh_config_path: str) -> Union[str, None
     -------
     Union[str,None]
         If host could be reached, returns the correct ip, otherwise None.
-    """    
+    """
 
-    is_up = (
-        True if os.system("ping -w2 -c 1 %s > /dev/null" % hostname) == 0 else False
-    )
+    is_up = True if os.system("ping -w2 -c 1 %s > /dev/null" % hostname) == 0 else False
     if not is_up:
         # Try resolving the host ip or a different name, in case host is known not by /etc/hosts but set through ssh-config
         ip_cmd = "ssh -F %s -G %s | awk '/^hostname / { print $2 }'" % (
             ssh_config_path,
-            hostname
+            hostname,
         )
         ps = Popen(ip_cmd, shell=True, stdout=PIPE, stderr=STDOUT)
-        ip = ps.communicate()[0].decode('utf-8').rstrip()
-        is_up = (
-            True if os.system("ping -w2 -c 1 %s > /dev/null" % ip) == 0 else False
-        )
+        ip = ps.communicate()[0].decode("utf-8").rstrip()
+        is_up = True if os.system("ping -w2 -c 1 %s > /dev/null" % ip) == 0 else False
 
         if not is_up:
             hn_out = socket.gethostbyname(hostname)
             is_up = (
-                True if os.system("ping -w2 -c 1 %s > /dev/null" % hn_out) == 0 else False
+                True
+                if os.system("ping -w2 -c 1 %s > /dev/null" % hn_out) == 0
+                else False
             )
 
             if not is_up:
@@ -387,24 +379,24 @@ def resolve_host_address(hostname: str, ssh_config_path: str) -> Union[str, None
 class AbstractController(object):
     """Abstract controller class that defines basic controller variables and methods."""
 
-    def __init__(self, configfile: Optional[str]) -> None:
+    def __init__(self, configfile):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(config.DEFAULT_LOG_LEVEL)
         if configfile is not None:
             self.configfile = configfile
-        self.monitor_queue = queue.Queue() # type: queue.Queue
-        self.custom_env_path: Optional[str] = None
-        self.subscribers: list[queue.Queue] = []
+        self.monitor_queue = queue.Queue()  # type: queue.Queue
+        self.custom_env_path = None
+        self.subscribers = []
         self.stat_thread = StatMonitor()
-        self.config: Config = {}
-        self.session: Optional[Session] = None
-        self.server: Optional[Server] = None
+        self.config = {}
+        self.session = None
+        self.server = None
         self.dev_mode = True
-        self.exclude_tags: Optional[list[str]] = None
-        self.monitor_queue = queue.Queue() # type: queue.Queue
+        self.exclude_tags = None
+        self.monitor_queue = queue.Queue()  # type: queue.Queue
         self.mon_thread = ComponentMonitor(self.monitor_queue)
 
-    def broadcast_event(self, event: events.BaseEvent) -> None:
+    def broadcast_event(self, event):
         """Put a given event in all registered subscriber queues.
 
         Parameters
@@ -416,7 +408,7 @@ class AbstractController(object):
         for subscriber in self.subscribers:
             subscriber.put(event)
 
-    def _load_config(self, filename: str = "default.yaml") -> None:
+    def _load_config(self, filename="default.yaml"):
         """Load configuration recursively from yaml file.
 
         Parameters
@@ -520,12 +512,14 @@ class AbstractController(object):
                 f"Changed default log umask to '{config.DEFAULT_LOG_UMASK}'"
             )
 
-        self.logger.info(f"Running {config.DEFAULT_THREADN} threads for starting/stopping")
+        self.logger.info(
+            f"Running {config.DEFAULT_THREADN} threads for starting/stopping"
+        )
 
     ###################
     # Component Management
     ###################
-    def _run_component_check(self, comp: Component) -> bool:
+    def _run_component_check(self, comp):
         """Runs the component check defined in the component configuration and returns the exit state.
 
         Parameters
@@ -558,7 +552,7 @@ class AbstractController(object):
 
         while p.poll() is None:
             sleep(0.5)
-        
+
         if config.SHOW_CHECK_OUTPUT:
             if p.stdout is not None:
                 out_raw = p.stdout.readlines()
@@ -568,7 +562,9 @@ class AbstractController(object):
             if p.stderr is not None:
                 err_out_list_raw = p.stderr.readlines()
                 if len(err_out_list_raw):
-                    err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list_raw)
+                    err_out_list = map(
+                        lambda x: x.decode(encoding="UTF-8"), err_out_list_raw
+                    )
                     self.logger.error(
                         (f"'{comp['id']}' check stderr:\n{''.join(err_out_list)}")
                     )
@@ -580,7 +576,7 @@ class AbstractController(object):
             self.logger.debug("Check returned false")
             return False
 
-    def get_component_by_id(self, comp_id: str) -> Component:
+    def get_component_by_id(self, comp_id):
         """Return component configuration by providing only the id (name@host).
 
         Parameters
@@ -610,7 +606,7 @@ class AbstractController(object):
     ###################
     # start
     ###################
-    def start_component_without_deps(self, comp: Component) -> None:
+    def start_component_without_deps(self, comp):
         """Chooses which lower level start function to use depending on whether the component is run on a remote host or not.
 
         Parameters
@@ -654,7 +650,7 @@ class AbstractController(object):
     ###################
     # Stop
     ###################
-    def stop_component(self, comp: Component) -> None:
+    def stop_component(self, comp):
         """Stop component `comp`.
 
         Invokes the lower level stop function depending on whether the component is run locally or on a remote host.
@@ -731,7 +727,7 @@ class AbstractController(object):
     ###################
     # Check
     ###################
-    def check_component(self, comp: Component, broadcast: bool = True) -> config.CheckState:
+    def check_component(self, comp, broadcast=True):
         """Runs component check for `comp` and returns status.
 
         If `comp` is run locally the call is redirected to ``check_local_component``, if `comp` is run on a remote
@@ -750,7 +746,7 @@ class AbstractController(object):
             State of the component
         """
 
-        if self.mon_thread.is_component_monitored(comp['id']):
+        if self.mon_thread.is_component_monitored(comp["id"]):
             return config.CheckState.RUNNING
 
         try:
@@ -779,7 +775,7 @@ class AbstractController(object):
             self.broadcast_event(events.CheckEvent(comp["id"], ret_val))
         return ret_val
 
-    def _check_local_component(self, comp: Component) -> Tuple[int, config.CheckState]:
+    def _check_local_component(self, comp):
         """Check if a local component is running and return the corresponding CheckState.
 
         Parameters
@@ -815,7 +811,7 @@ class AbstractController(object):
             elif check_available and self._run_component_check(comp):
                 logger.debug("Check succeeded")
                 ret = config.CheckState.RUNNING
-                children = Process(int(window.panes[0].get('pane_pid'))).children()
+                children = Process(int(window.panes[0].get("pane_pid"))).children()
                 if len(children) > 0:
                     pid = children[0].pid
             elif not check_available:
@@ -823,7 +819,7 @@ class AbstractController(object):
                     "No custom check specified and window is busy: returning true"
                 )
                 ret = config.CheckState.RUNNING
-                children = Process(int(window.panes[0].get('pane_pid'))).children()
+                children = Process(int(window.panes[0].get("pane_pid"))).children()
                 if len(children) > 0:
                     pid = children[0].pid
             else:
@@ -847,7 +843,7 @@ class AbstractController(object):
     ###################
     # Host related checks
     ###################
-    def is_localhost(self, hostname: str) -> bool:
+    def is_localhost(self, hostname):
         """Check if 'hostname' resolves to localhost.
 
         Parameters
@@ -884,7 +880,7 @@ class AbstractController(object):
                 f"Host '{hostname}' is unknown! Update your /etc/hosts file!"
             )
 
-    def run_on_localhost(self, comp: Component) -> bool:
+    def run_on_localhost(self, comp):
         """Check whether component `comp` is run on localhost or not.
 
         Parameters
@@ -911,7 +907,7 @@ class AbstractController(object):
     ###################
     # TMUX
     ###################
-    def kill_session_by_name(self, name: str) -> None:
+    def kill_session_by_name(self, name):
         """Kill tmux session by name.
 
         Parameters
@@ -926,9 +922,11 @@ class AbstractController(object):
         if session is not None:
             session.kill_session()
         else:
-            self.logger.warning(f"Session with name '{name}' could not be found. Ignoring since it would be killed anyway.")
+            self.logger.warning(
+                f"Session with name '{name}' could not be found. Ignoring since it would be killed anyway."
+            )
 
-    def _kill_window(self, window: Window) -> None:
+    def _kill_window(self, window):
         """Kill tmux window by reference.
 
         Parameters
@@ -941,7 +939,7 @@ class AbstractController(object):
         window.cmd("send-keys", "", "C-c")
         window.kill_window()
 
-    def _start_window(self, window: Window, comp: Component, log_file: str) -> None:
+    def _start_window(self, window, comp, log_file):
         """Execute cmd in window.
 
         Mainly used to run a component start command in its designated window
@@ -958,9 +956,9 @@ class AbstractController(object):
 
         comp_id = comp["id"]
 
-        pid = int(window.panes[0].get('pane_pid'))
-        procs: list[Process] = []
-        
+        pid = int(window.panes[0].get("pane_pid"))
+        procs = []
+
         if self._is_window_busy(window):
             procs.extend(Process(pid).children())
 
@@ -990,7 +988,7 @@ class AbstractController(object):
         start = get_component_cmd(comp, "start")
         window.cmd("send-keys", start, "Enter")
 
-    def _find_window(self, window_name: str) -> Optional[Window]:
+    def _find_window(self, window_name):
         """Find tmux window by name.
 
         Parameters
@@ -1008,7 +1006,7 @@ class AbstractController(object):
         window = self.session.find_where({"window_name": window_name})
         return window
 
-    def _get_main_window(self) -> Window:
+    def _get_main_window(self):
         """Fetches the main window of the current tmux session.
 
         Returns
@@ -1018,14 +1016,15 @@ class AbstractController(object):
         """
         window = self._find_window("Main")
         if window is None:
-            self.logger.fatal(f"Main window of session '{self.session_name}' could not be found! Shutting down")
-            #TODO: add new Fatal exit state
+            self.logger.fatal(
+                f"Main window of session '{self.session_name}' could not be found! Shutting down"
+            )
+            # TODO: add new Fatal exit state
             self.cleanup(full=True, exit_status=config.ExitStatus.NO_MASTER_RUNNING)
-            raise Exception()# call above will exit anyways. This is only for the linter
+            raise Exception()  # call above will exit anyways. This is only for the linter
         return window
 
-
-    def _send_main_session_command(self, cmd: str) -> None:
+    def _send_main_session_command(self, cmd):
         """Send command to the main window of the master session.
 
         `Session.cmd` sends the command to the currently active window of the session, and when issuing commands to the
@@ -1045,13 +1044,13 @@ class AbstractController(object):
         window.cmd("send-keys", cmd, "Enter")
         self._wait_until_window_not_busy(window)
 
-    def _wait_until_main_window_not_busy(self) -> None:
+    def _wait_until_main_window_not_busy(self):
         """Blocks until main window of the master session has no child process left running."""
 
         window = self._get_main_window()
         self._wait_until_window_not_busy(window)
 
-    def _wait_until_window_not_busy(self, window: Window) -> None:
+    def _wait_until_window_not_busy(self, window):
         """Checks whether the passed window is busy executing a process and blocks until it is not busy anymore.
 
         Parameters
@@ -1067,7 +1066,7 @@ class AbstractController(object):
             sleep(0.1)
         self.logger.debug(f"... window '{window.name}' is not busy anymore")
 
-    def _is_window_busy(self, window: Window) -> bool:
+    def _is_window_busy(self, window):
         """Checks whether the window has at least one running child process (excluding tee processes).
 
         Parameters
@@ -1081,10 +1080,10 @@ class AbstractController(object):
             True if `window` is busy.
         """
 
-        cc = window.panes[0].get('pane_current_command')
+        cc = window.panes[0].get("pane_current_command")
         ep = config.SHELL_EXECUTABLE_PATH
 
-        if cc in ['fish', 'zsh', 'bash', 'sh']:
+        if cc in ["fish", "zsh", "bash", "sh"]:
             return False
 
         return cc != ep
@@ -1093,7 +1092,7 @@ class AbstractController(object):
     # TMUX SESSION CONTROL
     ###################
 
-    def kill_remote_session_by_name(self, name: str, host: str) -> None:
+    def kill_remote_session_by_name(self, name, host):
         """Kill tmux session by name `name` on host `host`.
 
         Parameters
@@ -1107,7 +1106,7 @@ class AbstractController(object):
         cmd = f"ssh -F {config.CUSTOM_SSH_CONFIG_PATH} -t {host} 'tmux kill-session -t {name}'"
         self._send_main_session_command(cmd)
 
-    def start_local_clone_session(self, comp: Component) -> None:
+    def start_local_clone_session(self, comp):
         """Start a local clone session of the master session and open the window of component `comp`.
 
         Because the libtmux library does not provide functions to achieve this, a bash script is run to automatize the
@@ -1128,9 +1127,9 @@ class AbstractController(object):
     ####################
     def cleanup(
         self,
-        full: bool = False,
-        exit_status: config.ExitStatus = config.ExitStatus.FINE,
-    ) -> None:
+        full=False,
+        exit_status=config.ExitStatus.FINE,
+    ):
         """Cleanup function for safe shutdown.
 
         Parameters
@@ -1147,7 +1146,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def start_remote_clone_session(self, comp: Component) -> None:
+    def start_remote_clone_session(self, comp):
         """Start a clone session of the remote slave session and open the window of component `comp`.
 
         Parameters
@@ -1162,7 +1161,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def add_subscriber(self, subscriber: queue.Queue) -> None:
+    def add_subscriber(self, subscriber):
         """Add a queue to the list of subscribers for manager and monitoring thread events.
 
         Parameters
@@ -1177,7 +1176,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def start_all(self, force_mode: bool = False) -> None:
+    def start_all(self, force_mode=False):
         """Start all components ordered by dependency.
 
         If force mode is active, each component start is attempted. If not, after a component failed, each component is
@@ -1195,7 +1194,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def start_component(self, comp: Component, force_mode: bool = False) -> config.StartState:
+    def start_component(self, comp, force_mode=False):
         """Invoke start of component `comp`.
 
         Parameters
@@ -1212,7 +1211,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def _start_remote_component(self, comp: Component) -> None:
+    def _start_remote_component(self, comp):
         """Issue start component 'comp' to on remote host.
 
         Parameters
@@ -1227,7 +1226,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def stop_all(self) -> None:
+    def stop_all(self):
         """Stop all components ordered by dependency and run checks afterwards
 
         Raises
@@ -1237,7 +1236,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def _stop_remote_component(self, comp: Component) -> None:
+    def _stop_remote_component(self, comp):
         """Stops remote component `comp`.
 
         Parameters
@@ -1252,7 +1251,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def _check_remote_component(self, comp: Component) -> config.CheckState:
+    def _check_remote_component(self, comp):
         """Run remote component check.
 
         Parameters
@@ -1272,7 +1271,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def reconnect_with_host(self, hostname: str) -> bool:
+    def reconnect_with_host(self, hostname):
         """Re-establish master connection to host `hostname`.
 
         Parameters
@@ -1292,7 +1291,7 @@ class AbstractController(object):
         """
         raise NotImplementedError
 
-    def reload_config(self) -> None:
+    def reload_config(self):
         """Try reloading configuration file. The old config is saved under a temporary variable that is discarded if
         reloading was successful, but restored if reloading failed at some point (missing file, or dependency errors)
 
@@ -1309,10 +1308,10 @@ class ControlCenter(AbstractController):
 
     def __init__(
         self,
-        configfile: str,
-        monitor_enabled: bool = False,
-        slave_server: Optional['SlaveManagementServer'] = None,
-    ) -> None:
+        configfile,
+        monitor_enabled=False,
+        slave_server=None,
+    ):
         """Sets up the ControlCenter
 
         Initializes an empty node dict, an empty host_list dict, creates a queue for monitor jobs and a monitoring
@@ -1331,11 +1330,13 @@ class ControlCenter(AbstractController):
 
         super(ControlCenter, self).__init__(configfile)
         self.slave_server = slave_server
-        self.nodes: dict[str, Node] = {}
+        self.nodes = {}
 
         self.host_states_lock = Lock()
 
-        self.host_states: dict[str, Tuple[int, config.HostConnectionState]] = {f"{socket.gethostname()}": (0, config.HostConnectionState.CONNECTED)}
+        self.host_states = {
+            f"{socket.gethostname()}": (0, config.HostConnectionState.CONNECTED)
+        }
         """Dictionary that contains the pid the main ssh connection and connection state for each host."""
 
         self.host_stats = {f"{socket.gethostname()}": config.EMPTY_HOST_STATS}
@@ -1386,11 +1387,10 @@ class ControlCenter(AbstractController):
         if config.MONITOR_LOCAL_STATS:
             self.stat_thread.start()
 
-
     ###################
     # Setup
     ###################
-    def init(self) -> None:
+    def init(self):
         """Initialize the controller.
 
         Sets up master ssh connections to all used hosts, copies components to them if they are reachable and computes a
@@ -1458,7 +1458,7 @@ class ControlCenter(AbstractController):
                     self.logger.debug(f"Starting slave on '{host}'")
                     self._start_remote_slave(host)
 
-    def reload_config(self) -> None:
+    def reload_config(self):
         """
         :return: None
         """
@@ -1506,7 +1506,9 @@ class ControlCenter(AbstractController):
 
         # Update hosts
         old_host_states = self.host_states.copy()
-        self.host_states = {socket.gethostname(): (0, config.HostConnectionState.CONNECTED)}
+        self.host_states = {
+            socket.gethostname(): (0, config.HostConnectionState.CONNECTED)
+        }
 
         for group in self.config["groups"]:
             for comp in group["components"]:
@@ -1553,7 +1555,7 @@ class ControlCenter(AbstractController):
 
         self.broadcast_event(events.ConfigReloadEvent(self.config, self.host_states))
 
-    def _start_remote_slave(self, hostname: str, custom_messages: Optional[list[bytes]]=None) -> None:
+    def _start_remote_slave(self, hostname, custom_messages=None):
         """Start slave manager on host 'hostname'.
 
         Parameters
@@ -1579,7 +1581,7 @@ class ControlCenter(AbstractController):
                 )
             )
 
-        state = self.host_states.get(hostname) 
+        state = self.host_states.get(hostname)
         if state is None or window is None:
             self.logger.error(
                 f"No connection to remote '{hostname}' - can not start slave"
@@ -1587,7 +1589,7 @@ class ControlCenter(AbstractController):
             return
         if self.slave_server is None:
             self.logger.error(
-                f"Slave server is not running, cannot start a slave on host '{hostname}'" 
+                f"Slave server is not running, cannot start a slave on host '{hostname}'"
             )
             return
 
@@ -1596,7 +1598,10 @@ class ControlCenter(AbstractController):
         ):
             with self.host_states_lock:
                 state = self.host_states[hostname]
-                self.host_states[hostname] = (state[0], config.HostConnectionState.SSH_ONLY)
+                self.host_states[hostname] = (
+                    state[0],
+                    config.HostConnectionState.SSH_ONLY,
+                )
             self.logger.error(f"Running hyperion validate on '{hostname}' failed!")
             return
 
@@ -1606,15 +1611,23 @@ class ControlCenter(AbstractController):
         ):
             with self.host_states_lock:
                 state = self.host_states[hostname]
-                self.host_states[hostname] = (state[0], config.HostConnectionState.CONNECTED)
+                self.host_states[hostname] = (
+                    state[0],
+                    config.HostConnectionState.CONNECTED,
+                )
         else:
             if self._is_window_busy(window):
-                self.logger.warn("Remote host slave is still running. Manually check remote tmux session! Maybe the host key of the main server is unknown")
+                self.logger.warn(
+                    "Remote host slave is still running. Manually check remote tmux session! Maybe the host key of the main server is unknown"
+                )
             with self.host_states_lock:
                 state = self.host_states[hostname]
-                self.host_states[hostname] = (state[0], config.HostConnectionState.SSH_ONLY)
+                self.host_states[hostname] = (
+                    state[0],
+                    config.HostConnectionState.SSH_ONLY,
+                )
 
-    def set_dependencies(self) -> None:
+    def set_dependencies(self):
         """Parses all components constructing a dependency tree.
 
         :raises exception.UnmetDependencyException: If a component has an unmet dependency
@@ -1622,9 +1635,9 @@ class ControlCenter(AbstractController):
         """
         unmet_deps = False
 
-        provides: dict[str, list[str]] = {}
-        requires: dict[str, list[str]] = {}
-        optional: dict[str, list[str]] = {}
+        provides = {}
+        requires = {}
+        optional = {}
 
         for group in self.config["groups"]:
             for comp in group["components"]:
@@ -1709,9 +1722,7 @@ class ControlCenter(AbstractController):
             for requiring_comp in req_list:
                 if provides.get(requirement):
                     for provider in provides[requirement]:
-                        self.nodes[requiring_comp].add_edge(
-                            self.nodes[provider]
-                        )
+                        self.nodes[requiring_comp].add_edge(self.nodes[provider])
 
         for id in self.nodes:
             node = self.nodes[id]
@@ -1727,8 +1738,8 @@ class ControlCenter(AbstractController):
         # Test if starting all components is possible
         try:
             node = self.nodes["master_node"]
-            res: list[Node] = []
-            unres: list[Node] = []
+            res = []
+            unres = []
             dep_resolve(node, res, unres)
             dep_string = ""
             for node in res:
@@ -1744,7 +1755,7 @@ class ControlCenter(AbstractController):
         if unmet_deps:
             raise exceptions.UnmetDependenciesException(unmet)
 
-    def _copy_config_to_remote(self, host: str) -> None:
+    def _copy_config_to_remote(self, host):
         """Copy the configuration to a remote machine.
 
         Parameters
@@ -1779,14 +1790,14 @@ class ControlCenter(AbstractController):
             )
             self._send_main_session_command(cmd)
 
-    def _copy_env_file(self, host: str) -> None:
+    def _copy_env_file(self, host):
         """Copies a custom environment file to source to the remote host `host` if it was specified in the config.
 
         Parameters
         ----------
         host : str
             Host to copy the file to.
-        """ 
+        """
 
         if self.custom_env_path:
             self.logger.debug("Copying custom env file to %s" % host)
@@ -1803,12 +1814,12 @@ class ControlCenter(AbstractController):
             )
             self._send_main_session_command(cmd)
 
-    def add_subscriber(self, subscriber_queue: queue.Queue) -> None:
+    def add_subscriber(self, subscriber_queue):
         self.subscribers.append(subscriber_queue)
         self.mon_thread.add_subscriber(subscriber_queue)
         self.stat_thread.add_subscriber(subscriber_queue)
 
-    def remove_subscriber(self, subscriber_queue: queue.Queue) -> None:
+    def remove_subscriber(self, subscriber_queue):
         """Remove a queue from the list of subscribers for manager and monitoring thread events.
 
         Parameters
@@ -1824,7 +1835,7 @@ class ControlCenter(AbstractController):
     ###################
     # Stop
     ###################
-    def _stop_remote_component(self, comp: Component) -> None:
+    def _stop_remote_component(self, comp):
         """Stops remote component `comp`.
 
         Parameters
@@ -1832,7 +1843,7 @@ class ControlCenter(AbstractController):
         comp : Component
             Component to stop.
         """
- 
+
         comp_id = comp["id"]
         host = comp["host"]
 
@@ -1878,7 +1889,7 @@ class ControlCenter(AbstractController):
     ###################
     # Start
     ###################
-    def start_component(self, comp: Component, force_mode: bool = False) -> config.StartState:
+    def start_component(self, comp, force_mode=False):
         """Invoke dependency based start of component `comp`.
 
         Traverses the path of dependencies and invokes a call to `start_component_without_deps` for all found
@@ -1896,15 +1907,17 @@ class ControlCenter(AbstractController):
         -------
         config.StartState
             Result of the starting process.
-        """        
+        """
         node = self.nodes[comp["id"]]
-        res: list[Node] = []
-        unres: list[Node] = []
+        res = []
+        unres = []
         dep_resolve(node, res, unres)
         hierarchy = resolve_concurrent_start(res)
-        
+
         if config.DEFAULT_THREADN > 1:
-            failed_comps = self.start_component_hierarchy_parallel(hierarchy, force_mode, threadn=config.DEFAULT_THREADN)
+            failed_comps = self.start_component_hierarchy_parallel(
+                hierarchy, force_mode, threadn=config.DEFAULT_THREADN
+            )
         else:
             failed_comps = self.start_component_hierarchy(hierarchy, force_mode)
 
@@ -1913,7 +1926,7 @@ class ControlCenter(AbstractController):
 
         return config.StartState.STARTED
 
-    def start_component_hierarchy(self, hierarchy: list[list[Node]], force_mode: bool = False) -> dict[str, config.CheckState]:
+    def start_component_hierarchy(self, hierarchy, force_mode=False):
         """Starts a component hierarchy, using a single thread.
 
         Parameters
@@ -1927,19 +1940,25 @@ class ControlCenter(AbstractController):
         -------
         dict[str, config.CheckState]
             The individual checkstates of the failed components. This is only for internal processing, broadcasting happens along the way.
-        """        
-        failed_comps: dict[str, config.CheckState] = {}
+        """
+        failed_comps = {}
 
         for batch in hierarchy:
             if len(failed_comps) > 0 and not force_mode:
-                self.logger.error(f"Not in force mode, cancelling dependencies of failed components")
+                self.logger.error(
+                    f"Not in force mode, cancelling dependencies of failed components"
+                )
                 for comp in batch:
-                    self.broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
+                    self.broadcast_event(
+                        events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED)
+                    )
                     failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
                 continue
 
-            self.logger.info(f"Starting the following batch of components: {[c.comp_id for c in batch]}")
-            
+            self.logger.info(
+                f"Starting the following batch of components: {[c.comp_id for c in batch]}"
+            )
+
             for next_comp in batch:
                 state = self.component_start_worker_fn(next_comp)
                 if (
@@ -1954,7 +1973,9 @@ class ControlCenter(AbstractController):
                     self.logger.error(f"Component {state.comp_id} failed to start!")
         return failed_comps
 
-    def start_component_hierarchy_parallel(self, hierarchy: list[list[Node]], force_mode: bool = False, threadn: int=4) -> dict[str, config.CheckState]:
+    def start_component_hierarchy_parallel(
+        self, hierarchy, force_mode=False, threadn=4
+    ):
         """Starts a component hierarchy, using `threadn` threads to start independent components in parallel.
 
         Parameters
@@ -1970,20 +1991,26 @@ class ControlCenter(AbstractController):
         -------
         dict[str, config.CheckState]
             The individual checkstates of the failed components. This is only for internal processing, broadcasting happens along the way.
-        """        
-        failed_comps: dict[str, config.CheckState] = {}
-        pending: deque[AsyncResult[events.CheckEvent]] = deque()
+        """
+        failed_comps = {}
+        pending = deque()
         pool = ThreadPool(processes=threadn)
 
         for batch in hierarchy:
             if len(failed_comps) > 0 and not force_mode:
-                self.logger.error(f"Not in force mode, cancelling dependencies of failed components")
+                self.logger.error(
+                    f"Not in force mode, cancelling dependencies of failed components"
+                )
                 for comp in batch:
-                    self.broadcast_event(events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED))
+                    self.broadcast_event(
+                        events.CheckEvent(comp.comp_id, config.CheckState.DEP_FAILED)
+                    )
                     failed_comps[comp.comp_id] = config.CheckState.DEP_FAILED
                 continue
 
-            self.logger.info(f"Starting the following components in parallel: {[c.comp_id for c in batch]}")
+            self.logger.info(
+                f"Starting the following components in parallel: {[c.comp_id for c in batch]}"
+            )
             comp_iter = iter(batch)
             level_done = False
             while not level_done or len(pending) > 0:
@@ -2003,14 +2030,18 @@ class ControlCenter(AbstractController):
                 elif len(pending) < threadn and not level_done:
                     try:
                         next_comp = next(comp_iter)
-                        task = pool.apply_async(self.component_start_worker_fn, (next_comp,))
+                        task = pool.apply_async(
+                            self.component_start_worker_fn, (next_comp,)
+                        )
                         pending.append(task)
-                        self.logger.debug(f"Put start job for '{next_comp.comp_id}' in queue")
+                        self.logger.debug(
+                            f"Put start job for '{next_comp.comp_id}' in queue"
+                        )
                     except StopIteration:
                         level_done = True
         return failed_comps
 
-    def component_start_worker_fn(self, node: Node) -> events.CheckEvent:
+    def component_start_worker_fn(self, node):
         """Separate function for a component start with check.
 
         Parameters
@@ -2022,7 +2053,7 @@ class ControlCenter(AbstractController):
         -------
         events.CheckEvent
             Succesfull CheckEvent if the component was already running or started successfully, non-successful event otherwise.
-        """        
+        """
 
         state = self.check_component(node.component, broadcast=False)
         if (
@@ -2036,9 +2067,7 @@ class ControlCenter(AbstractController):
             self.broadcast_event(events.CheckEvent(node.comp_id, state))
             return events.CheckEvent(node.comp_id, state)
         else:
-            self.logger.debug(
-                f"Starting component '{node.comp_id}'"
-            )
+            self.logger.debug(f"Starting component '{node.comp_id}'")
             self.start_component_without_deps(node.component)
             # Wait component time for startup
             end_t = time() + get_component_wait(node.component)
@@ -2061,12 +2090,14 @@ class ControlCenter(AbstractController):
                     if tries > 2:
                         break
                     tries = tries + 1
-                    self.logger.warn(f"Retrying component check for '{node.comp_id}' (failed try {tries})")
+                    self.logger.warn(
+                        f"Retrying component check for '{node.comp_id}' (failed try {tries})"
+                    )
                 sleep(0.5)
             self.broadcast_event(events.CheckEvent(node.comp_id, state))
             return events.CheckEvent(node.comp_id, state)
 
-    def _start_remote_component(self, comp: Component) -> None:
+    def _start_remote_component(self, comp):
         """Issue start component 'comp' to slave manager on remote host.
 
         Parameters
@@ -2117,21 +2148,23 @@ class ControlCenter(AbstractController):
                 events.CheckEvent(comp["id"], config.CheckState.UNREACHABLE)
             )
 
-    def start_all(self, force_mode: bool = False) -> None:
+    def start_all(self, force_mode=False):
         comps = self.get_start_all_list()
         hierarchy = resolve_concurrent_start(comps)
         if config.DEFAULT_THREADN > 1:
-            failed_comps = self.start_component_hierarchy_parallel(hierarchy, force_mode, threadn=config.DEFAULT_THREADN)
+            failed_comps = self.start_component_hierarchy_parallel(
+                hierarchy, force_mode, threadn=config.DEFAULT_THREADN
+            )
         else:
             failed_comps = self.start_component_hierarchy(hierarchy, force_mode)
         self.broadcast_event(events.StartReportEvent("All components", failed_comps))
 
-    def stop_all(self) -> None:
+    def stop_all(self):
         """Stop all components ordered by dependency and run checks afterwards."""
-        
+
         if config.DEFAULT_THREADN > 1:
             return self.stop_all_parallel()
-        
+
         try:
             comps = self.get_start_all_list(exclude_no_auto=False)
             hierarchy = resolve_concurrent_start(comps)
@@ -2148,8 +2181,7 @@ class ControlCenter(AbstractController):
             for comp in batch:
                 self.check_component(comp.component)
 
-
-    def stop_all_parallel(self) -> None:
+    def stop_all_parallel(self):
         """Stop all components in parallel ordered by dependency and run checks afterwards."""
         try:
             comps = self.get_start_all_list(exclude_no_auto=False)
@@ -2159,12 +2191,12 @@ class ControlCenter(AbstractController):
             # can safely return without action.
             return
 
-        pending: deque[AsyncResult[None]] = deque()
+        pending = deque()
         pool = ThreadPool(processes=config.DEFAULT_THREADN)
 
         hierarchy = list(reversed(hierarchy))
 
-        last_batch: list[Node] = []
+        last_batch = []
 
         for batch in hierarchy:
             stop_iter = iter(batch)
@@ -2178,14 +2210,18 @@ class ControlCenter(AbstractController):
                     try:
                         comp = next(stop_iter)
                         both_done = False
-                        task_stop = pool.apply_async(self.stop_component, (comp.component,))
+                        task_stop = pool.apply_async(
+                            self.stop_component, (comp.component,)
+                        )
                         pending.append(task_stop)
                     except StopIteration:
                         pass
                     try:
                         comp = next(check_iter)
                         both_done = False
-                        task_check = pool.apply_async(self.check_component, (comp.component,))
+                        task_check = pool.apply_async(
+                            self.check_component, (comp.component,)
+                        )
                         pending.append(task_check)
                     except StopIteration:
                         pass
@@ -2204,7 +2240,9 @@ class ControlCenter(AbstractController):
                 try:
                     comp = next(check_iter)
                     done = False
-                    task_check = pool.apply_async(self.check_component, (comp.component,))
+                    task_check = pool.apply_async(
+                        self.check_component, (comp.component,)
+                    )
                     pending.append(task_check)
                 except StopIteration:
                     pass
@@ -2214,7 +2252,7 @@ class ControlCenter(AbstractController):
     ###################
     # Check
     ###################
-    def _check_remote_component(self, comp: Component) -> config.CheckState:
+    def _check_remote_component(self, comp):
         """Forwards component check to slave manager.
 
         Parameters
@@ -2263,16 +2301,16 @@ class ControlCenter(AbstractController):
     ###################
     # CLI Functions
     ###################
-    def list_components(self) -> list[str]:
+    def list_components(self):
         """List all components used by the current configuration.
 
         :return: List of components
         :rtype: list of str
         """
 
-        return [node.comp_id for _,node in self.nodes.items()]
+        return [node.comp_id for _, node in self.nodes.items()]
 
-    def start_by_cli(self, comp_id: str, force_mode: bool = False) -> None:
+    def start_by_cli(self, comp_id, force_mode=False):
         """Interface function for starting component by name `comp_id` from the cli.
 
         Logging information is provided on the INFO level.
@@ -2298,13 +2336,15 @@ class ControlCenter(AbstractController):
         if ret is config.StartState.STARTED:
             logger.info("Started component '%s'" % comp_id)
             ret_check = self.check_component(comp)
-            logger.info("Check returned status: %s" % config.STATE_DESCRIPTION.get(ret_check))
+            logger.info(
+                "Check returned status: %s" % config.STATE_DESCRIPTION.get(ret_check)
+            )
         elif ret is config.StartState.FAILED:
             logger.info("Starting '%s' failed!" % comp_id)
         elif ret is config.StartState.ALREADY_RUNNING:
             logger.info("Aborted '%s' start: Component is already running!" % comp_id)
 
-    def stop_by_cli(self, comp_id: str) -> None:
+    def stop_by_cli(self, comp_id):
         """Interface function for stopping component by name `comp_name` from the cli.
 
         Logging information is provided on the INFO level.
@@ -2327,7 +2367,7 @@ class ControlCenter(AbstractController):
         # ret = self.check_component(comp)
         # logger.info("Check returned status: %s" % ret.name)
 
-    def check_by_cli(self, comp_id: str) -> None:
+    def check_by_cli(self, comp_id):
         """Interface function for checking component by name `comp_name` from the cli.
 
         Logging information is provided on the INFO level.
@@ -2348,7 +2388,7 @@ class ControlCenter(AbstractController):
         ret = self.check_component(comp)
         logger.info("Check returned status: %s" % ret.name)
 
-    def start_clone_session_and_attach(self, comp_id: str) -> None:
+    def start_clone_session_and_attach(self, comp_id):
         """Interface function for show term of component by name `comp_name` from the cli.
 
         Parameters
@@ -2383,7 +2423,7 @@ class ControlCenter(AbstractController):
             )
             call(cmd, shell=True)
 
-    def show_comp_log(self, comp_id: str) -> None:
+    def show_comp_log(self, comp_id):
         """Interface function for viewing the log of component by name `comp_id` from the cli.
 
         Parameters
@@ -2427,7 +2467,7 @@ class ControlCenter(AbstractController):
     ###################
     # Dependency management
     ###################
-    def get_dep_list(self, comp: Component) -> list[Node]:
+    def get_dep_list(self, comp):
         """Get a list of all components that `comp` depends on.
 
         Parameters
@@ -2440,19 +2480,19 @@ class ControlCenter(AbstractController):
         list[Node]
             The components dependencies.
         """
-         
+
         node = self.nodes[comp["id"]]
-        res: list[Node] = []
-        unres: list[Node] = []
+        res = []
+        unres = []
         dep_resolve(node, res, unres)
         res.remove(node)
 
         it = list(res)
-        [res.remove(entry) if "noauto" in entry.component else "" for entry in it] # type: ignore[func-returns-value]
+        [res.remove(entry) if "noauto" in entry.component else "" for entry in it]  # type: ignore[func-returns-value]
 
         return res
 
-    def get_start_all_list(self, exclude_no_auto: bool = True) -> list[Node]:
+    def get_start_all_list(self, exclude_no_auto=True):
         """Get a list of all components ordered by dependency (from dependency to depends on).
 
         Parameters
@@ -2465,27 +2505,27 @@ class ControlCenter(AbstractController):
         list[Node]
             List of components.
         """
-        
+
         node = self.nodes["master_node"]
 
         if node is None:
             return []
 
-        res: list[Node] = []
-        unres: list[Node] = []
+        res = []
+        unres = []
         dep_resolve(node, res, unres)
         res.remove(node)
 
         it = list(res)
         if exclude_no_auto:
-            [res.remove(entry) if "noauto" in entry.component else "" for entry in it] # type: ignore[func-returns-value]
+            [res.remove(entry) if "noauto" in entry.component else "" for entry in it]  # type: ignore[func-returns-value]
 
         return res
 
     ###################
     # SSH stuff
     ###################
-    def _establish_master_connection(self, hostname: str) -> bool:
+    def _establish_master_connection(self, hostname):
         """Create a master ssh connection to host `hostname` in a dedicated window.
 
         The pid of the ssh session is put into the monitoring thread to have a means to check if the connection still
@@ -2501,13 +2541,16 @@ class ControlCenter(AbstractController):
         bool
             True establishing the connection was successful.
         """
-        
+
         self.logger.debug("Establishing master connection to host %s" % hostname)
 
-        cmd = "ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s -o ControlMaster=yes" % (
-            config.CUSTOM_SSH_CONFIG_PATH,
-            hostname,
-            config.SSH_CONNECTION_TIMEOUT,
+        cmd = (
+            "ssh -F %s %s -o BatchMode=yes -o ConnectTimeout=%s -o ControlMaster=yes"
+            % (
+                config.CUSTOM_SSH_CONFIG_PATH,
+                hostname,
+                config.SSH_CONNECTION_TIMEOUT,
+            )
         )
 
         host_ip = resolve_host_address(hostname, config.CUSTOM_SSH_CONFIG_PATH)
@@ -2516,7 +2559,10 @@ class ControlCenter(AbstractController):
             self.logger.error("Host %s is not reachable!" % hostname)
 
             with self.host_states_lock:
-                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_states[hostname] = (
+                    0,
+                    config.HostConnectionState.DISCONNECTED,
+                )
                 self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
@@ -2539,7 +2585,7 @@ class ControlCenter(AbstractController):
         t_end = time() + config.SSH_CONNECTION_TIMEOUT
         t_min = time() + 0.5
 
-        pid = int(window.panes[0].get('pane_pid'))
+        pid = int(window.panes[0].get("pane_pid"))
         pids = []
 
         while time() < t_end:
@@ -2557,7 +2603,10 @@ class ControlCenter(AbstractController):
 
         if len(pids) < 1:
             with self.host_states_lock:
-                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_states[hostname] = (
+                    0,
+                    config.HostConnectionState.DISCONNECTED,
+                )
                 self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
@@ -2570,7 +2619,10 @@ class ControlCenter(AbstractController):
                 "you have set up ssh-keys and the identification certificate is up to date"
             )
             with self.host_states_lock:
-                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_states[hostname] = (
+                    0,
+                    config.HostConnectionState.DISCONNECTED,
+                )
                 self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
@@ -2596,11 +2648,14 @@ class ControlCenter(AbstractController):
                 "you have set up ssh-keys and the identification certificate is up to date"
             )
             with self.host_states_lock:
-                self.host_states[hostname] = (0, config.HostConnectionState.DISCONNECTED)
+                self.host_states[hostname] = (
+                    0,
+                    config.HostConnectionState.DISCONNECTED,
+                )
                 self.host_stats[hostname] = config.EMPTY_HOST_STATS
             return False
 
-    def reconnect_with_host(self, hostname: str) -> bool:
+    def reconnect_with_host(self, hostname):
         """Re-establish master connection to host `hostname`
 
         Parameters
@@ -2626,7 +2681,10 @@ class ControlCenter(AbstractController):
 
         # Start new connection
         if self._establish_master_connection(hostname):
-            if old_status is not None and old_status[1] is config.HostConnectionState.DISCONNECTED:
+            if (
+                old_status is not None
+                and old_status[1] is config.HostConnectionState.DISCONNECTED
+            ):
                 self.broadcast_event(events.ReconnectEvent(hostname))
             self._start_remote_slave(hostname)
             return True
@@ -2636,12 +2694,12 @@ class ControlCenter(AbstractController):
     ###################
     # Safe shutdown
     ###################
-    def signal_handler(self, signum: int, frame: Any) -> None:
+    def signal_handler(self, signum, frame):
         """Handler that invokes cleanup on a received signal."""
         self.logger.debug("received signal %s. Running cleanup" % signum)
         self.cleanup()
 
-    def cleanup(self, full: bool = False, status: config.ExitStatus=config.ExitStatus.FINE) -> None:
+    def cleanup(self, full=False, status=config.ExitStatus.FINE):
         """Clean up for safe shutdown.
 
         Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
@@ -2654,7 +2712,7 @@ class ControlCenter(AbstractController):
         status : config.ExitStatus, optional
             Status context this function was invoked from. The application will exit with that status, by default config.ExitStatus.FINE
         """
-        
+
         self.logger.info("Shutting down safely...")
 
         self.logger.debug("Killing monitoring thread")
@@ -2684,11 +2742,11 @@ class ControlCenter(AbstractController):
             self.kill_session_by_name(self.session_name)
 
         self.logger.info("... Done")
-        if (status.value != 0 ):
+        if status.value != 0:
             self.logger.critical(f"{status.name}")
         exit(status.value)
 
-    def start_remote_clone_session(self, comp: Component) -> None:
+    def start_remote_clone_session(self, comp):
         comp_id = comp["id"]
         host = comp["host"]
 
@@ -2722,34 +2780,34 @@ class ControlCenter(AbstractController):
 class SlaveManager(AbstractController):
     """Controller class that manages components on a slave machine."""
 
-    def start_remote_clone_session(self, comp: Component) -> None:
+    def start_remote_clone_session(self, comp):
         self.logger.error("This function is disabled for slave managers!")
         raise NotImplementedError
 
-    def _stop_remote_component(self, comp: Component) -> None:
+    def _stop_remote_component(self, comp):
         self.logger.error("This function is disabled for slave managers!")
         raise NotImplementedError
 
-    def _start_remote_component(self, comp: Component) -> None:
+    def _start_remote_component(self, comp):
         self.logger.error("This function is disabled for slave managers!")
         raise NotImplementedError
 
-    def _check_remote_component(self, comp: Component) -> config.CheckState:
+    def _check_remote_component(self, comp):
         self.logger.error("This function is disabled for slave managers!")
         raise NotImplementedError
 
-    def start_all(self, force_mode: bool = False) -> None:
+    def start_all(self, force_mode=False):
         self.logger.error("This function is disabled for slave managers!")
         raise NotImplementedError
 
-    def start_local_clone_session(self, comp: Component) -> None:
+    def start_local_clone_session(self, comp):
         session_name = "%s-slave" % self.config["name"]
         comp_id = comp["id"]
 
         cmd = "%s '%s' '%s'" % (SCRIPT_CLONE_PATH, session_name, comp_id)
         call(cmd, shell=True)
 
-    def reload_config(self) -> None:
+    def reload_config(self):
         """Try reloading configuration file. The old config is saved under a temporary variable that is discarded if
         reloading was successful, but restored if reloading failed at some point (missing file, or dependency errors).
         """
@@ -2772,7 +2830,7 @@ class SlaveManager(AbstractController):
         self.session_name = f'{self.config["name"]}-slave'
         self.logger.info("Config reload was successful")
 
-    def start_component(self, comp: Component, force_mode: bool = True) -> config.StartState:
+    def start_component(self, comp, force_mode=True):
         """Start component on this slave.
 
         This function just calls `start_component_without_deps` because dependencies are managed by the master server.
@@ -2785,19 +2843,19 @@ class SlaveManager(AbstractController):
             Slave always starts without dependency resolution thus this parameter does not affect this subclass implementation.
         """
         self.start_component_without_deps(comp)
-        return config.StartState.STARTED # meaningless return to satisfy linter
+        return config.StartState.STARTED  # meaningless return to satisfy linter
 
-    def stop_all(self) -> None:
+    def stop_all(self):
         """Slave only gets forwarded start commands without dependency resolution, thus this function does nothing on a SlaveManager."""
         self.logger.error("This function is disabled for slave managers!")
         raise NotImplementedError
 
-    def reconnect_with_host(self, hostname: str) -> bool:
+    def reconnect_with_host(self, hostname):
         """Slave does not connect with other slaves, thus this function does nothing on a SlaveManager."""
         self.logger.error("This function is disabled for slave managers!")
         raise NotImplementedError
 
-    def __init__(self, configfile: str) -> None:
+    def __init__(self, configfile):
         """Initialize slave manager.
 
         Parameters
@@ -2807,8 +2865,10 @@ class SlaveManager(AbstractController):
         """
 
         super(SlaveManager, self).__init__(configfile)
-        self.nodes: dict[str, Node] = {}
-        self.host_states = {f"{socket.gethostname()}": (0, config.HostConnectionState.CONNECTED)}
+        self.nodes = {}
+        self.host_states = {
+            f"{socket.gethostname()}": (0, config.HostConnectionState.CONNECTED)
+        }
         self.mon_thread.start()
 
         try:
@@ -2847,7 +2907,7 @@ class SlaveManager(AbstractController):
                 session_name=self.session_name, window_name="Main"
             )
 
-    def cleanup(self, full: bool = False, exit_status: config.ExitStatus=config.ExitStatus.FINE) -> None:
+    def cleanup(self, full=False, exit_status=config.ExitStatus.FINE):
         """Clean up for safe shutdown.
 
         Kills the monitoring thread and if full shutdown is requested also the ssh slave sessions and master connections
@@ -2874,7 +2934,7 @@ class SlaveManager(AbstractController):
         self.logger.info("... Done")
         exit(exit_status.value)
 
-    def add_subscriber(self, subscriber: queue.Queue) -> None:
+    def add_subscriber(self, subscriber):
         self.subscribers.append(subscriber)
         self.mon_thread.add_subscriber(subscriber)
         self.stat_thread.add_subscriber(subscriber)

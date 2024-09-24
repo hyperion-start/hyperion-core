@@ -1,13 +1,12 @@
 from hyperion.lib.util.exception import CircularReferenceException
-from hyperion.lib.util.types import Component
-from typing_extensions import Self
+
 
 class Node(object):
     """This class models a component as node of a dependency tree."""
 
     pass
 
-    def __init__(self, comp: Component) -> None:
+    def __init__(self, comp):
         """Initialize node for component `comp`.
 
         Parameters
@@ -17,10 +16,10 @@ class Node(object):
         """
 
         self.component = comp
-        self.depends_on: list[Node] = []
+        self.depends_on = []
         self.comp_id = comp["id"]
 
-    def add_edge(self, node: Self) -> None:
+    def add_edge(self, node):
         """Add a node as dependency.
 
         Parameters
@@ -33,12 +32,12 @@ class Node(object):
 
     def __repr__(self):
         return f"Node({self.comp_id})"
-    
+
     def __str__(self):
         return f"Node({self.comp_id})"
 
 
-def dep_resolve(node: Node, resolved: list[Node], unresolved: list[Node]) -> None:
+def dep_resolve(node, resolved, unresolved):
     """Recursively generate a list of all dependencies for `node`.
 
     Parameters
@@ -66,7 +65,7 @@ def dep_resolve(node: Node, resolved: list[Node], unresolved: list[Node]) -> Non
     unresolved.remove(node)
 
 
-def resolve_concurrent_start(next_list: list[Node]) -> list[list[Node]]:
+def resolve_concurrent_start(next_list):
     """Computes which components in the component list can be started simultaneously and returns a respective start-hierarchy with concurrent starts.
 
     Parameters
@@ -80,11 +79,11 @@ def resolve_concurrent_start(next_list: list[Node]) -> list[list[Node]]:
         A list, where each item is a list containing nodes that can be started at the same time.
         The component batches are sorted from early to later start, i.e., batch 1 can be started after batch 0.
     """
-    hierarchy: list[list[Node]] = []
-    started: list[str] = []
+    hierarchy = []
+    started = []
     while len(next_list) > 0:
-        starting: list[str] = []
-        should_start: list[Node] = []
+        starting = []
+        should_start = []
         node_list = next_list.copy()
         next_list.clear()
         for node in node_list:

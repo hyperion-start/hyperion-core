@@ -11,21 +11,21 @@ import queue as queue
 
 
 class BasicManagerTests(unittest.TestCase):
-    def setUp(self) -> None:
+    def setUp(self):
         self.cc = manager.ControlCenter(f"{manager.BASE_DIR}/data/test-config.yaml")
         self.cc.init()
 
-    def tearDown(self) -> None:
+    def tearDown(self):
         try:
             self.cc.cleanup(True)
         except SystemExit:
             pass
 
-    def test_construction(self) -> None:
+    def test_construction(self):
         self.assertEqual(self.cc.config["name"], "Unit-test-config")
         self.assertTrue(self.cc.server.has_session("Unit-test-config"))
 
-    def test_host_resolution(self) -> None:
+    def test_host_resolution(self):
         host_test_comp = self.cc.get_component_by_id("host_depends_test@localhost")
         self.assertIsNotNone(self.cc.get_component_by_id("host_test@resolved-host"))
 
@@ -35,10 +35,10 @@ class BasicManagerTests(unittest.TestCase):
             msg=f"Dependency host resolution failed. Expected 'host_test' but got '{host_test_comp['requires'][0]}'",
         )
 
-    def test_initialization(self) -> None:
+    def test_initialization(self):
         self.assertTrue("id" in self.cc.config["groups"][0]["components"][0])
 
-    def test_component_fetch(self) -> None:
+    def test_component_fetch(self):
         tail = self.cc.get_component_by_id("tail@localhost")
         self.assertEqual(tail["name"], "tail")
         with self.assertRaises(hyperion.lib.util.exception.ComponentNotFoundException):
@@ -50,14 +50,14 @@ class BasicManagerTests(unittest.TestCase):
         wait = manager.get_component_wait(tail)
         self.assertEqual(wait, 0.2)
 
-    def test_non_full_shutdown(self) -> None:
+    def test_non_full_shutdown(self):
         try:
             self.cc.cleanup()
         except SystemExit:
             pass
         self.assertTrue(self.cc.server.has_session(self.cc.session_name))
 
-    def test_setting_up_log(self) -> None:
+    def test_setting_up_log(self):
         window = self.cc.session.new_window("unit test")
         log_file = "/tmp/Hyperion/unit-test/test.log"
         manager.setup_log(window, log_file, "unit test", True)
@@ -67,17 +67,17 @@ class BasicManagerTests(unittest.TestCase):
         time.sleep(1)
         self.assertTrue(os.path.isfile(log_file))
 
-    def test_missing_dep(self) -> None:
+    def test_missing_dep(self):
         self.cc.config["groups"][0]["components"][0]["requires"][0] = "dependency"
         with self.assertRaises(exceptions.UnmetDependenciesException):
             self.cc.set_dependencies()
 
-    def test_circular_dep(self) -> None:
+    def test_circular_dep(self):
         self.cc.config["groups"][1]["components"][1]["requires"] = ["top"]
         with self.assertRaises(exceptions.CircularReferenceException):
             self.cc.set_dependencies()
 
-    def test_full_shutdown(self) -> None:
+    def test_full_shutdown(self):
         try:
             self.cc.cleanup(True)
         except SystemExit:
@@ -92,7 +92,7 @@ class BasicManagerTests(unittest.TestCase):
 
 class ComponentTest(unittest.TestCase):
 
-    def setUp(self) -> None:
+    def setUp(self):
         self.cc = manager.ControlCenter(
             f"{manager.BASE_DIR}/data/test-config.yaml", True
         )
@@ -101,13 +101,13 @@ class ComponentTest(unittest.TestCase):
         self.ls = self.cc.get_component_by_id("ls@localhost")
         self.top = self.cc.get_component_by_id("top@localhost")
 
-    def tearDown(self) -> None:
+    def tearDown(self):
         try:
             self.cc.cleanup(True)
         except SystemExit:
             pass
 
-    def test_single_component_functions(self) -> None:
+    def test_single_component_functions(self):
         self.cc.start_component_without_deps(self.tail)
         self.assertFalse(self.cc._find_window(self.tail["id"]) is None)
 
@@ -116,14 +116,14 @@ class ComponentTest(unittest.TestCase):
         self.cc.stop_component(self.tail)
         self.assertEqual(self.cc.check_component(self.tail), config.CheckState.STOPPED)
 
-    def test_environment_loading(self) -> None:
+    def test_environment_loading(self):
         window = self.cc.session.new_window("unit test")
         self.cc._start_window(window, self.ls, "/tmp/Hyperion/unit-test/test.log")
         window.cmd("send-keys", "$env_test", "Enter")
         time.sleep(1)
         self.assertFalse(self.cc._find_window("unit test"))
 
-    def test_multi_start(self) -> None:
+    def test_multi_start(self):
         self.cc.start_component_without_deps(self.tail)
         time.sleep(0.7)
         self.cc.start_component_without_deps(self.tail)
@@ -131,7 +131,7 @@ class ComponentTest(unittest.TestCase):
         ret = self.cc.check_component(self.tail)
         self.assertEqual(ret, config.CheckState.RUNNING)
 
-    def test_check_states(self) -> None:
+    def test_check_states(self):
         self.assertEqual(
             self.cc.check_component(self.ls), config.CheckState.STARTED_BY_HAND
         )
@@ -147,11 +147,11 @@ class ComponentTest(unittest.TestCase):
             self.cc.check_component(self.tail), config.CheckState.STOPPED_BUT_SUCCESSFUL
         )
 
-    def test_dep_list(self) -> None:
+    def test_dep_list(self):
         lst = self.cc.get_dep_list(self.top)
         self.assertEqual(lst[0].component, self.tail)
 
-    def test_monitoring_queue(self) -> None:
+    def test_monitoring_queue(self):
         ev_queue = queue.Queue()
         self.cc.add_subscriber(ev_queue)
         self.cc.start_component_without_deps(self.tail)
@@ -178,24 +178,24 @@ class ComponentTest(unittest.TestCase):
 
 class ExecuteModeTest(unittest.TestCase):
 
-    def setUp(self) -> None:
+    def setUp(self):
         self.cc = manager.ControlCenter(f"{manager.BASE_DIR}/data/test-config.yaml")
         self.cc.init()
 
-    def tearDown(self) -> None:
+    def tearDown(self):
         try:
             self.cc.cleanup(True)
         except SystemExit:
             pass
 
-    def test_start(self) -> None:
+    def test_start(self):
         self.cc.start_by_cli("tail@localhost")
         self.assertEqual(
             self.cc.check_component(self.cc.get_component_by_id("tail@localhost")),
             config.CheckState.RUNNING,
         )
 
-    def test_stop(self) -> None:
+    def test_stop(self):
         self.cc.start_by_cli("tail@localhost")
         self.assertEqual(
             self.cc.check_component(self.cc.get_component_by_id("tail@localhost")),
@@ -210,7 +210,7 @@ class ExecuteModeTest(unittest.TestCase):
 
 
 class ServerClientsTests(unittest.TestCase):
-    def setUp(self) -> None:
+    def setUp(self):
         sms = server.SlaveManagementServer()
         self.cc = manager.ControlCenter(
             f"{manager.BASE_DIR}/data/test-config.yaml", slave_server=sms
@@ -241,7 +241,7 @@ class ServerClientsTests(unittest.TestCase):
         self.ci.add_subscriber(self.ci_queue)
         print("SETUP DONE")
 
-    def tearDown(self) -> None:
+    def tearDown(self):
         try:
             self.ci.cleanup(True)
             self.server.worker.join()
@@ -252,7 +252,7 @@ class ServerClientsTests(unittest.TestCase):
         except SystemExit:
             pass
 
-    def test_connection(self) -> None:
+    def test_connection(self):
         test_ev = events.CheckEvent("tail@localhost", config.CheckState.STOPPED)
         self.si.event_queue.put(test_ev)
         ci_msg = self.ci_queue.get(timeout=5)

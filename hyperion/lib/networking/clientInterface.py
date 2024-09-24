@@ -18,10 +18,7 @@ from typing import Any, Union, Callable, Tuple
 import selectors
 import queue
 
-from hyperion.lib.util.types import Component, Config
-
-
-def recvall(connection: socket.socket, n: int) -> bytes:
+def recvall(connection, n):
     """Helper function to recv n bytes.
 
     To read a message with an expected size and combine it to one object, even if it was split into more than one
@@ -44,7 +41,7 @@ def recvall(connection: socket.socket, n: int) -> bytes:
     while len(data) < n:
         packet = connection.recv(n - len(data))
         if not packet:
-            return b''
+            return b""
         data += packet
     return data
 
@@ -52,25 +49,25 @@ def recvall(connection: socket.socket, n: int) -> bytes:
 class BaseClient(object):
     """Base class for socket clients."""
 
-    def __init__(self, host: str, port: int) -> None:
+    def __init__(self, host, port):
         self.host = host
         self.port = port
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.send_queue = queue.Queue() # type: queue.Queue
+        self.send_queue = queue.Queue()  # type: queue.Queue
         self.mysel = selectors.DefaultSelector()
         self.keep_running = True
 
         signal(SIGINT, self._handle_sigint)
 
-    def _handle_sigint(self, signum: int, frame: Any) -> None:
+    def _handle_sigint(self, signum, frame):
         self.logger.debug("Received C-c")
         self._quit()
 
-    def _quit(self) -> None:
+    def _quit(self):
         """Signal client to stop."""
         self.keep_running = False
 
-    def _interpret_message(self, action: str, args: list[Any]) -> None:
+    def _interpret_message(self, action, args):
         """Resolve action from string and run appropriate function with `args`.
 
         Parameters
@@ -87,10 +84,10 @@ class BaseClient(object):
         """
         raise NotImplementedError
 
-    def _loop(self) -> None:
+    def _loop(self):
         raise NotImplementedError
 
-    def is_localhost(self, hostname: str) -> bool:
+    def is_localhost(self, hostname):
         """Check if `hostname` resolves to localhost.
 
         Parameters
@@ -126,7 +123,7 @@ class BaseClient(object):
                 f"Host '{hostname}' is unknown! Update your /etc/hosts file!"
             )
 
-    def run_on_localhost(self, comp: Component) -> bool:
+    def run_on_localhost(self, comp):
         """Check if component `comp` is run on localhost or not.
 
         Parameters
@@ -150,7 +147,7 @@ class BaseClient(object):
         except exceptions.HostUnknownException as ex:
             raise ex
 
-    def forward_over_ssh(self) -> Union[int, bool]:
+    def forward_over_ssh(self):
         """Forwards a random local free port to the remote host port via a ssh connection.
 
         Determines a free port by binding with socket, the socket is then closed and the used port is passed to a
@@ -201,9 +198,7 @@ class BaseClient(object):
 
 
 class RemoteSlaveInterface(BaseClient):
-    def __init__(
-        self, host: str, port: int, cc: SlaveManager, loop_in_thread: bool = False
-    ) -> None:
+    def __init__(self, host, port, cc, loop_in_thread=False):
         """Init remote slave interface for communication to the server at `host` on `port` with slave controller `cc`.
 
         Parameters
@@ -223,7 +218,7 @@ class RemoteSlaveInterface(BaseClient):
 
         server_address = (host, port)
         self.sock = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.event_queue = queue.Queue() # type: queue.Queue
+        self.event_queue = queue.Queue()  # type: queue.Queue
         self.cc.add_subscriber(self.event_queue)
 
         try:
@@ -268,7 +263,7 @@ class RemoteSlaveInterface(BaseClient):
             selectors.EVENT_READ | selectors.EVENT_WRITE,
         )
 
-        self.function_mapping: dict[str, Callable] = {
+        self.function_mapping = {
             "start": self._start_wrapper,
             "check": self._check_wrapper,
             "stop": self._stop_wrapper,
@@ -288,13 +283,13 @@ class RemoteSlaveInterface(BaseClient):
 
         self.logger.debug("Shutdown complete!")
 
-    def _send_auth(self) -> None:
+    def _send_auth(self):
         action = "auth"
         payload = [socket.gethostname()]
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def _suspend(self) -> None:
+    def _suspend(self):
         self.keep_running = False
         worker = threading.Thread(
             target=self.cc.cleanup, args=[False], name="Suspend slave thread"
@@ -302,7 +297,7 @@ class RemoteSlaveInterface(BaseClient):
         worker.start()
         worker.join()
 
-    def _quit(self) -> None:
+    def _quit(self):
         self.keep_running = False
         worker = threading.Thread(
             target=self.cc.cleanup, args=[True], name="Shutdown slave thread"
@@ -310,7 +305,7 @@ class RemoteSlaveInterface(BaseClient):
         worker.start()
         worker.join()
 
-    def _interpret_message(self, action: str, args: list[object]) -> None:
+    def _interpret_message(self, action, args):
         self.logger.debug(f"Action: {action}, args: {args}")
         func = self.function_mapping.get(action)
         if func is not None:
@@ -321,19 +316,19 @@ class RemoteSlaveInterface(BaseClient):
                 pass
         self.logger.error(f"Ignoring unrecognized slave action '{action}'")
 
-    def _start_clone_session_wrapper(self, comp_id: str) -> None:
+    def _start_clone_session_wrapper(self, comp_id):
         self.cc.start_local_clone_session(self.cc.get_component_by_id(comp_id))
 
-    def _start_wrapper(self, comp_id: str) -> None:
+    def _start_wrapper(self, comp_id):
         self.cc.start_component(self.cc.get_component_by_id(comp_id))
 
-    def _check_wrapper(self, comp_id: str) -> None:
+    def _check_wrapper(self, comp_id):
         self.cc.check_component(self.cc.get_component_by_id(comp_id))
 
-    def _stop_wrapper(self, comp_id: str) -> None:
+    def _stop_wrapper(self, comp_id):
         self.cc.stop_component(self.cc.get_component_by_id(comp_id))
 
-    def _process_events(self) -> None:
+    def _process_events(self):
         """Process events enqueued by the manager and send them to connected clients if necessary."""
 
         while not self.event_queue.empty():
@@ -342,12 +337,12 @@ class RemoteSlaveInterface(BaseClient):
             message = actionSerializer.serialize_request("queue_event", [event])
             self.send_queue.put(message)
 
-    def _loop(self) -> None:
+    def _loop(self):
         self.logger.debug("Started slave client messaging loop")
         # Keep alive until shutdown is requested and no messages are left to send
         while self.keep_running:
             for key, mask in self.mysel.select(timeout=1):
-                connection: socket.socket = key.fileobj # type: ignore[assignment]
+                connection = key.fileobj  # type: ignore[assignment]
 
                 if mask & selectors.EVENT_READ:
                     try:
@@ -363,7 +358,9 @@ class RemoteSlaveInterface(BaseClient):
                             assert isinstance(args, list)
                             self._interpret_message(action, args)
                         else:
-                            self.logger.warn(f"Could not retrieve known action from {data.decode('utf-8')}! Ignoring message")
+                            self.logger.warn(
+                                f"Could not retrieve known action from {data.decode('utf-8')}! Ignoring message"
+                            )
 
                     # Interpret empty result as closed connection
                     else:
@@ -384,7 +381,7 @@ class RemoteSlaveInterface(BaseClient):
             time.sleep(0.5)
         self.logger.debug("Exiting messaging loop")
 
-    def _start_monitoring(self, rate: float) -> None:
+    def _start_monitoring(self, rate):
         self.logger.debug(f"Starting stat monitor with rate {rate}")
         config.LOCAL_STAT_MONITOR_RATE = rate
         if not self.cc.stat_thread.is_alive():
@@ -393,36 +390,37 @@ class RemoteSlaveInterface(BaseClient):
 
 
 class RemoteControllerInterface(AbstractController, BaseClient):
-    """Controller instance meant to act as an interface to the main server. This should be used by UIs."""    
-    def _stop_remote_component(self, comp: Component) -> None:
+    """Controller instance meant to act as an interface to the main server. This should be used by UIs."""
+
+    def _stop_remote_component(self, comp):
         self.logger.critical("This function should not be called in this context!")
         raise NotImplementedError
 
-    def _start_remote_component(self, comp: Component) -> None:
+    def _start_remote_component(self, comp):
         self.logger.critical("This function should not be called in this context!")
         raise NotImplementedError
 
-    def _check_remote_component(self, comp: Component) -> config.CheckState:
+    def _check_remote_component(self, comp):
         self.logger.critical("This function should not be called in this context!")
         raise NotImplementedError
 
-    def reload_config(self) -> None:
+    def reload_config(self):
         action = "reload_config"
-        payload: list[Any] = []
+        payload = []
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def __init__(self, host: str, port: int) -> None:
+    def __init__(self, host, port):
         AbstractController.__init__(self, None)
         BaseClient.__init__(self, host, port)
 
-        self.host_list: list[str] = []
-        self.host_states: dict[str, Tuple[int, config.HostConnectionState]] = {}
-        self.config: Config = {}
-        self.host_stats: dict[str, list[str]] = {}
-        self.mounted_hosts: list[str] = []
+        self.host_list = []
+        self.host_states = {}
+        self.config = {}
+        self.host_stats = {}
+        self.mounted_hosts = []
 
-        self.function_mapping: dict[str, Callable] = {
+        self.function_mapping = {
             "get_conf_response": self._set_config,
             "get_host_states_response": self._set_host_states,
             "get_host_stats_response": self._set_host_stats,
@@ -473,15 +471,15 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             if not self.is_localhost(host):
                 self._mount_host(host)
 
-    def start_remote_clone_session(self, comp: Component) -> None:
+    def start_remote_clone_session(self, comp):
         action = "start_clone_session"
-        payload: list[Any] = [comp["id"]]
+        payload = [comp["id"]]
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def request_config(self) -> None:
+    def request_config(self):
         action = "get_conf"
-        payload: list[Any] = []
+        payload = []
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
@@ -493,13 +491,11 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def _quit(self) -> None:
+    def _quit(self):
         self.keep_running = False
         self.cleanup(False)
 
-    def cleanup(
-        self, full: bool = False, exit_code: config.ExitStatus = config.ExitStatus.FINE
-    ) -> None:
+    def cleanup(self, full=False, exit_code=config.ExitStatus.FINE):
         if full:
             action = "quit"
             message = actionSerializer.serialize_request(action, [full])
@@ -516,7 +512,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
 
         self.keep_running = False
 
-    def get_component_by_id(self, comp_id: str) -> Component:
+    def get_component_by_id(self, comp_id):
         for group in self.config["groups"]:
             for comp in group["components"]:
                 if comp["id"] == comp_id:
@@ -524,7 +520,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                     return comp
         raise exceptions.ComponentNotFoundException(comp_id)
 
-    def kill_session_by_name(self, session_name: str) -> None:
+    def kill_session_by_name(self, session_name):
         self.logger.debug("Serializing kill session by name")
         action = "kill_session"
         payload = [session_name]
@@ -532,34 +528,34 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def start_all(self, force_mode: bool = False) -> None:
+    def start_all(self, force_mode=False):
         action = "start_all"
         message = actionSerializer.serialize_request(action, [force_mode])
         self.send_queue.put(message)
 
-    def start_component(self, comp: Component, force_mode: bool = False) -> config.StartState:
+    def start_component(self, comp, force_mode=False):
         self.logger.debug("Serializing component start")
         action = "start"
-        payload: list[Any] = [comp["id"], force_mode]
+        payload = [comp["id"], force_mode]
 
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
-        return config.StartState.STARTED # meaningless return to satisfy linter
+        return config.StartState.STARTED  # meaningless return to satisfy linter
 
-    def stop_all(self) -> None:
+    def stop_all(self):
         action = "stop_all"
         message = actionSerializer.serialize_request(action, [])
         self.send_queue.put(message)
 
-    def stop_component(self, comp: Component) -> None:
+    def stop_component(self, comp):
         self.logger.debug("Serializing component stop")
         action = "stop"
-        payload: list[Any] = [comp["id"]]
+        payload = [comp["id"]]
 
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 
-    def check_component(self, comp: Component, broadcast: bool = False) -> config.CheckState:
+    def check_component(self, comp, broadcast=False):
         """Sends component check request to the server.
 
         Parameters
@@ -573,10 +569,10 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         -------
         config.CheckState
             The result comes asyncronously from the server, so a meaningless constant is returned to satisfy linters.
-        """        
+        """
         self.logger.debug("Serializing component check")
         action = "check"
-        payload: list[Any] = [comp["id"]]
+        payload = [comp["id"]]
 
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
@@ -584,7 +580,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         # to satisfy linter
         return config.CheckState.UNKNOWN
 
-    def _interpret_message(self, action: str, args: list[Any]) -> None:
+    def _interpret_message(self, action, args):
         func = self.function_mapping.get(action)
         if func is not None:
             try:
@@ -594,35 +590,44 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                 pass
         self.logger.error(f"Ignoring unrecognized slave action '{action}'")
 
-    def _set_config(self, config: Config) -> None:
+    def _set_config(self, config):
         self.config = config
         self.logger.debug("Got config from server")
 
-    def _set_host_states(self, host_states: dict[str, Tuple[int, config.HostConnectionState]]) -> None:
+    def _set_host_states(self, host_states):
         self.host_states = host_states
         self.host_list = list(host_states.keys())
         self.logger.warn(f"Got host states: {host_states}")
         for host, state in host_states.items():
-            if host not in self.host_stats or state[1] != config.HostConnectionState.CONNECTED:
+            if (
+                host not in self.host_stats
+                or state[1] != config.HostConnectionState.CONNECTED
+            ):
                 self.host_stats[host] = config.EMPTY_HOST_STATS
         self.logger.debug("Updated host list")
 
-    def _set_host_stats(self, host_stats: dict[str, list[str]]) -> None:
+    def _set_host_stats(self, host_stats):
         self.host_stats = host_stats
         self.logger.debug("Set host stats")
         self.logger.debug(host_stats)
 
-    def _forward_event(self, event: events.BaseEvent) -> None:
+    def _forward_event(self, event):
         if self.monitor_queue:
             self.monitor_queue.put(event)
 
         # Special events handling
         if isinstance(event, events.SlaveReconnectEvent):
-            self.host_states[event.host_name] = (0, config.HostConnectionState.CONNECTED)
+            self.host_states[event.host_name] = (
+                0,
+                config.HostConnectionState.CONNECTED,
+            )
         elif isinstance(event, events.SlaveDisconnectEvent):
             self.host_states[event.host_name] = (0, config.HostConnectionState.SSH_ONLY)
         elif isinstance(event, events.DisconnectEvent):
-            self.host_states[event.host_name] = (0, config.HostConnectionState.DISCONNECTED)
+            self.host_states[event.host_name] = (
+                0,
+                config.HostConnectionState.DISCONNECTED,
+            )
             self._unmount_host(event.host_name)
         elif isinstance(event, events.ReconnectEvent):
             self.host_states[event.host_name] = (0, config.HostConnectionState.SSH_ONLY)
@@ -638,11 +643,11 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                 f"{event.mem:.2f}%",
             ]
 
-    def _loop(self) -> None:
+    def _loop(self):
         # Keep alive until shutdown is requested and no messages are left to send
         while self.keep_running or not self.send_queue.empty():
             for key, mask in self.mysel.select(timeout=1):
-                connection: socket.socket = key.fileobj # type: ignore[assignment]
+                connection = key.fileobj  # type: ignore[assignment]
 
                 if mask & selectors.EVENT_READ:
                     raw_msglen = connection.recv(4)
@@ -655,7 +660,9 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                             assert isinstance(args, list)
                             self._interpret_message(action, args)
                         else:
-                            self.logger.warn(f"Could not retrieve known action from {data.decode('utf-8')}! Ignoring message")
+                            self.logger.warn(
+                                f"Could not retrieve known action from {data.decode('utf-8')}! Ignoring message"
+                            )
 
                     # Interpret empty result as closed connection
                     else:
@@ -674,7 +681,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
                         self.sock.sendall(next_msg)
             time.sleep(0.4)
 
-    def add_subscriber(self, subscriber_queue: queue.Queue) -> None:
+    def add_subscriber(self, subscriber_queue):
         """Set reference to ui event queue.
 
         Parameters
@@ -687,7 +694,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
     ###################
     # Host related
     ###################
-    def _mount_host(self, hostname: str) -> None:
+    def _mount_host(self, hostname):
         """Mount remote host log directory via sshfs.
 
         Parameters
@@ -739,14 +746,16 @@ class RemoteControllerInterface(AbstractController, BaseClient):
             if p.stderr is not None:
                 err_out_list_raw = p.stderr.readlines()
                 if len(err_out_list_raw) > 0:
-                    err_out_list = map(lambda x: x.decode(encoding="UTF-8"), err_out_list_raw)
+                    err_out_list = map(
+                        lambda x: x.decode(encoding="UTF-8"), err_out_list_raw
+                    )
                     self.logger.error(
                         f"sshfs exited with error: {err_out_list} (code: {p.returncode})"
                     )
 
         self.logger.debug(f"mounted hosts: {self.mounted_hosts}")
 
-    def _unmount_host(self, hostname: str) -> None:
+    def _unmount_host(self, hostname):
         """Unmount fuse mounted remote log directory.
 
         Parameters
@@ -769,7 +778,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
 
         self.logger.debug(f"mounted hosts: {self.mounted_hosts}")
 
-    def reconnect_with_host(self, hostname: str) -> bool:
+    def reconnect_with_host(self, hostname):
         """Issues a request to reconnect with the given host to the server.
 
         Parameters
@@ -781,7 +790,7 @@ class RemoteControllerInterface(AbstractController, BaseClient):
         -------
         bool
             The success is determined asyncronously by the server and sent as event. To satisfy linters, a meaningless static value is returned.
-        """        
+        """
         action = "reconnect_with_host"
         payload = [hostname]
 

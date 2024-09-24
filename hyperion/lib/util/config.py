@@ -53,6 +53,7 @@ class HostConnectionState(Enum):
     DISCONNECTED = 2
     SSH_ONLY = 3
 
+
 DEFAULT_THREADN = 4
 """Default number of threads for concurrent starting or stopping"""
 
@@ -62,10 +63,10 @@ DEFAULT_LOG_UMASK = 0
 DEFAULT_LOG_LEVEL = logging.INFO
 """Default log level for all modules"""
 
-LOCAL_STAT_MONITOR_RATE = 1.
+LOCAL_STAT_MONITOR_RATE = 1.0
 """Rate at which local stats are fetched in amount per second"""
 
-REMOTE_STAT_MONITOR_RATE = 1.
+REMOTE_STAT_MONITOR_RATE = 1.0
 """Rate at which remote stats are fetched in amount per second"""
 
 MONITOR_REMOTE_STATS = True
@@ -74,7 +75,7 @@ MONITOR_REMOTE_STATS = True
 MONITOR_LOCAL_STATS = True
 """Bool whether to monitor local system stats."""
 
-MONITORING_RATE = 1.
+MONITORING_RATE = 1.0
 """Rate in Hz at which the monitoring thread runs checks"""
 
 SHOW_CHECK_OUTPUT = False
@@ -120,7 +121,7 @@ class CustomFormatter(logging.Formatter):
         logging.CRITICAL: FORMAT_ERR,
     }
 
-    def format(self, record: logging.LogRecord) -> str:
+    def format(self, record):
         """Applies format to a log record according to its severity.
 
         Parameters
@@ -132,7 +133,7 @@ class CustomFormatter(logging.Formatter):
         -------
         str
             Formatted log record.
-        """        
+        """
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
@@ -205,7 +206,7 @@ STATE_CHECK_BUTTON_STYLE = {
 }
 """Global check button color dictionary for CheckStates"""
 
-SLAVE_HYPERION_SOURCE_PATH: Optional[str] = None
+SLAVE_HYPERION_SOURCE_PATH = None
 """Option to source a specific env where hyperion is located on a slave"""
 
 EMPTY_HOST_STATS = ["N/A", "N/A", "N/A"]

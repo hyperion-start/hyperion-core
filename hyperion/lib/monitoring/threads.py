@@ -13,18 +13,20 @@ import socket
 from typing import Union, Any, Tuple
 
 import queue
-    
+
 
 class MoinitorJob(object):
     """Base Class for all monitoring instances."""
-    def __init__(self) -> None:
-        
+
+    def __init__(self):
+
         self.is_cancelled = False
+
 
 class ComponentMonitorJob(MoinitorJob):
     """Abstract class that represents a component monitoring job (local or remote)."""
 
-    def __init__(self, pid: int, comp_id: str) -> None:
+    def __init__(self, pid, comp_id):
         """Initializes component monitoring job.
 
         Parameters
@@ -34,13 +36,13 @@ class ComponentMonitorJob(MoinitorJob):
         comp_id : str
             Id of the component (name@host)
         """
-        
+
         super(ComponentMonitorJob, self).__init__()
         self.pid = pid
         self.comp_id = comp_id
         self.error_msg = f"Component '{comp_id}' crashed!"
 
-    def run_check(self) -> Union[bool, events.CrashEvent, events.CheckEvent]:
+    def run_check(self):
         """You need to override this function in monitoring subclasses. It is called in the main monitoring thread.
 
         Returns
@@ -51,17 +53,17 @@ class ComponentMonitorJob(MoinitorJob):
         Raises
         ------
         NotImplementedError
-            If this function is not overridden in subclass 
+            If this function is not overridden in subclass
         """
         raise NotImplementedError
 
 
 class CancellationJob(ComponentMonitorJob):
-    def run_check(self) -> Union[bool, events.CrashEvent, events.CheckEvent]:
+    def run_check(self):
         # Is never called here
         raise NotImplementedError
 
-    def __init__(self, pid: int, comp_id : str) -> None:
+    def __init__(self, pid, comp_id):
         """Creates a cancellation job for a component.
 
         Parameters
@@ -79,10 +81,11 @@ class CancellationJob(ComponentMonitorJob):
     def __repr__(self):
         return f"CancellationJob(pid:{self.pid}, comp_id:{self.comp_id})"
 
+
 class LocalComponentMonitoringJob(ComponentMonitorJob):
     """Class that represents a local component monitoring job."""
 
-    def __init__(self, pid: int, comp_id : str) -> None:
+    def __init__(self, pid, comp_id):
         """Creates a monitoring job for a local component.
 
         Parameters
@@ -94,7 +97,7 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
         """
         super(LocalComponentMonitoringJob, self).__init__(pid, comp_id)
 
-    def run_check(self) -> Union[bool, events.CrashEvent, events.CheckEvent]:
+    def run_check(self):
         """Runs a check if the pid exists and has not finished yet.
 
         Returns
@@ -113,7 +116,7 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
             return events.CheckEvent(self.comp_id, config.CheckState.STOPPED)
         return events.CrashEvent(self.comp_id)
 
-    def info(self) -> str:
+    def info(self):
         """Generate a status information for the job describing what is being monitored.
 
         Returns
@@ -128,7 +131,7 @@ class LocalComponentMonitoringJob(ComponentMonitorJob):
 class RemoteComponentMonitoringJob(ComponentMonitorJob):
     """Class that represents a remote component monitoring job."""
 
-    def __init__(self, pid: int, comp_id : str, hostname: str, host_status: dict[str, Any]) -> None:
+    def __init__(self, pid, comp_id, hostname, host_status):
         """Creates a remote component monitoring job.
 
         Parameters
@@ -142,12 +145,12 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
         host_status : dict[str, Any]
             Dictionary of connected hosts' status'.
         """
-        
+
         super(RemoteComponentMonitoringJob, self).__init__(pid, comp_id)
         self.hostname = hostname
         self.host_status = host_status
 
-    def run_check(self) -> Union[bool, events.CrashEvent]:
+    def run_check(self):
         """Runs a check if a remote process is still running.
 
         Returns
@@ -165,14 +168,14 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
         # Return true because no information can be retrieved. The connection to the host has to be reestablished first.
         return True
 
-    def info(self) -> str:
+    def info(self):
         """Generate a status information for the job describing what is being monitored.
 
         Returns
         -------
         str
             Information about this job.
-        """        
+        """
 
         return f"Running check for remote component {self.comp_id} with pid {self.pid} on host {self.hostname}"
 
@@ -180,7 +183,7 @@ class RemoteComponentMonitoringJob(ComponentMonitorJob):
 class LocalStatMonitorJob(MoinitorJob):
 
     @staticmethod
-    def request_stats() -> events.StatResponseEvent:
+    def request_stats():
         """You need to override this function in monitoring subclasses. It is called in the main monitoring thread.
 
         Returns
@@ -197,7 +200,8 @@ class LocalStatMonitorJob(MoinitorJob):
 
 class HostMonitorJob(MoinitorJob):
     """Class representing a host monitoring job."""
-    def __init__(self, hostname: str, host_status: dict[str, Tuple[int,config.HostConnectionState]], host_lock: Lock) -> None:
+
+    def __init__(self, hostname, host_status, host_lock):
         """Create host monitoring job.
 
         Parameters
@@ -217,7 +221,7 @@ class HostMonitorJob(MoinitorJob):
         self.host_lock = host_lock
         self.error_msg = f"Lost connection to '{hostname}'!"
 
-    def run_check(self) -> Union[events.DisconnectEvent, bool]:
+    def run_check(self):
         try:
             proc = Process(self.pid)
             if proc.is_running():
@@ -231,30 +235,29 @@ class HostMonitorJob(MoinitorJob):
 
         return events.DisconnectEvent(self.hostname)
 
-    def info(self) -> str:
+    def info(self):
         return f"Running ssh host check for {self.hostname} with pid {self.pid}"
 
 
 class BaseMonitorThread(Thread):
     """Baseclass for monitoring solutions."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         super(BaseMonitorThread, self).__init__()
         self.logger = logger = logging.getLogger(__name__)
         logger.setLevel(config.DEFAULT_LOG_LEVEL)
-        self.subscribed_queues: list[queue.Queue] = []
+        self.subscribed_queues = []
         self.end = False
         logger.debug("Initialized thread")
 
-    def kill(self) -> None:
-        """Shuts down the thread by signalling the run function to end.
-        """
+    def kill(self):
+        """Shuts down the thread by signalling the run function to end."""
 
         logger = logging.getLogger(__name__)
         logger.debug("Killing process monitoring thread")
         self.end = True
 
-    def add_subscriber(self, queue: queue.Queue) -> None:
+    def add_subscriber(self, queue):
         """Adds a subscriber to the list of queues to send notifications to.
 
         Parameters
@@ -267,7 +270,7 @@ class BaseMonitorThread(Thread):
         logger.debug("Adding subscriber")
         self.subscribed_queues.append(queue)
 
-    def remove_subscriber(self, queue: queue.Queue) -> None:
+    def remove_subscriber(self, queue):
         """Remove a subscriber from the list of queues to send notifications to.
 
         Parameters
@@ -275,36 +278,37 @@ class BaseMonitorThread(Thread):
         queue : queue.Queue
             Unsubscribing queue that will get no notifications by this thread anymore.
         """
-        
+
         logger = logging.getLogger(__name__)
         logger.debug("Removing subscriber")
         self.subscribed_queues.remove(queue)
 
-    def run(self) -> None:
+    def run(self):
         """Method that needs to be implemented by extending classes."""
         raise NotImplementedError
 
 
 class StatMonitor(BaseMonitorThread):
     """This class is an extra thread class to handle stat monitoring"""
-    def __init__(self) -> None:
+
+    def __init__(self):
         """Initialize thread"""
         super(StatMonitor, self).__init__()
 
-    def run(self) -> None:
-        """Starts the monitoring thread.
-        """
+    def run(self):
+        """Starts the monitoring thread."""
 
         self.logger.debug("Started run function")
         while not self.end:
             for subscriber in self.subscribed_queues:
                 subscriber.put(LocalStatMonitorJob.request_stats())
-            time.sleep(1/config.LOCAL_STAT_MONITOR_RATE)
+            time.sleep(1 / config.LOCAL_STAT_MONITOR_RATE)
 
 
 class ComponentMonitor(BaseMonitorThread):
     """This class is for monitoring components and host connections."""
-    def __init__(self, queue: queue.Queue) -> None:
+
+    def __init__(self, queue):
         """Initializes the monitoring thread with its input queue.
 
         Parameters
@@ -317,7 +321,7 @@ class ComponentMonitor(BaseMonitorThread):
         self.queue_lock = Lock()
         self.job_queue = queue
 
-    def is_component_monitored(self, comp_id: str) -> bool:
+    def is_component_monitored(self, comp_id):
         """Check if a component is already being monitored.
 
         Parameters
@@ -342,17 +346,15 @@ class ComponentMonitor(BaseMonitorThread):
                         return True
         return False
 
-
-    def run(self) -> None:
-        """Starts the monitoring thread.
-        """
+    def run(self):
+        """Starts the monitoring thread."""
 
         self.logger.debug("Started run function")
         while not self.end:
             with self.queue_lock:
                 comp_jobs = []
                 cancellations = []
-                jobs: list[Union[HostMonitorJob, ComponentMonitorJob]] = []
+                jobs = []
                 already_handleled = {}
                 already_removed = {}
                 # Get all enqueued jobs for this iteration
@@ -360,10 +362,16 @@ class ComponentMonitor(BaseMonitorThread):
                     mon_job = self.job_queue.get()
                     if isinstance(mon_job, HostMonitorJob):
                         jobs.append(mon_job)
-                    if isinstance(mon_job, CancellationJob) and mon_job.comp_id not in already_removed:
+                    if (
+                        isinstance(mon_job, CancellationJob)
+                        and mon_job.comp_id not in already_removed
+                    ):
                         cancellations.append(mon_job)
                         already_removed[mon_job.comp_id] = True
-                    if isinstance(mon_job, ComponentMonitorJob) and mon_job.comp_id not in already_handleled:
+                    if (
+                        isinstance(mon_job, ComponentMonitorJob)
+                        and mon_job.comp_id not in already_handleled
+                    ):
                         comp_jobs.append(mon_job)
                         already_handleled[mon_job.comp_id] = True
 
@@ -375,7 +383,7 @@ class ComponentMonitor(BaseMonitorThread):
                             comp_job.is_cancelled = True
                             # Previous way of cancelling jobs. Lets keep this for now
                         # remove.append(comp_job)
-            # [comp_jobs.remove(job) for job in remove]
+                # [comp_jobs.remove(job) for job in remove]
 
                 # Reorder job list to first check the hosts, then check the components because this makes sense
                 jobs.extend(comp_jobs)
@@ -392,8 +400,10 @@ class ComponentMonitor(BaseMonitorThread):
                         # If job is not ok, notify subscribers
                         if not mon_job.is_cancelled:
                             self.logger.error(mon_job.error_msg)
-                        self.logger.debug("Notifying mon subscribers about failed check")
+                        self.logger.debug(
+                            "Notifying mon subscribers about failed check"
+                        )
                         for subscriber in self.subscribed_queues:
                             subscriber.put(ret)
 
-            time.sleep(1/config.MONITORING_RATE)
+            time.sleep(1 / config.MONITORING_RATE)

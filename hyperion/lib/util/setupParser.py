@@ -9,7 +9,7 @@ from yaml.constructor import ConstructorError
 class Loader(yaml.SafeLoader):
     """Custom loader class to feature including yaml files inside each other."""
 
-    def __init__(self, stream) -> None:
+    def __init__(self, stream):
         self._root = os.path.split(stream.name)[0]
         super(Loader, self).__init__(stream)
 

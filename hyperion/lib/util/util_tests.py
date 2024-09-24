@@ -7,12 +7,12 @@ import hyperion.lib.util.exception as exception
 
 class ActionSerializerTest(unittest.TestCase):
 
-    def setUp(self) -> None:
+    def setUp(self):
         self.action = "start"
         self.component = {"name": "testComp", "host": "testhost"}
         self.payload = [self.component, True, 123, False]
 
-    def test_consistency(self) -> None:
+    def test_consistency(self):
         des = (self.action, self.payload)
         pick = actionSerializer.serialize_request(self.action, self.payload)
 
@@ -25,7 +25,7 @@ class ActionSerializerTest(unittest.TestCase):
 
 class DepTreeTest(unittest.TestCase):
 
-    def setUp(self) -> None:
+    def setUp(self):
         self.comp_a = {"id": "comp a"}
         self.comp_b = {"id": "comp b"}
         self.comp_c = {"id": "comp c"}
@@ -40,7 +40,7 @@ class DepTreeTest(unittest.TestCase):
         self.node_c.add_edge(self.node_b)
         self.node_b.add_edge(self.node_d)
 
-    def test_dependencyList(self) -> None:
+    def test_dependencyList(self):
         res = []
         unres = []
         depTree.dep_resolve(self.node_a, res, unres)
@@ -51,7 +51,7 @@ class DepTreeTest(unittest.TestCase):
             "Dependency resolution is broken: wrong order!",
         )
 
-    def test_circular_dep_detection(self) -> None:
+    def test_circular_dep_detection(self):
         with self.assertRaises(exception.CircularReferenceException):
             self.node_d.add_edge(self.node_a)
             depTree.dep_resolve(self.node_b, [], [])

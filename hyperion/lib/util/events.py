@@ -1,18 +1,17 @@
 from hyperion.lib.util import config
-from hyperion.lib.util.types import Config, Component
 
 
 class BaseEvent(object):
     """Abstract base class for all events."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         pass
 
 
 class ComponentEvent(BaseEvent):
     """Abstract parent class for all kinds of events dispatched by the core."""
 
-    def __init__(self, comp_id: str) -> None:
+    def __init__(self, comp_id):
         """Create event for component with id 'comp_id'.
 
         Parameters
@@ -28,7 +27,7 @@ class ComponentEvent(BaseEvent):
 class StatResponseEvent(BaseEvent):
     """Event to pass the results of stat request."""
 
-    def __init__(self, load: float, cpu: float, mem: float, hostname: str) -> None:
+    def __init__(self, load, cpu, mem, hostname):
         """Create stat response event with avg load, cpu and memory information.
 
         Parameters
@@ -53,7 +52,7 @@ class StatResponseEvent(BaseEvent):
 class CheckEvent(ComponentEvent):
     """Inform about the result of a run check for a component."""
 
-    def __init__(self, comp_id: str, check_state: config.CheckState) -> None:
+    def __init__(self, comp_id, check_state):
         """Create check event for component with id 'comp_id' and result 'check_state'.
 
         Parameters
@@ -67,7 +66,7 @@ class CheckEvent(ComponentEvent):
         ComponentEvent.__init__(self, comp_id)
         self.check_state = check_state
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(
             f"CheckEvent - {self.comp_id}: {config.STATE_DESCRIPTION.get(config.CheckState(self.check_state))}"
         )
@@ -76,7 +75,7 @@ class CheckEvent(ComponentEvent):
 class StartingEvent(ComponentEvent):
     """Signal that a start of a certain component will be attempted."""
 
-    def __init__(self, comp_id: str) -> None:
+    def __init__(self, comp_id):
         """Create starting event for component with id 'comp_id'.
 
         Parameters
@@ -87,14 +86,14 @@ class StartingEvent(ComponentEvent):
 
         ComponentEvent.__init__(self, comp_id)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"StartingEvent - {self.comp_id}")
 
 
 class StoppingEvent(ComponentEvent):
     """Signal that a stop of a certain component will be attempted."""
 
-    def __init__(self, comp_id: str) -> None:
+    def __init__(self, comp_id):
         """Create stopping event for component with id `comp_id`.
 
         Parameters
@@ -105,14 +104,14 @@ class StoppingEvent(ComponentEvent):
 
         ComponentEvent.__init__(self, comp_id)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"StoppingEvent - {self.comp_id}")
 
 
 class CrashEvent(ComponentEvent):
     """Signal that a component crashed."""
 
-    def __init__(self, comp_id: str, remote: bool = False) -> None:
+    def __init__(self, comp_id, remote=False):
         """Create crash event for component with id 'comp_id'.
 
         Parameters
@@ -128,14 +127,14 @@ class CrashEvent(ComponentEvent):
         self.is_remote = remote
         self.message = f"Component '{comp_id}' crashed"
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"CrashEvent - {self.comp_id}")
 
 
 class DisconnectEvent(BaseEvent):
     """Signal that connection to host 'host_name' was lost."""
 
-    def __init__(self, host_name: str) -> None:
+    def __init__(self, host_name):
         """Create disconnect event for host `host_name`.
 
         Parameters
@@ -148,14 +147,14 @@ class DisconnectEvent(BaseEvent):
         self.host_name = host_name
         self.message = f"Lost connection to remote host {host_name}"
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"DisconnectEvent - {self.host_name}")
 
 
 class SlaveDisconnectEvent(DisconnectEvent):
     """Signal that the socket connection to a slave has died."""
 
-    def __init__(self, host_name: str, port: int) -> None:
+    def __init__(self, host_name, port):
         """Create a socket disconnect event for host `hostname`.
 
         Parameters
@@ -171,14 +170,14 @@ class SlaveDisconnectEvent(DisconnectEvent):
         self.port = port
         self.message = f"Lost connection to slave on {host_name}:{port}"
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"SlaveDisconnectEvent - {self.host_name}:{self.port}")
 
 
 class ReconnectEvent(BaseEvent):
     """Signal reconnection to host 'host_name'."""
 
-    def __init__(self, host_name: str) -> None:
+    def __init__(self, host_name):
         """Create reconnect event for host `host_name`.
 
         Parameters
@@ -191,14 +190,14 @@ class ReconnectEvent(BaseEvent):
         self.host_name = host_name
         self.message = f"Lost connection to remote host {host_name}"
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"ReconnectEvent - {self.host_name}")
 
 
 class SlaveReconnectEvent(ReconnectEvent):
     """Signal reconnection to slave on host `host`."""
 
-    def __init__(self, host_name: str, port: int) -> None:
+    def __init__(self, host_name, port):
         """Create slave reconnect event for `host` on `port`.
 
         Parameters
@@ -214,14 +213,14 @@ class SlaveReconnectEvent(ReconnectEvent):
         self.port = port
         self.message = f"Reconnected to '{host_name}' on '{port}'"
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"SlaveReconnectEvent - {self.host_name}:{self.port}")
 
 
 class StartReportEvent(BaseEvent):
     """Inform about the result of a component start."""
 
-    def __init__(self, comp_id: str, failed_comps: dict[str, config.CheckState]) -> None:
+    def __init__(self, comp_id, failed_comps):
         """Create start report event for component `comp_id`.
 
         Parameters
@@ -236,21 +235,21 @@ class StartReportEvent(BaseEvent):
         self.comp_id = comp_id
         self.failed_comps = failed_comps
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(f"StartReportEvent - {self.comp_id}")
 
 
 class ServerDisconnectEvent(BaseEvent):
     """Inform the ui about a server connection loss."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         super(ServerDisconnectEvent, self).__init__()
 
 
 class ConfigReloadEvent(BaseEvent):
     """Inform about config reload"""
 
-    def __init__(self, config: Config, host_states: dict[str, config.HostConnectionState]) -> None:
+    def __init__(self, config, host_states):
         """Create ConfigReloadEvent with new config and host information.
 
         Parameters

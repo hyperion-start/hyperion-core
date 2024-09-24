@@ -6,7 +6,7 @@ import hyperion.lib.util.config as config
 from typing import Any, Union, Tuple, Mapping
 
 
-def serialize_request(action: str, payload: list[Any]) -> bytes:
+def serialize_request(action, payload):
     """Serializes a request to an AbstractController derivate to be sent over socket.
 
     The four first bytes of the serialized message hold the message length, so that the receiver will be able to
@@ -34,7 +34,7 @@ def serialize_request(action: str, payload: list[Any]) -> bytes:
     return struct.pack(">I", len(pickled)) + pickled
 
 
-def deserialize(message: bytes) -> Union[Tuple[None, Mapping[str, object]], Tuple[str, list[object]]]:
+def deserialize(message):
     """Deserialize an answer from an AbstractController derivate recieved as tcp message over socket.
 
     If the message does not hold an action type it is treated as socket log record.

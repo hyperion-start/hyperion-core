@@ -80,7 +80,7 @@ fileConfig(f"{BASE_DIR}/data/default-logger.config")
 ###################
 # GUI
 ###################
-def main() -> None:
+def main():
     """Parse the command line arguments and start hyperion with the specified configuration in the desired mode."""
 
     logger = logging.getLogger(__name__)
@@ -329,7 +329,7 @@ def main() -> None:
         s = server.Server(int(args.port), cc)
         sys.exit(config.ExitStatus.FINE.value)
 
-    cc : ControlCenter = None
+    cc = None
     if args.cmd == "ui":
         logger.debug("Chose ui mode")
 
@@ -388,10 +388,10 @@ def main() -> None:
                             "Remove non file stream handlers to disable logging on stdout!"
                         )
                         remove.append(handler)
-                [root_logger.removeHandler(h) for h in remove] # type: ignore[func-returns-value]
+                [root_logger.removeHandler(h) for h in remove]  # type: ignore[func-returns-value]
                 full_shutdown = ui_plugins["urwid"].main(rci, log_file_path)
                 # Re-add handlers for shutdown log
-                [root_logger.addHandler(h) for h in remove] # type: ignore[func-returns-value]
+                [root_logger.addHandler(h) for h in remove]  # type: ignore[func-returns-value]
                 rci.cleanup(full_shutdown)
                 if cc is not None:
                     s.worker.join()
