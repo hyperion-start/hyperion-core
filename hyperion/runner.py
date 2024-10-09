@@ -292,6 +292,12 @@ def main() -> None:
     stream_formatter = ColorFormatter()
     for handler in root_logger.handlers:
         handler.setFormatter(stream_formatter)
+        if isinstance(handler, logging.StreamHandler):
+            handler.addFilter(lambda x: x.levelno <= logging.INFO)
+    err_handle = logging.StreamHandler(sys.stderr)
+    err_handle.setLevel(logging.ERROR)
+    err_handle.setFormatter(stream_formatter)
+    root_logger.addHandler(err_handle)
     log_name = ""
 
     if args.config:
@@ -329,7 +335,7 @@ def main() -> None:
         s = server.Server(int(args.port), cc)
         sys.exit(config.ExitStatus.FINE.value)
 
-    cc : ControlCenter = None
+    cc: ControlCenter = None
     if args.cmd == "ui":
         logger.debug("Chose ui mode")
 
@@ -388,10 +394,10 @@ def main() -> None:
                             "Remove non file stream handlers to disable logging on stdout!"
                         )
                         remove.append(handler)
-                [root_logger.removeHandler(h) for h in remove] # type: ignore[func-returns-value]
+                [root_logger.removeHandler(h) for h in remove]  # type: ignore[func-returns-value]
                 full_shutdown = ui_plugins["urwid"].main(rci, log_file_path)
                 # Re-add handlers for shutdown log
-                [root_logger.addHandler(h) for h in remove] # type: ignore[func-returns-value]
+                [root_logger.addHandler(h) for h in remove]  # type: ignore[func-returns-value]
                 rci.cleanup(full_shutdown)
                 if cc is not None:
                     s.worker.join()
