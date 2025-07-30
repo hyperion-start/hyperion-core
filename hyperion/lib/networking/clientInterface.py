@@ -198,7 +198,7 @@ class BaseClient(object):
 
 
 class RemoteSlaveInterface(BaseClient):
-    def __init__(self, host, port, cc, loop_in_thread=False):
+    def __init__(self, host, port, cc, server_side_name, loop_in_thread=False):
         """Init remote slave interface for communication to the server at `host` on `port` with slave controller `cc`.
 
         Parameters
@@ -209,6 +209,8 @@ class RemoteSlaveInterface(BaseClient):
             Port of the server to connect to.
         cc : SlaveManager
             Slave manager to dispatch calls to and forward messages from.
+        server_side_name : str
+            Name of this host on the server side (can differ from the client side if e.g. an alias is used), used for identification.
         loop_in_thread : bool, optional
             Whether to run the loop function in an extra thread. Useful for unit tests, by default False
         """
@@ -220,6 +222,10 @@ class RemoteSlaveInterface(BaseClient):
         self.sock = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.event_queue = queue.Queue()  # type: queue.Queue
         self.cc.add_subscriber(self.event_queue)
+        self.server_side_name = server_side_name
+
+        if self.server_side_name is None:
+            self.server_side_name = socket.gethostname()
 
         try:
             if not self.is_localhost(host):
@@ -285,7 +291,7 @@ class RemoteSlaveInterface(BaseClient):
 
     def _send_auth(self):
         action = "auth"
-        payload = [socket.gethostname()]
+        payload = [self.server_side_name]
         message = actionSerializer.serialize_request(action, payload)
         self.send_queue.put(message)
 

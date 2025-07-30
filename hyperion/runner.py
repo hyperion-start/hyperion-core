@@ -282,6 +282,14 @@ def main():
         required=True,
     )
 
+    subparser_remote.add_argument(
+        "-n",
+        "--name",
+        help="Name of this slave on the master server. If not specified, "
+        "the hostname will be used.",
+        default=None,
+    )
+
     args = parser.parse_args()
     if args.verbose:
         config.DEFAULT_LOG_LEVEL = logging.DEBUG
@@ -534,7 +542,7 @@ def main():
 
         logger.debug("Launching slave mode")
         slc = SlaveManager(args.config)
-        clientInterface.RemoteSlaveInterface(args.host, args.port, slc)
+        clientInterface.RemoteSlaveInterface(args.host, args.port, slc, args.name)
 
         logger.debug("Flushing memory handler!")
         memory_handler.close()
