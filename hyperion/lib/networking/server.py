@@ -652,7 +652,7 @@ class SlaveManagementServer(BaseServer):
         slave_log_handler.setFormatter(config.ColorFormatter())
         self.slave_log_handlers[host_ip] = slave_log_handler
 
-        cmd = f"hyperion slave --config {config_path} -H {socket.gethostname()} -p {self.port}"
+        cmd = f"hyperion slave --config {config_path} -H {socket.gethostname()} -p {self.port} -n {hostname}"
 
         if config.SLAVE_HYPERION_SOURCE_PATH != None:
             cmd = f"source {config.SLAVE_HYPERION_SOURCE_PATH} && {cmd}"
