@@ -750,7 +750,9 @@ class AbstractController(object):
             State of the component
         """
 
-        if self.mon_thread.is_component_monitored(comp['id']):
+        if self.mon_thread.is_component_monitored(comp["id"]):
+            if broadcast:
+                self.broadcast_event(events.CheckEvent(comp["id"], config.CheckState.RUNNING))
             return config.CheckState.RUNNING
 
         try:
@@ -1376,6 +1378,13 @@ class ControlCenter(AbstractController):
                 "Exception in libtmux while looking up sessions. Maybe no session is running. Trying "
                 "to create a new one"
             )
+
+            if self.session:
+                window = self._find_window('Main')
+                if not window:
+                    self.logger.debug("Session has no 'Main' window, Maybe session is in use somewhere.")
+                    self.session.new_window('Main')
+                session_ready = True    
 
         if not session_ready:
             self.logger.info(
