@@ -750,7 +750,9 @@ class AbstractController(object):
             State of the component
         """
 
-        if self.mon_thread.is_component_monitored(comp['id']):
+        if self.mon_thread.is_component_monitored(comp["id"]):
+            if broadcast:
+                self.broadcast_event(events.CheckEvent(comp["id"], config.CheckState.RUNNING))
             return config.CheckState.RUNNING
 
         try:
